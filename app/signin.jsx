@@ -1,12 +1,10 @@
-import { router } from "expo-router";
-import { Button, StyleSheet, View } from "react-native";
+import React from "react";
+import { View } from "react-native";
 import LoadingState from "../components/LoadingState";
 import ScreenWrapper from "../components/ScreenWrapper";
-import { theme } from "../constants/theme";
-import { wp } from "../helpers/common";
 import useLoading from "../helpers/useLoading";
 
-const Welcome = () => {
+const SignIn = () => {
   const { isLoading, withLoading } = useLoading();
 
   const handleNavigation = (page) => {
@@ -31,7 +29,7 @@ const Welcome = () => {
   );
 };
 
-export default Welcome;
+export default SignIn;
 
 const styles = StyleSheet.create({
   container: {
