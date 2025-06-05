@@ -40,7 +40,7 @@ const Welcome = () => {
           </View>
           <View style={styles.bottomContainer}>
             <TouchableOpacity
-              style={styles.outlineButton}
+              style={styles.Button}
               onPress={() => handleNavigation("signup")}
             >
               <Text style={styles.buttonText}>Sign Up</Text>
@@ -59,13 +59,30 @@ const Welcome = () => {
 
 export default Welcome;
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  text: {
+    fontSize: 14,
+    textAlign: "center",
+  },
+  button: {
+    borderRadius: wp(2),
+    paddingHorizontal: wp(4),
+    paddingVertical: wp(2),
+    alignItems: "center",
+    width: "100%",
+  },
+});
+
+const styles = StyleSheet.create({
+  container: {
+    ...baseStyles.container,
     backgroundColor: "white",
   },
   content: {
-    flex: 1,
+    ...baseStyles.container,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: wp(4),
@@ -74,49 +91,47 @@ const styles = StyleSheet.create({
     paddingHorizontal: wp(4),
     paddingBottom: wp(8),
     alignItems: "center",
-    gap: wp(4),
+    gap: wp(2),
   },
-  outlineButton: {
+  Button: {
+    ...baseStyles.button,
     borderWidth: 2,
     borderColor: theme.colors.primary,
-    borderRadius: wp(2),
-    paddingHorizontal: wp(4),
-    paddingVertical: wp(2),
-    alignItems: "center",
-    width: "100%",
+    backgroundColor: theme.colors.primary,
   },
   buttonText: {
-    color: theme.colors.primary,
-    fontSize: 18,
+    ...baseStyles.text,
+    color: "white",
     fontWeight: "600",
   },
   linkText: {
+    ...baseStyles.text,
     color: theme.colors.textLight,
-    fontSize: 14,
-  },
-  image: {
-    width: wp(20),
-    height: wp(20),
-    marginBottom: wp(6),
   },
   textContainer: {
     alignItems: "center",
     paddingHorizontal: wp(4),
   },
   title: {
+    ...baseStyles.text,
     fontSize: 24,
     fontWeight: "600",
     color: theme.colors.textDark,
     marginBottom: wp(2),
   },
   description: {
+    ...baseStyles.text,
     fontSize: 16,
     color: theme.colors.textLight,
-    textAlign: "center",
     lineHeight: 24,
   },
   boldText: {
     fontWeight: "600",
     color: theme.colors.textDark,
+  },
+  image: {
+    width: wp(20),
+    height: wp(20),
+    marginBottom: wp(6),
   },
 });
