@@ -1,7 +1,10 @@
+import { router } from "expo-router";
 import React from "react";
-import { View } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import LoadingState from "../components/LoadingState";
 import ScreenWrapper from "../components/ScreenWrapper";
+import { theme } from "../constants/theme";
+import { wp } from "../helpers/common";
 import useLoading from "../helpers/useLoading";
 
 const SignIn = () => {
@@ -21,7 +24,12 @@ const SignIn = () => {
         <View style={styles.container}>
           <View style={styles.content} />
           <View style={styles.bottomContainer}>
-            <Button title="Welcome" onPress={() => handleNavigation("index")} />
+            <TouchableOpacity
+              style={styles.outlineButton}
+              onPress={() => handleNavigation("/")}
+            >
+              <Text style={styles.buttonText}>Welcome</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </ScreenWrapper>
@@ -44,5 +52,17 @@ const styles = StyleSheet.create({
   bottomContainer: {
     paddingHorizontal: wp(4),
     paddingBottom: wp(8), // Add some bottom padding for better spacing
+  },
+  outlineButton: {
+    borderWidth: 1,
+    borderColor: "white",
+    borderRadius: wp(2),
+    padding: wp(3),
+    alignItems: "center",
+  },
+  buttonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "500",
   },
 });

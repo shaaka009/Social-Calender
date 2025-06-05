@@ -1,5 +1,6 @@
+import { Image } from "expo-image";
 import { router } from "expo-router";
-import { Button, StyleSheet, View } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import LoadingState from "../components/LoadingState";
 import ScreenWrapper from "../components/ScreenWrapper";
 import { theme } from "../constants/theme";
@@ -19,11 +20,36 @@ const Welcome = () => {
 
   return (
     <LoadingState isLoading={isLoading}>
-      <ScreenWrapper>
+      <ScreenWrapper bg="white">
         <View style={styles.container}>
-          <View style={styles.content} />
+          <View style={styles.content}>
+            <Image
+              source={require("../assets/images/react-logo.png")}
+              style={styles.image}
+              contentFit="contain"
+            />
+            <View style={styles.textContainer}>
+              <Text style={styles.title}>Welcome to KITcal</Text>
+              <Text style={styles.description}>
+                <Text style={styles.boldText}>Sign in to your account</Text>
+                {" or "}
+                <Text style={styles.boldText}>create a new one</Text>
+                {" to get started with managing your calendar."}
+              </Text>
+            </View>
+          </View>
           <View style={styles.bottomContainer}>
-            <Button title="Welcome" onPress={() => handleNavigation("index")} />
+            <TouchableOpacity
+              style={styles.outlineButton}
+              onPress={() => handleNavigation("signup")}
+            >
+              <Text style={styles.buttonText}>Sign Up</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => handleNavigation("signin")}>
+              <Text style={styles.linkText}>
+                Already have an account? Sign In
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       </ScreenWrapper>
@@ -36,15 +62,61 @@ export default Welcome;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.primary,
+    backgroundColor: "white",
   },
   content: {
     flex: 1,
     alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: wp(4),
   },
   bottomContainer: {
     paddingHorizontal: wp(4),
-    paddingBottom: wp(8), // Add some bottom padding for better spacing
+    paddingBottom: wp(8),
+    alignItems: "center",
+    gap: wp(4),
+  },
+  outlineButton: {
+    borderWidth: 2,
+    borderColor: theme.colors.primary,
+    borderRadius: wp(2),
+    paddingHorizontal: wp(4),
+    paddingVertical: wp(2),
+    alignItems: "center",
+    width: "100%",
+  },
+  buttonText: {
+    color: theme.colors.primary,
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  linkText: {
+    color: theme.colors.textLight,
+    fontSize: 14,
+  },
+  image: {
+    width: wp(20),
+    height: wp(20),
+    marginBottom: wp(6),
+  },
+  textContainer: {
+    alignItems: "center",
+    paddingHorizontal: wp(4),
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: "600",
+    color: theme.colors.textDark,
+    marginBottom: wp(2),
+  },
+  description: {
+    fontSize: 16,
+    color: theme.colors.textLight,
+    textAlign: "center",
+    lineHeight: 24,
+  },
+  boldText: {
+    fontWeight: "600",
+    color: theme.colors.textDark,
   },
 });

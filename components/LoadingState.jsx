@@ -1,5 +1,6 @@
 import { BlurView } from "expo-blur";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { theme } from "../constants/theme";
 
 const LoadingState = ({
   isLoading,
@@ -11,7 +12,7 @@ const LoadingState = ({
 
   const LoadingOverlay = () => (
     <View style={styles.loadingOverlay}>
-      <ActivityIndicator size="large" color="#0000ff" />
+      <ActivityIndicator size="large" color={theme.colors.primary} />
       {text && <Text style={styles.loadingText}>{text}</Text>}
     </View>
   );
