@@ -15,6 +15,8 @@ import useLoading from "../helpers/useLoading";
 
 const SignUp = () => {
   const { isLoading, withLoading } = useLoading();
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -22,7 +24,7 @@ const SignUp = () => {
 
   const handleSignUp = () => {
     setError("");
-    if (!email || !password || !confirmPassword) {
+    if (!firstName || !lastName || !email || !password || !confirmPassword) {
       setError("Please fill in all fields");
       return;
     }
@@ -33,11 +35,37 @@ const SignUp = () => {
 
     withLoading(async () => {
       try {
-        // TODO: Implement actual signup logic here
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const response = await fetch("http://localhost:8000/api/signup/", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email: email,
+            first_name: firstName,
+            last_name: lastName,
+            password1: password,
+            password2: confirmPassword,
+          }),
+          credentials: "include",
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          if (data.errors) {
+            const errorMessages = Object.values(data.errors).flat().join(", ");
+            setError(errorMessages);
+          } else {
+            setError("Failed to create account");
+          }
+          return;
+        }
+
         router.push("/");
       } catch (err) {
-        setError("Failed to create account");
+        console.error("Signup error:", err);
+        setError("Network error or server is not responding");
       }
     });
   };
@@ -53,6 +81,30 @@ const SignUp = () => {
             </Text>
 
             <View style={styles.form}>
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>First Name</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="First Name"
+                  placeholderTextColor={theme.colors.textLight + "90"}
+                  value={firstName}
+                  onChangeText={setFirstName}
+                  autoCapitalize="words"
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Last Name</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Last Name"
+                  placeholderTextColor={theme.colors.textLight + "90"}
+                  value={lastName}
+                  onChangeText={setLastName}
+                  autoCapitalize="words"
+                />
+              </View>
+
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Email</Text>
                 <TextInput
