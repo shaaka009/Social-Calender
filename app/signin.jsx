@@ -28,11 +28,28 @@ const SignIn = () => {
 
     withLoading(async () => {
       try {
-        // TODO: Implement actual signin logic here
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const response = await fetch("http://127.0.0.1:8000/api/signin/", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email,
+            password,
+          }),
+          credentials: "include", // This is important for handling cookies
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || "Login failed");
+        }
+
+        // Login successful
         router.push("/");
       } catch (err) {
-        setError("Invalid email or password");
+        setError(err.message || "Invalid email or password");
       }
     });
   };
@@ -94,43 +111,24 @@ const SignIn = () => {
   );
 };
 
-const baseStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  text: {
-    fontSize: 14,
-    textAlign: "center",
-  },
-  button: {
-    borderRadius: wp(2),
-    paddingHorizontal: wp(4),
-    paddingVertical: wp(2),
-    alignItems: "center",
-    width: "100%",
-  },
-});
-
 const styles = StyleSheet.create({
   container: {
-    ...baseStyles.container,
-    backgroundColor: "white",
+    flex: 1,
+    justifyContent: "space-between",
+    padding: wp(5),
   },
   content: {
-    ...baseStyles.container,
-    paddingHorizontal: wp(4),
-    paddingTop: wp(8),
+    flex: 1,
+    justifyContent: "center",
   },
   title: {
-    ...baseStyles.text,
-    fontSize: 24,
-    fontWeight: "600",
-    color: theme.colors.textDark,
+    fontSize: wp(8),
+    fontWeight: "bold",
+    color: theme.colors.text,
     marginBottom: wp(2),
   },
   description: {
-    ...baseStyles.text,
-    fontSize: 16,
+    fontSize: wp(4),
     color: theme.colors.textLight,
     marginBottom: wp(8),
   },
@@ -141,40 +139,42 @@ const styles = StyleSheet.create({
     gap: wp(2),
   },
   label: {
-    fontSize: 14,
+    fontSize: wp(4),
     fontWeight: "500",
-    color: theme.colors.textDark,
+    color: theme.colors.text,
   },
   input: {
     borderWidth: 1,
-    borderColor: theme.colors.darkLight,
-    borderRadius: wp(2),
-    padding: wp(3),
-    fontSize: 16,
+    borderColor: theme.colors.border,
+    borderRadius: wp(3),
+    padding: wp(4),
+    fontSize: wp(4),
+    color: theme.colors.text,
   },
   button: {
-    ...baseStyles.button,
     backgroundColor: theme.colors.primary,
-    marginTop: wp(4),
-  },
-  buttonText: {
-    ...baseStyles.text,
-    color: "white",
-    fontWeight: "600",
-  },
-  errorText: {
-    ...baseStyles.text,
-    color: theme.colors.rose,
+    padding: wp(4),
+    borderRadius: wp(3),
+    alignItems: "center",
     marginTop: wp(2),
   },
+  buttonText: {
+    color: "white",
+    fontSize: wp(4),
+    fontWeight: "600",
+  },
   bottomContainer: {
-    paddingHorizontal: wp(4),
-    paddingBottom: wp(8),
     alignItems: "center",
+    paddingVertical: wp(5),
   },
   linkText: {
-    ...baseStyles.text,
-    color: theme.colors.textLight,
+    color: theme.colors.primary,
+    fontSize: wp(4),
+  },
+  errorText: {
+    color: theme.colors.error,
+    fontSize: wp(3.5),
+    textAlign: "center",
   },
 });
 
