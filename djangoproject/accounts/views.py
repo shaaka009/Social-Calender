@@ -1,6 +1,6 @@
 import json
 
-from django.contrib.auth import authenticate, login
+from django.contrib.auth import authenticate, login, logout
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
@@ -72,3 +72,28 @@ def signin(request):
             )
 
     return JsonResponse({"message": "Method not allowed"}, status=405)
+
+
+@csrf_exempt
+def signout(request):
+    if request.method == "POST":
+        logout(request)
+        return JsonResponse({"success": True, "message": "Logged out successfully"})
+
+    return JsonResponse({"message": "Method not allowed"}, status=405)
+
+
+def get_user(request):
+    if request.user.is_authenticated:
+        return JsonResponse(
+            {
+                "success": True,
+                "user": {
+                    "id": request.user.id,
+                    "email": request.user.email,
+                    "first_name": request.user.first_name,
+                    "last_name": request.user.last_name,
+                },
+            }
+        )
+    return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)

@@ -62,7 +62,7 @@ const SignUp = () => {
           return;
         }
 
-        router.push("/");
+        router.replace("/home");
       } catch (err) {
         console.error("Signup error:", err);
         setError("Network error or server is not responding");
