@@ -3,10 +3,11 @@ import React, { useState } from "react";
 import {
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import CustomButton from "../components/CustomButton";
+import CustomInput from "../components/CustomInput";
 import LoadingState from "../components/LoadingState";
 import ScreenWrapper from "../components/ScreenWrapper";
 import { theme } from "../constants/theme";
@@ -62,7 +63,7 @@ const SignUp = () => {
           return;
         }
 
-        router.replace("/home");
+        router.replace("/signin");
       } catch (err) {
         console.error("Signup error:", err);
         setError("Network error or server is not responding");
@@ -81,72 +82,54 @@ const SignUp = () => {
             </Text>
 
             <View style={styles.form}>
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>First Name</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="First Name"
-                  placeholderTextColor={theme.colors.textLight + "90"}
-                  value={firstName}
-                  onChangeText={setFirstName}
-                  autoCapitalize="words"
-                />
-              </View>
+              <CustomInput
+                label="First Name"
+                placeholder="First Name"
+                value={firstName}
+                onChangeText={setFirstName}
+                autoCapitalize="words"
+              />
 
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Last Name</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Last Name"
-                  placeholderTextColor={theme.colors.textLight + "90"}
-                  value={lastName}
-                  onChangeText={setLastName}
-                  autoCapitalize="words"
-                />
-              </View>
+              <CustomInput
+                label="Last Name"
+                placeholder="Last Name"
+                value={lastName}
+                onChangeText={setLastName}
+                autoCapitalize="words"
+              />
 
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Email</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Email"
-                  placeholderTextColor={theme.colors.textLight + "90"}
-                  value={email}
-                  onChangeText={setEmail}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                />
-              </View>
+              <CustomInput
+                label="Email"
+                placeholder="Email"
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+              />
 
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Password</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Password"
-                  placeholderTextColor={theme.colors.textLight + "90"}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry
-                />
-              </View>
+              <CustomInput
+                label="Password"
+                placeholder="Password"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+              />
 
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Confirm Password</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Confirm Password"
-                  placeholderTextColor={theme.colors.textLight + "90"}
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  secureTextEntry
-                />
-              </View>
+              <CustomInput
+                label="Confirm Password"
+                placeholder="Confirm Password"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry
+              />
 
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-              <TouchableOpacity style={styles.button} onPress={handleSignUp}>
-                <Text style={styles.buttonText}>Create Account</Text>
-              </TouchableOpacity>
+              <CustomButton
+                title="Create Account"
+                onPress={handleSignUp}
+                style={styles.button}
+              />
             </View>
           </View>
 
@@ -163,87 +146,45 @@ const SignUp = () => {
   );
 };
 
-const baseStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  text: {
-    fontSize: 14,
-    textAlign: "center",
-  },
-  button: {
-    borderRadius: wp(2),
-    paddingHorizontal: wp(4),
-    paddingVertical: wp(2),
-    alignItems: "center",
-    width: "100%",
-  },
-});
-
 const styles = StyleSheet.create({
   container: {
-    ...baseStyles.container,
-    backgroundColor: "white",
+    flex: 1,
+    justifyContent: "space-between",
+    padding: wp(5),
   },
   content: {
-    ...baseStyles.container,
-    paddingHorizontal: wp(4),
-    paddingTop: wp(8),
+    flex: 1,
+    justifyContent: "center",
   },
   title: {
-    ...baseStyles.text,
-    fontSize: 24,
-    fontWeight: "600",
-    color: theme.colors.textDark,
+    fontSize: wp(8),
+    fontWeight: "bold",
+    color: theme.colors.text,
     marginBottom: wp(2),
   },
   description: {
-    ...baseStyles.text,
-    fontSize: 16,
+    fontSize: wp(4),
     color: theme.colors.textLight,
     marginBottom: wp(8),
   },
   form: {
     gap: wp(4),
   },
-  inputContainer: {
-    gap: wp(2),
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: theme.colors.textDark,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: theme.colors.darkLight,
-    borderRadius: wp(2),
-    padding: wp(3),
-    fontSize: 16,
-  },
   button: {
-    ...baseStyles.button,
-    backgroundColor: theme.colors.primary,
-    marginTop: wp(4),
-  },
-  buttonText: {
-    ...baseStyles.text,
-    color: "white",
-    fontWeight: "600",
-  },
-  errorText: {
-    ...baseStyles.text,
-    color: theme.colors.rose,
     marginTop: wp(2),
   },
   bottomContainer: {
-    paddingHorizontal: wp(4),
-    paddingBottom: wp(8),
     alignItems: "center",
+    paddingVertical: wp(5),
   },
   linkText: {
-    ...baseStyles.text,
-    color: theme.colors.textLight,
+    color: theme.colors.primary,
+    fontSize: wp(4),
+  },
+  errorText: {
+    color: theme.colors.error,
+    fontSize: wp(3.5),
+    textAlign: "center",
   },
 });
 

@@ -3,10 +3,11 @@ import React, { useState } from "react";
 import {
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import CustomButton from "../components/CustomButton";
+import CustomInput from "../components/CustomInput";
 import LoadingState from "../components/LoadingState";
 import ScreenWrapper from "../components/ScreenWrapper";
 import { theme } from "../constants/theme";
@@ -65,36 +66,30 @@ const SignIn = () => {
             </Text>
 
             <View style={styles.form}>
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Email</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Email"
-                  placeholderTextColor={theme.colors.textLight + "90"}
-                  value={email}
-                  onChangeText={setEmail}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                />
-              </View>
+              <CustomInput
+                label="Email"
+                placeholder="Email"
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+              />
 
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Password</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Password"
-                  placeholderTextColor={theme.colors.textLight + "90"}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry
-                />
-              </View>
+              <CustomInput
+                label="Password"
+                placeholder="Password"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+              />
 
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-              <TouchableOpacity style={styles.button} onPress={handleSignIn}>
-                <Text style={styles.buttonText}>Sign In</Text>
-              </TouchableOpacity>
+              <CustomButton
+                title="Sign In"
+                onPress={handleSignIn}
+                style={styles.button}
+              />
             </View>
           </View>
 
@@ -135,33 +130,8 @@ const styles = StyleSheet.create({
   form: {
     gap: wp(4),
   },
-  inputContainer: {
-    gap: wp(2),
-  },
-  label: {
-    fontSize: wp(4),
-    fontWeight: "500",
-    color: theme.colors.text,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: wp(3),
-    padding: wp(4),
-    fontSize: wp(4),
-    color: theme.colors.text,
-  },
   button: {
-    backgroundColor: theme.colors.primary,
-    padding: wp(4),
-    borderRadius: wp(3),
-    alignItems: "center",
     marginTop: wp(2),
-  },
-  buttonText: {
-    color: "white",
-    fontSize: wp(4),
-    fontWeight: "600",
   },
   bottomContainer: {
     alignItems: "center",

@@ -1,6 +1,7 @@
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import CustomButton from "../components/CustomButton";
 import LoadingState from "../components/LoadingState";
 import ScreenWrapper from "../components/ScreenWrapper";
 import { theme } from "../constants/theme";
@@ -39,12 +40,11 @@ const Welcome = () => {
             </View>
           </View>
           <View style={styles.bottomContainer}>
-            <TouchableOpacity
-              style={styles.Button}
+            <CustomButton
+              title="Sign Up"
               onPress={() => handleNavigation("signup")}
-            >
-              <Text style={styles.buttonText}>Sign Up</Text>
-            </TouchableOpacity>
+              style={styles.button}
+            />
             <TouchableOpacity onPress={() => handleNavigation("signin")}>
               <Text style={styles.linkText}>
                 Already have an account? Sign In
@@ -57,77 +57,49 @@ const Welcome = () => {
   );
 };
 
-export default Welcome;
-
-const baseStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  text: {
-    fontSize: 14,
-    textAlign: "center",
-  },
-  button: {
-    borderRadius: wp(2),
-    paddingHorizontal: wp(4),
-    paddingVertical: wp(2),
-    alignItems: "center",
-    width: "100%",
-  },
-});
-
 const styles = StyleSheet.create({
   container: {
-    ...baseStyles.container,
-    backgroundColor: "white",
+    flex: 1,
+    justifyContent: "space-between",
+    padding: wp(5),
   },
   content: {
-    ...baseStyles.container,
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: wp(4),
   },
   bottomContainer: {
-    paddingHorizontal: wp(4),
-    paddingBottom: wp(8),
     alignItems: "center",
+    paddingVertical: wp(5),
     gap: wp(2),
   },
-  Button: {
-    ...baseStyles.button,
-    borderWidth: 2,
-    borderColor: theme.colors.primary,
-    backgroundColor: theme.colors.primary,
-  },
-  buttonText: {
-    ...baseStyles.text,
-    color: "white",
-    fontWeight: "600",
+  button: {
+    width: "100%",
   },
   linkText: {
-    ...baseStyles.text,
-    color: theme.colors.textLight,
+    color: theme.colors.primary,
+    fontSize: wp(4),
   },
   textContainer: {
     alignItems: "center",
     paddingHorizontal: wp(4),
   },
   title: {
-    ...baseStyles.text,
-    fontSize: 24,
-    fontWeight: "600",
-    color: theme.colors.textDark,
+    fontSize: wp(8),
+    fontWeight: "bold",
+    color: theme.colors.text,
     marginBottom: wp(2),
+    textAlign: "center",
   },
   description: {
-    ...baseStyles.text,
-    fontSize: 16,
+    fontSize: wp(4),
     color: theme.colors.textLight,
-    lineHeight: 24,
+    lineHeight: wp(6),
+    textAlign: "center",
   },
   boldText: {
     fontWeight: "600",
-    color: theme.colors.textDark,
+    color: theme.colors.text,
   },
   image: {
     width: wp(20),
@@ -135,3 +107,5 @@ const styles = StyleSheet.create({
     marginBottom: wp(6),
   },
 });
+
+export default Welcome;
