@@ -7,21 +7,28 @@ const LoadingState = ({
   text = "Loading...",
   children,
   blur = true,
+  subtle = false,
 }) => {
   if (!isLoading) return children;
 
   const LoadingOverlay = () => (
-    <View style={styles.loadingOverlay}>
-      <ActivityIndicator size="large" color={theme.colors.primary} />
-      {text && <Text style={styles.loadingText}>{text}</Text>}
+    <View style={[
+      styles.loadingOverlay,
+      subtle && styles.subtleOverlay
+    ]}>
+      <ActivityIndicator 
+        size={subtle ? "small" : "large"} 
+        color={theme.colors.primary} 
+      />
+      {text && !subtle && <Text style={styles.loadingText}>{text}</Text>}
     </View>
   );
 
-  if (blur) {
+  if (blur && !subtle) {
     return (
       <>
         {children}
-        <BlurView intensity={50} style={StyleSheet.absoluteFill}>
+        <BlurView intensity={30} style={StyleSheet.absoluteFill}>
           <LoadingOverlay />
         </BlurView>
       </>
@@ -42,6 +49,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255, 255, 255, 0.7)",
+  },
+  subtleOverlay: {
+    backgroundColor: "rgba(255, 255, 255, 0.3)",
   },
   loadingText: {
     marginTop: 10,

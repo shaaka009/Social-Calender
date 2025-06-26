@@ -72,7 +72,7 @@ const SignUp = () => {
   };
 
   return (
-    <LoadingState isLoading={isLoading}>
+    <LoadingState isLoading={isLoading} subtle={true}>
       <ScreenWrapper bg="white">
         <View style={styles.container}>
           <View style={styles.content}>
