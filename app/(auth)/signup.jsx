@@ -11,6 +11,7 @@ import CustomInput from "../../components/CustomInput";
 import LoadingState from "../../components/LoadingState";
 import ScreenWrapper from "../../components/ScreenWrapper";
 import { theme } from "../../constants/theme";
+import { ENDPOINTS } from "../../helpers/api";
 import { wp } from "../../helpers/common";
 import useLoading from "../../helpers/useLoading";
 
@@ -36,7 +37,7 @@ const SignUp = () => {
 
     withLoading(async () => {
       try {
-        const response = await fetch("http://localhost:8000/api/signup/", {
+        const response = await fetch(ENDPOINTS.SIGN_UP, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

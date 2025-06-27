@@ -2,7 +2,11 @@
 
 ### Objective:
 
-To design and build a comprehensive mobile app that acts as a personal secretary for managing social connections. The app will enable users to maintain and enhance their relationships by keeping track of important dates, recent interactions, and personalized notes for each contact.
+To design and build a comprehensive mobile app that acts as a personal secretary
+ for managing social connect
+ions. The app will enable users to maintain and enhance their relationships by k
+eeping track of important dates, recent interactions, and personalized notes for
+ each contact.
 
 ### Features:
 
@@ -18,15 +22,18 @@ To design and build a comprehensive mobile app that acts as a personal secretary
   - Fields to record birthdays, anniversaries, and other significant dates.
   - Integration with a calendar view to visualize these events.
 - **Notes Section:**
-  - A dedicated area for jotting down personalized notes about the contact (e.g., favorite hobbies, last discussed topics).
-- **Last Contacted Tracker:**
+  - A dedicated area for jotting down personalized notes about the contact (e.g.
+, favorite hobbies, last dis
+cussed topics).
+                            - **Last Contacted Tracker:**
   - Automatic or manual tracking of the last interaction with each contact.
   - Ability to log interaction details (e.g., phone calls, meetings, messages).
 
 #### 3. **Notifications and Reminders:**
 
 - Alerts for upcoming birthdays or important events.
-- Notifications when it has been a while since the user last interacted with a contact.
+- Notifications when it has been a while since the user last interacted with a c
+ontact.
 
 #### 4. **Calendar Integration:**
 
@@ -50,7 +57,8 @@ To design and build a comprehensive mobile app that acts as a personal secretary
   - Minimalistic and intuitive design for ease of use.
   - Clear visual hierarchy to organize features effectively.
 - **Mobile-First Approach:**
-  - Optimized for mobile devices, with a potential future extension to desktop platforms.
+  - Optimized for mobile devices, with a potential future extension to desktop p
+latforms.
 - **Data Privacy:**
   - Secure storage and encryption of user data.
   - Transparent privacy policy to build user trust.
@@ -59,7 +67,8 @@ To design and build a comprehensive mobile app that acts as a personal secretary
 
 - **Frontend:** React Native for cross-platform mobile app development.
 - **Backend:** Flask or FastAPI for API development and user authentication.
-- **Database:** PostgreSQL or MongoDB for storing user data, contacts, and events.
+- **Database:** PostgreSQL or MongoDB for storing user data, contacts, and event
+s.
 - **Deployment:** Cloud services like AWS or Firebase for hosting and scaling.
 
 ### Development Plan:
@@ -87,8 +96,10 @@ To design and build a comprehensive mobile app that acts as a personal secretary
 
 ### Project Goals:
 
-To create a tool that empowers users to maintain meaningful connections with the people in their lives, fostering stronger and more consistent social bonds.
-
+To create a tool that empowers users to maintain meaningful connections with the
+ people in their lives, fost
+ering stronger and more consistent social bonds.
+                            
 ### Home Page Development Plan (MVP)
 
 1. **Screen responsibilities**  
@@ -98,7 +109,8 @@ To create a tool that empowers users to maintain meaningful connections with the
    • Quick actions (Add Contact, Log Interaction, Create Event).
 
 2. **Required data**  
-   Single endpoint `GET /api/dashboard` returning: user, eventsNext30, notifications.
+   Single endpoint `GET /api/dashboard` returning: user, eventsNext30, notificat
+ions.
 
 3. **Backend additions**  
    • Serializers for Event & Notification.  
@@ -106,7 +118,8 @@ To create a tool that empowers users to maintain meaningful connections with the
    • Background task pre-computing no-contact notifications.
 
 4. **Frontend state & hooks**  
-   Custom hook `useDashboard` (or React Query) exposing `{data, isLoading, refresh}`.
+   Custom hook `useDashboard` (or React Query) exposing `{data, isLoading, refre
+sh}`.
 
 5. **Component tree**  
 ```
@@ -124,7 +137,8 @@ Home
    d. Add Pull-to-Refresh & loading skeletons.
 
 7. **UX / visual**  
-   Vertical scroll, card design with 16-20 px padding, color coding, optional fade-in animations.
+   Vertical scroll, card design with 16-20 px padding, color coding, optional fa
+de-in animations.
 
 8. **Performance & offline**  
    Cache dashboard response 15 min, persist to device storage.

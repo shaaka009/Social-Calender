@@ -7,6 +7,7 @@ import NotificationList from "../../components/home/NotificationList";
 import LoadingState from "../../components/LoadingState";
 import ScreenWrapper from "../../components/ScreenWrapper";
 import { mockDashboard } from "../../constants/mockData";
+import { ENDPOINTS } from "../../helpers/api";
 import { wp } from "../../helpers/common";
 import useLoading from "../../helpers/useLoading";
 
@@ -17,7 +18,7 @@ const Home = () => {
   const handleLogout = () => {
     withLoading(async () => {
       try {
-        const response = await fetch("http://127.0.0.1:8000/api/signout/", {
+        const response = await fetch(ENDPOINTS.SIGN_OUT, {
           method: "POST",
           credentials: "include",
         });

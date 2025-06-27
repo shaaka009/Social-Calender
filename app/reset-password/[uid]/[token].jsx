@@ -9,8 +9,8 @@ import CustomButton from "../../../components/CustomButton";
 import CustomInput from "../../../components/CustomInput";
 import LoadingState from "../../../components/LoadingState";
 import ScreenWrapper from "../../../components/ScreenWrapper";
-import { ENDPOINTS } from "../../../constants/config";
 import { theme } from "../../../constants/theme";
+import { ENDPOINTS } from "../../../helpers/api";
 import { wp } from "../../../helpers/common";
 import useLoading from "../../../helpers/useLoading";
 
