@@ -11,7 +11,7 @@ const Index = () => {
   useEffect(() => {
     // Auto-navigate to home after 2 seconds
     const timer = setTimeout(() => {
-      router.replace("/home");
+      router.replace("/welcome");
     }, 2000);
 
     // Cleanup timer on component unmount
