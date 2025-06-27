@@ -42,8 +42,8 @@ setup-frontend:
 
 # Run backend server
 run-backend:
-	@echo "$(CYAN)Starting Django development server...$(NC)"
-	cd djangoproject && ../$(PYTHON_VENV) manage.py runserver
+	@echo "Starting Django development server... "
+	cd djangoproject && ../backendVenv/bin/python manage.py runserver 0.0.0.0:8000
 
 # Run frontend development server
 run-frontend:

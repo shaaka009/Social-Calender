@@ -1,0 +1,141 @@
+## Social Calendar Project Description
+
+### Objective:
+
+To design and build a comprehensive mobile app that acts as a personal secretary for managing social connections. The app will enable users to maintain and enhance their relationships by keeping track of important dates, recent interactions, and personalized notes for each contact.
+
+### Features:
+
+#### 1. **Main Contacts Page:**
+
+- A centralized dashboard to view and manage all connections.
+- Ability to add new contacts manually or import from phone contacts.
+- Search and filter functionality to quickly locate specific connections.
+
+#### 2. **Individual Contact Sections:**
+
+- **Birthdays and Important Dates:**
+  - Fields to record birthdays, anniversaries, and other significant dates.
+  - Integration with a calendar view to visualize these events.
+- **Notes Section:**
+  - A dedicated area for jotting down personalized notes about the contact (e.g., favorite hobbies, last discussed topics).
+- **Last Contacted Tracker:**
+  - Automatic or manual tracking of the last interaction with each contact.
+  - Ability to log interaction details (e.g., phone calls, meetings, messages).
+
+#### 3. **Notifications and Reminders:**
+
+- Alerts for upcoming birthdays or important events.
+- Notifications when it has been a while since the user last interacted with a contact.
+
+#### 4. **Calendar Integration:**
+
+- A calendar view to see all scheduled events and reminders.
+- Syncing options with external calendars (e.g., Google Calendar, iCal).
+
+#### 5. **Data Insights:**
+
+- Analytics on interaction frequency and engagement trends with contacts.
+- Suggestions to reconnect with people based on interaction history.
+
+#### 6. **Additional Features (Optional):**
+
+- Integration with social media to automatically fetch birthdays or updates.
+- Gamification elements, such as streaks for regular check-ins with friends.
+- Export functionality to share important dates or notes with others.
+
+### Design Considerations:
+
+- **User-Friendly Interface:**
+  - Minimalistic and intuitive design for ease of use.
+  - Clear visual hierarchy to organize features effectively.
+- **Mobile-First Approach:**
+  - Optimized for mobile devices, with a potential future extension to desktop platforms.
+- **Data Privacy:**
+  - Secure storage and encryption of user data.
+  - Transparent privacy policy to build user trust.
+
+### Technical Stack:
+
+- **Frontend:** React Native for cross-platform mobile app development.
+- **Backend:** Flask or FastAPI for API development and user authentication.
+- **Database:** PostgreSQL or MongoDB for storing user data, contacts, and events.
+- **Deployment:** Cloud services like AWS or Firebase for hosting and scaling.
+
+### Development Plan:
+
+1. **Phase 1: Core Functionality**
+
+   - Build the authentication system (sign-up, login, password recovery).
+   - Create the main contacts page with basic add/edit/delete functionality.
+   - Develop individual contact sections with note-taking and event tracking.
+
+2. **Phase 2: Calendar and Notifications**
+
+   - Integrate a calendar view and event reminders.
+   - Implement notification systems for reminders and inactivity alerts.
+
+3. **Phase 3: Enhancements and Integration**
+
+   - Add advanced features like data insights and social media integration.
+   - Optimize for performance and scalability.
+
+4. **Phase 4: Testing and Deployment**
+
+   - Conduct user testing to gather feedback and improve usability.
+   - Deploy the app to app stores and monitor post-launch performance.
+
+### Project Goals:
+
+To create a tool that empowers users to maintain meaningful connections with the people in their lives, fostering stronger and more consistent social bonds.
+
+### Home Page Development Plan (MVP)
+
+1. **Screen responsibilities**  
+   • Greeting / quick status.  
+   • Calendar snapshot (current month with highlighted upcoming events).  
+   • Actionable notifications (upcoming events, no-contact reminders).  
+   • Quick actions (Add Contact, Log Interaction, Create Event).
+
+2. **Required data**  
+   Single endpoint `GET /api/dashboard` returning: user, eventsNext30, notifications.
+
+3. **Backend additions**  
+   • Serializers for Event & Notification.  
+   • View that composes dashboard payload.  
+   • Background task pre-computing no-contact notifications.
+
+4. **Frontend state & hooks**  
+   Custom hook `useDashboard` (or React Query) exposing `{data, isLoading, refresh}`.
+
+5. **Component tree**  
+```
+Home
+├── HeaderGreeting
+├── CalendarPreview
+├── NotificationList
+└── QuickActions
+```
+
+6. **Implementation steps**  
+   a. Install `react-native-calendars` and (optionally) React Query.  
+   b. Wrap app in `QueryClientProvider` in `_layout.jsx`.  
+   c. Replace current `home.jsx` logic with `useQuery`.  
+   d. Add Pull-to-Refresh & loading skeletons.
+
+7. **UX / visual**  
+   Vertical scroll, card design with 16-20 px padding, color coding, optional fade-in animations.
+
+8. **Performance & offline**  
+   Cache dashboard response 15 min, persist to device storage.
+
+9. **Testing**  
+   • Unit: NotificationCard, CalendarPreview.  
+   • E2E: login → dashboard, notification navigation.
+
+10. **Incremental rollout**  
+    1. Static components with mock data.  
+    2. Wire to live API.  
+    3. Polish phase (animations, empty states).
+
+--- End of Plan ---

@@ -1,13 +1,20 @@
 {
   "expo": {
-    "name": "KITcal",
-    "slug": "KITcal",
+    "name": "Social Calendar",
+    "slug": "social-calendar",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "kitcal",
-    "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "scheme": "exp",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true
     },
