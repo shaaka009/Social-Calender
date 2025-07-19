@@ -10,12 +10,18 @@ from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
+# added for DashboardAPIView date calculations
+from datetime import date, timedelta
 from django.views.decorators.http import require_http_methods
 
+# New imports for DRF class-based view
+from rest_framework.views import APIView
+
 from .forms import UserRegistrationForm
+from .serializers import DashboardSerializer
 
 # Create your views here.
 
@@ -201,3 +207,32 @@ def password_reset_confirm(request, uidb64, token):
     user.set_password(password)
     user.save()
     return JsonResponse({'message': 'Password reset successful'})
+
+
+class DashboardAPIView(APIView):
+    """Returns user info, next 30-day events, and latest notifications."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        today = date.today()
+        upcoming_end = today + timedelta(days=30)
+
+        events_qs = (
+            user.events.filter(date__range=(today, upcoming_end))
+            .order_by("date")
+        )
+
+        notifications_qs = user.notifications.all()[:50]
+
+        serializer = DashboardSerializer(
+            {
+                "events": events_qs,
+                "notifications": notifications_qs,
+            },
+            context={"request": request},
+        )
+
+        return Response(serializer.data)
