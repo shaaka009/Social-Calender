@@ -66,7 +66,7 @@ latforms.
 ### Technical Stack:
 
 - **Frontend:** React Native for cross-platform mobile app development.
-- **Backend:** Flask or FastAPI for API development and user authentication.
+- **Backend:** django framework
 - **Database:** PostgreSQL or MongoDB for storing user data, contacts, and event
 s.
 - **Deployment:** Cloud services like AWS or Firebase for hosting and scaling.
