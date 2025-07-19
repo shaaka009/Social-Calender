@@ -4,15 +4,17 @@ import { RefreshControl, ScrollView, StyleSheet } from "react-native";
 import CalendarPreview from "../../components/home/CalendarPreview";
 import HeaderGreeting from "../../components/home/HeaderGreeting";
 import NotificationList from "../../components/home/NotificationList";
+import QuickActions from "../../components/home/QuickActions";
 import LoadingState from "../../components/LoadingState";
 import ScreenWrapper from "../../components/ScreenWrapper";
-import { mockDashboard } from "../../constants/mockData";
 import { ENDPOINTS } from "../../helpers/api";
 import { wp } from "../../helpers/common";
+import useDashboard from "../../helpers/useDashboard";
 import useLoading from "../../helpers/useLoading";
 
 const Home = () => {
-  const { isLoading, withLoading } = useLoading();
+  const { withLoading } = useLoading();
+  const { data: dashboard, isLoading, refetch, isFetching } = useDashboard();
   const [refreshing, setRefreshing] = React.useState(false);
 
   const handleLogout = () => {
@@ -45,11 +47,8 @@ const Home = () => {
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    // TODO: Implement real data fetching
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1000);
-  }, []);
+    refetch().finally(() => setRefreshing(false));
+  }, [refetch]);
 
   return (
     <LoadingState isLoading={isLoading}>
@@ -60,12 +59,13 @@ const Home = () => {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         >
-          <HeaderGreeting user={mockDashboard.user} />
-          <CalendarPreview events={mockDashboard.events} />
+          <HeaderGreeting user={dashboard?.user} />
           <NotificationList
-            notifications={mockDashboard.notifications}
+            notifications={dashboard?.notifications || []}
             onNotificationPress={handleNotificationPress}
           />
+          <CalendarPreview events={dashboard?.events || []} />
+          <QuickActions />
         </ScrollView>
       </ScreenWrapper>
     </LoadingState>

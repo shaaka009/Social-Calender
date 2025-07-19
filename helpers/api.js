@@ -1,5 +1,4 @@
-export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL || 'http://192.168.1.153:8000';
+export const API_BASE_URL = 'http://127.0.0.1:8000';
 
 export const ENDPOINTS = {
   SIGN_IN: `${API_BASE_URL}/api/signin/`,
@@ -9,6 +8,7 @@ export const ENDPOINTS = {
   PASSWORD_RESET_CONFIRM: (uid, token) =>
     `${API_BASE_URL}/api/password-reset/${uid}/${token}/`,
   USER: `${API_BASE_URL}/api/user/`,
+  DASHBOARD: `${API_BASE_URL}/api/dashboard/`,
 };
 
 // Lightweight wrapper around fetch that always includes credentials and throws on non-2xx

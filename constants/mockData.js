@@ -8,14 +8,14 @@ export const mockDashboard = {
   events: [
     {
       id: 1,
-      date: '2024-03-25',
+      date: '2025-06-25',
       type: 'birthday',
       title: "Dad's Birthday",
       contactId: 2,
     },
     {
       id: 2,
-      date: '2024-03-28',
+      date: '2025-06-28',
       type: 'general',
       title: 'Coffee with Sarah',
       contactId: 3,
@@ -95,7 +95,7 @@ export const mockContacts = [
     id: 5,
     firstName: 'Lisa',
     lastName: 'Brown',
-    birthday: '2003-02-10',
+    birthday: '2003-6-16',
     lastContactDate: '2025-02-15',
     email: 'lisa.b@example.com',
     phone: '+1999888777',

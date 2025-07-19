@@ -41,7 +41,7 @@ const NotificationList = ({ notifications = [], onNotificationPress }) => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Upcoming Dates</Text>
+      <Text style={styles.title}>Notifications</Text>
       <View style={styles.list}>
         {notifications.map((notification) => (
           <React.Fragment key={notification.id}>
