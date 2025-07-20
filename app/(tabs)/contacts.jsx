@@ -3,16 +3,17 @@ import React, { useCallback, useState } from 'react';
 import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import ContactCard from '../../components/contacts/ContactCard';
-import { mockContacts } from '../../constants/mockData';
 import { theme } from '../../constants/theme';
 import { wp } from '../../helpers/common';
+import useContacts from '../../helpers/useContacts';
 
 const Contacts = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState([]);
 
-  // Get unique tags from all contacts
-  const allTags = [...new Set(mockContacts.flatMap(contact => contact.tags || []))];
+  const { data: contacts = [], isLoading } = useContacts();
+
+  const allTags = [...new Set(contacts.flatMap(contact => contact.tags || []))];
 
   const toggleTag = (tag) => {
     setSelectedTags(prev => 
@@ -22,14 +23,14 @@ const Contacts = () => {
     );
   };
 
-  const filteredContacts = mockContacts.filter(contact => {
+  const filteredContacts = contacts.filter(contact => {
     const matchesSearch = searchQuery.trim() === '' || 
-      `${contact.firstName} ${contact.lastName}`
+      `${contact.first_name} ${contact.last_name}`
         .toLowerCase()
         .includes(searchQuery.toLowerCase());
 
     const matchesTags = selectedTags.length === 0 ||
-      selectedTags.some(tag => contact.tags?.includes(tag));
+      selectedTags.some(tag => (contact.tags || []).includes(tag));
 
     return matchesSearch && matchesTags;
   });

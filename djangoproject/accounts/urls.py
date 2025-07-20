@@ -1,6 +1,11 @@
 from django.urls import path
+from rest_framework.routers import DefaultRouter
 
 from . import views
+
+
+router = DefaultRouter()
+router.register("contacts", views.ContactViewSet, basename="contact")
 
 urlpatterns = [
     path("signup/", views.signup, name="signup"),
@@ -10,4 +15,4 @@ urlpatterns = [
     path("password-reset/", views.password_reset_request, name="password_reset_request"),
     path("password-reset/<str:uidb64>/<str:token>/", views.password_reset_confirm, name="password_reset_confirm"),
     path("dashboard/", views.DashboardAPIView.as_view(), name="dashboard"),
-]
+] + router.urls

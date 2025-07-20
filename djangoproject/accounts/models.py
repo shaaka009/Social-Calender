@@ -48,3 +48,27 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"{self.type}: {self.message[:30]}"
+
+
+# ---------------- New Contact model -----------------
+
+
+class Contact(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="contacts")
+    first_name = models.CharField(max_length=100)
+    last_name = models.CharField(max_length=100, blank=True)
+    email = models.EmailField(blank=True)
+    phone = models.CharField(max_length=30, blank=True)
+    birthday = models.DateField(null=True, blank=True)
+    last_contact_date = models.DateField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    tags = models.JSONField(default=list, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["first_name", "last_name"]
+
+    def __str__(self):
+        return f"{self.first_name} {self.last_name}".strip()

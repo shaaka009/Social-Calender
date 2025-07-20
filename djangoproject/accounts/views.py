@@ -19,9 +19,11 @@ from django.views.decorators.http import require_http_methods
 
 # New imports for DRF class-based view
 from rest_framework.views import APIView
+from rest_framework import viewsets
+from .serializers import DashboardSerializer, ContactSerializer
+from .models import Contact
 
 from .forms import UserRegistrationForm
-from .serializers import DashboardSerializer
 
 # Create your views here.
 
@@ -236,3 +238,17 @@ class DashboardAPIView(APIView):
         )
 
         return Response(serializer.data)
+
+
+# ---------------- ContactViewSet -----------------
+
+
+class ContactViewSet(viewsets.ModelViewSet):
+    serializer_class = ContactSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Contact.objects.filter(user=self.request.user).order_by("first_name", "last_name")
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)

@@ -5,8 +5,8 @@ import { wp } from '../../helpers/common';
 
 const ContactCard = ({ contact, onPress }) => {
   // Calculate days since last contact
-  const daysSinceContact = contact.lastContactDate 
-    ? Math.floor((new Date() - new Date(contact.lastContactDate)) / (1000 * 60 * 60 * 24))
+  const daysSinceContact = contact.last_contact_date 
+    ? Math.floor((new Date() - new Date(contact.last_contact_date)) / (1000 * 60 * 60 * 24))
     : null;
 
   return (
@@ -16,13 +16,13 @@ const ContactCard = ({ contact, onPress }) => {
     >
       <View style={styles.avatarContainer}>
         <Text style={styles.avatarText}>
-          {contact.firstName?.[0]}{contact.lastName?.[0]}
+          {contact.first_name?.[0]}{contact.last_name?.[0]}
         </Text>
       </View>
       
       <View style={styles.details}>
         <Text style={styles.name}>
-          {contact.firstName} {contact.lastName}
+          {contact.first_name} {contact.last_name}
         </Text>
         
         <View style={styles.infoRow}>
