@@ -10,6 +10,7 @@ export const ENDPOINTS = {
   USER: `${API_BASE_URL}/api/user/`,
   DASHBOARD: `${API_BASE_URL}/api/dashboard/`,
   CONTACTS: `${API_BASE_URL}/api/contacts/`,
+  USER_SEARCH: `${API_BASE_URL}/api/users/search/`,
 };
 
 // Lightweight wrapper around fetch that always includes credentials and throws on non-2xx

@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -5,6 +6,7 @@ import ScreenWrapper from '../../components/ScreenWrapper';
 import ContactCard from '../../components/contacts/ContactCard';
 import { theme } from '../../constants/theme';
 import { wp } from '../../helpers/common';
+import useContactRequests from '../../helpers/useContactRequests';
 import useContacts from '../../helpers/useContacts';
 
 const Contacts = () => {
@@ -12,6 +14,7 @@ const Contacts = () => {
   const [selectedTags, setSelectedTags] = useState([]);
 
   const { data: contacts = [], isLoading } = useContacts();
+  const { pendingCount } = useContactRequests();
 
   const allTags = [...new Set(contacts.flatMap(contact => contact.tags || []))];
 
@@ -32,7 +35,10 @@ const Contacts = () => {
     const matchesTags = selectedTags.length === 0 ||
       selectedTags.some(tag => (contact.tags || []).includes(tag));
 
-    return matchesSearch && matchesTags;
+    // Only show accepted contacts
+    const isAccepted = !contact.contact_user || contact.status === 'accepted';
+
+    return matchesSearch && matchesTags && isAccepted;
   }, [searchQuery, selectedTags]);
 
   const handleContactPress = useCallback((contact) => {
@@ -68,12 +74,29 @@ const Contacts = () => {
       <View style={styles.container}>
         <View style={styles.titleContainer}>
           <Text style={styles.title}>Contacts</Text>
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={() => router.push('/contacts/new')}
-          >
-            <Text style={styles.addButtonText}>+ Add</Text>
-          </TouchableOpacity>
+          <View style={styles.titleActions}>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => router.push('/contacts/requests')}
+            >
+              <Ionicons 
+                name="notifications-outline" 
+                size={wp(6)} 
+                color={theme.colors.text}
+              />
+              {pendingCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{pendingCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.addButton]}
+              onPress={() => router.push('/contacts/new')}
+            >
+              <Text style={styles.actionButtonText}>+ Add</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <TextInput
@@ -118,14 +141,40 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: theme.colors.text,
   },
-  addButton: {
-    backgroundColor: theme.colors.primary,
+  titleActions: {
+    flexDirection: 'row',
+    gap: wp(3),
+  },
+  actionButton: {
     paddingHorizontal: wp(4),
     paddingVertical: wp(2),
     borderRadius: wp(2),
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
   },
-  addButtonText: {
+  addButton: {
+    backgroundColor: theme.colors.primary,
+  },
+  actionButtonText: {
     color: '#fff',
+    fontWeight: '600',
+  },
+  badge: {
+    backgroundColor: theme.colors.error,
+    borderRadius: wp(4),
+    minWidth: wp(4),
+    height: wp(4),
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'absolute',
+    top: -wp(1),
+    right: -wp(1),
+    paddingHorizontal: wp(1),
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: wp(3),
     fontWeight: '600',
   },
   header: {
