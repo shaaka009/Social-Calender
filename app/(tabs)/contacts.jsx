@@ -23,7 +23,7 @@ const Contacts = () => {
     );
   };
 
-  const filteredContacts = contacts.filter(contact => {
+  const filterContacts = useCallback((contact) => {
     const matchesSearch = searchQuery.trim() === '' || 
       `${contact.first_name} ${contact.last_name}`
         .toLowerCase()
@@ -33,22 +33,14 @@ const Contacts = () => {
       selectedTags.some(tag => (contact.tags || []).includes(tag));
 
     return matchesSearch && matchesTags;
-  });
+  }, [searchQuery, selectedTags]);
 
   const handleContactPress = useCallback((contact) => {
     router.push(`/contacts/${contact.id}`);
   }, []);
 
-  const renderHeader = () => (
+  const renderTags = () => (
     <View style={styles.header}>
-      <TextInput
-        style={styles.searchInput}
-        placeholder="Search contacts..."
-        value={searchQuery}
-        onChangeText={setSearchQuery}
-        placeholderTextColor={theme.colors.textLight}
-      />
-      
       <View style={styles.tagsContainer}>
         {allTags.map(tag => (
           <TouchableOpacity
@@ -84,8 +76,16 @@ const Contacts = () => {
           </TouchableOpacity>
         </View>
 
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search contacts..."
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholderTextColor={theme.colors.textLight}
+        />
+
         <FlatList
-          data={filteredContacts}
+          data={contacts.filter(filterContacts)}
           keyExtractor={item => item.id.toString()}
           renderItem={({ item }) => (
             <ContactCard
@@ -93,7 +93,7 @@ const Contacts = () => {
               onPress={handleContactPress}
             />
           )}
-          ListHeaderComponent={renderHeader}
+          ListHeaderComponent={renderTags}
           contentContainerStyle={styles.listContent}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
         />
@@ -135,7 +135,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.backgroundSecondary,
     borderRadius: wp(2),
     padding: wp(3),
-    marginBottom: wp(3),
+    marginBottom: wp(4),
     fontSize: wp(4),
     color: theme.colors.text,
   },

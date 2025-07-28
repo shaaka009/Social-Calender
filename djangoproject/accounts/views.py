@@ -22,6 +22,7 @@ from rest_framework.views import APIView
 from rest_framework import viewsets
 from .serializers import DashboardSerializer, ContactSerializer
 from .models import Contact
+from .authentication import CsrfExemptSessionAuthentication
 
 from .forms import UserRegistrationForm
 
@@ -246,6 +247,7 @@ class DashboardAPIView(APIView):
 class ContactViewSet(viewsets.ModelViewSet):
     serializer_class = ContactSerializer
     permission_classes = [IsAuthenticated]
+    authentication_classes = [CsrfExemptSessionAuthentication]
 
     def get_queryset(self):
         return Contact.objects.filter(user=self.request.user).order_by("first_name", "last_name")

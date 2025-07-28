@@ -63,12 +63,31 @@ class Contact(models.Model):
     last_contact_date = models.DateField(null=True, blank=True)
     notes = models.TextField(blank=True)
     tags = models.JSONField(default=list, blank=True)
+    # Add reference to another registered user when contact is an in-app user
+    contact_user = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="contact_of",
+        help_text="If this contact is another registered user, reference them here."
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["first_name", "last_name"]
+        # Ensure a user cannot add the same app-user contact twice
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "contact_user"],
+                name="unique_contact_user_pair",
+                condition=models.Q(contact_user__isnull=False),
+            )
+        ]
 
     def __str__(self):
+        if self.contact_user:
+            return f"{self.user} ➜ {self.contact_user}"  # owner ➜ contact mapping
         return f"{self.first_name} {self.last_name}".strip()
