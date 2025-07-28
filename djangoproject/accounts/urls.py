@@ -6,6 +6,7 @@ from . import views
 
 router = DefaultRouter()
 router.register("contacts", views.ContactViewSet, basename="contact")
+router.register("users/search", views.UserSearchViewSet, basename="user-search")
 
 urlpatterns = [
     path("signup/", views.signup, name="signup"),

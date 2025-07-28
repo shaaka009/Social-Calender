@@ -54,6 +54,16 @@ class Notification(models.Model):
 
 
 class Contact(models.Model):
+    # Contact status choices
+    PENDING = "pending"      # Initial request sent
+    ACCEPTED = "accepted"    # Both users have accepted
+    DECLINED = "declined"    # Request was declined
+    STATUS_CHOICES = [
+        (PENDING, "Pending"),
+        (ACCEPTED, "Accepted"),
+        (DECLINED, "Declined"),
+    ]
+
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="contacts")
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100, blank=True)
@@ -72,6 +82,12 @@ class Contact(models.Model):
         related_name="contact_of",
         help_text="If this contact is another registered user, reference them here."
     )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=PENDING,
+        help_text="Status of the contact relationship. Only relevant for app users."
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -89,5 +105,19 @@ class Contact(models.Model):
 
     def __str__(self):
         if self.contact_user:
-            return f"{self.user} ➜ {self.contact_user}"  # owner ➜ contact mapping
+            return f"{self.user} ➜ {self.contact_user} ({self.status})"
         return f"{self.first_name} {self.last_name}".strip()
+
+    @property
+    def is_mutual(self):
+        """Check if this is a mutual connection (both users have accepted)."""
+        if not self.contact_user:
+            return False
+        return (
+            self.status == self.ACCEPTED and
+            Contact.objects.filter(
+                user=self.contact_user,
+                contact_user=self.user,
+                status=self.ACCEPTED
+            ).exists()
+        )
