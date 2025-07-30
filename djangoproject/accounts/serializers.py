@@ -112,6 +112,9 @@ class ContactSerializer(serializers.ModelSerializer):
         return None
 
     def validate(self, data):
+        # Get the instance being updated (if this is an update)
+        instance = getattr(self, 'instance', None)
+        
         # If this is an app user contact, first_name is not required
         contact_user_id = data.get('contact_user_id')
         if contact_user_id:
@@ -123,8 +126,8 @@ class ContactSerializer(serializers.ModelSerializer):
                     'contact_user_id': 'User does not exist.'
                 })
         
-        # For manual contacts, first_name is required
-        if not data.get('first_name'):
+        # For manual contacts, first_name is required only during creation
+        if not instance and not data.get('first_name'):
             raise serializers.ValidationError({
                 'first_name': 'This field is required for manual contacts.'
             })

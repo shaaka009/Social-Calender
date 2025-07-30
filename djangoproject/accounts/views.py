@@ -291,6 +291,29 @@ class ContactViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
+    def partial_update(self, request, *args, **kwargs):
+        """Handle PATCH requests with proper validation."""
+        instance = self.get_object()
+        
+        # If this is an app-user contact, only allow updating certain fields
+        if instance.contact_user:
+            allowed_fields = {'phone', 'birthday', 'notes', 'tags'}
+            data = {k: v for k, v in request.data.items() if k in allowed_fields}
+            if not data:
+                return Response(
+                    {"detail": "No valid fields to update"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        else:
+            # For manual contacts, allow updating all fields
+            data = request.data
+
+        serializer = self.get_serializer(instance, data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        return Response(serializer.data)
+
     @action(detail=True, methods=['post'])
     def accept(self, request, pk=None):
         """Accept a contact request."""
@@ -339,3 +362,19 @@ class ContactViewSet(viewsets.ModelViewSet):
         contact.status = Contact.DECLINED
         contact.save()
         return Response(self.serializer_class(contact).data)
+
+    def destroy(self, request, *args, **kwargs):
+        contact = self.get_object()
+        
+        # If this is an app-user contact, delete the reciprocal contact if it exists
+        if contact.contact_user:
+            # Find and delete the reciprocal contact (B → A)
+            Contact.objects.filter(
+                user=contact.contact_user,  # B's record
+                contact_user=request.user    # pointing to A
+            ).delete()
+        
+        # Delete the original contact (A → B)
+        contact.delete()
+        
+        return Response(status=status.HTTP_204_NO_CONTENT)

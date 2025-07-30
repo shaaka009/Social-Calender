@@ -15,15 +15,32 @@ export const ENDPOINTS = {
 
 // Lightweight wrapper around fetch that always includes credentials and throws on non-2xx
 export const apiFetch = async (url, options = {}) => {
-  const response = await fetch(url, { credentials: 'include', ...options });
+  // Add Content-Type: application/json for non-GET requests that have a body
+  const headers = options.body ? {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  } : options.headers;
+
+  const response = await fetch(url, { 
+    credentials: 'include',  // This ensures cookies are sent
+    ...options,
+    headers,
+  });
+  
   let data = null;
   try {
     data = await response.json();
-  } catch {
+  } catch (error) {
+    console.error('Failed to parse response:', error);
     /* ignore – not all responses have JSON */
   }
   if (!response.ok) {
     const message = data?.message || data?.detail || 'Network request failed';
+    console.error('API Error:', {
+      status: response.status,
+      message,
+      data,
+    });
     const error = new Error(message);
     error.status = response.status;
     error.data = data;

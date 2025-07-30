@@ -1,22 +1,19 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Stack } from "expo-router";
+import { Stack } from 'expo-router';
+import { RootSiblingParent } from 'react-native-root-siblings';
 
 const queryClient = new QueryClient();
 
-const _layout = () => {
+export default function Layout() {
   return (
     <QueryClientProvider client={queryClient}>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-        }}
-      >
-        <Stack.Screen name="welcome" />
-        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      </Stack>
+      <RootSiblingParent>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+          }}
+        />
+      </RootSiblingParent>
     </QueryClientProvider>
   );
-};
-
-export default _layout;
+}
