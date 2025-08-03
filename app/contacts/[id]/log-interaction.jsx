@@ -1,8 +1,9 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { Picker } from '@react-native-picker/picker';
 import { useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Toast from 'react-native-root-toast';
 import CustomButton from '../../../components/CustomButton';
 import CustomInput from '../../../components/CustomInput';
@@ -13,74 +14,47 @@ import { ENDPOINTS, apiFetch } from '../../../helpers/api';
 import { wp } from '../../../helpers/common';
 import useConnection from '../../../helpers/useConnection';
 
-const EditContactScreen = () => {
+const LogInteractionScreen = () => {
   const { id } = useLocalSearchParams();
   const { data: contact, isLoading } = useConnection(id);
   const person = contact?.target || {};
   const queryClient = useQueryClient();
   const [isSaving, setIsSaving] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [tempDate, setTempDate] = useState(null);
   
   // Form state
   const [formData, setFormData] = useState({
-    first_name: '',
-    last_name: '',
-    email: '',
-    phone: '',
-    birthday: null,
+    date: new Date(new Date().setHours(0, 0, 0, 0)),  // Initialize to start of today
+    type: 'call',  // default to call
     notes: '',
-    tags: '',
   });
-  
-  // Date picker state
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [tempDate, setTempDate] = useState(null);
 
-  // Initialize form data when contact loads
-  React.useEffect(() => {
-    if (contact) {
-      setFormData({
-        first_name: contact.target?.first_name || '',
-        last_name: person.last_name || '',
-        email: person.email || '',
-        phone: person.phone || '',
-        birthday: person.birthday ? new Date(person.birthday) : null,
-        notes: person.notes || '',
-        tags: (person.tags || []).join(', '),
-      });
-    }
-  }, [contact]);
-
-  const isAppUser = Boolean(contact?.target?.is_app_user);
+  const interactionTypes = [
+    { value: 'call', label: 'Phone Call' },
+    { value: 'meeting', label: 'In-person Meeting' },
+    { value: 'message', label: 'Message/Text' },
+    { value: 'email', label: 'Email' },
+    { value: 'video_call', label: 'Video Call' },
+    { value: 'social', label: 'Social Media' },
+    { value: 'other', label: 'Other' },
+  ];
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // Prepare the payload
-      const payload = {
-        ...formData,
-        // Convert tags string back to array
-        tags: formData.tags.split(',').map(tag => tag.trim()).filter(Boolean),
-        // Format date for API
-        birthday: formData.birthday ? formData.birthday.toISOString().split('T')[0] : null,
-      };
-
-      // For app users, only send editable fields
-      if (isAppUser) {
-        const { first_name, last_name, email, ...editableFields } = payload;
-        await apiFetch(`${ENDPOINTS.CONNECTIONS}${id}/`, {
-          method: 'PATCH',
-          body: JSON.stringify(editableFields),
-        });
-      } else {
-        // For manual contacts, send all fields
-        await apiFetch(`${ENDPOINTS.CONNECTIONS}${id}/`, {
-          method: 'PATCH',
-          body: JSON.stringify(payload),
-        });
-      }
+      await apiFetch(ENDPOINTS.INTERACTIONS, {
+        method: 'POST',
+        body: JSON.stringify({
+          target_person_id: id,
+          date: formData.date.toISOString().split('T')[0],
+          type: formData.type,
+          notes: formData.notes,
+        }),
+      });
 
       // Show success toast
-      Toast.show('Contact updated successfully', {
+      Toast.show('Interaction logged successfully', {
         duration: Toast.durations.LONG,
         position: Toast.positions.BOTTOM,
         backgroundColor: theme.colors.success,
@@ -91,7 +65,7 @@ const EditContactScreen = () => {
       });
 
       // Invalidate queries to refresh data
-      queryClient.invalidateQueries(['connections']);
+      queryClient.invalidateQueries(['interactions', id]);
       queryClient.invalidateQueries(['connection', id]);
 
       // Navigate back
@@ -99,8 +73,16 @@ const EditContactScreen = () => {
         router.back();
       }, 500);
     } catch (error) {
-      console.error('Failed to update contact:', error);
-      Alert.alert('Error', error.message || 'Failed to update contact');
+      console.error('Failed to log interaction:', error);
+      Toast.show(error.message || 'Failed to log interaction', {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.BOTTOM,
+        backgroundColor: theme.colors.danger,
+        shadow: true,
+        animation: true,
+        hideOnPress: true,
+        delay: 0,
+      });
     } finally {
       setIsSaving(false);
     }
@@ -114,73 +96,21 @@ const EditContactScreen = () => {
     <ScreenWrapper>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Edit Contact</Text>
+        <Text style={styles.title}>Log Interaction</Text>
+        <Text style={styles.subtitle}>with {person.first_name} {person.last_name}</Text>
       </View>
 
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-        {isAppUser ? (
-          // App User Contact - Show profile info as read-only
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Profile Information</Text>
-            <Text style={styles.sectionSubtitle}>
-              This information comes from {person.first_name}&apos;s profile and cannot be edited.
-            </Text>
-            <View style={styles.readOnlyField}>
-              <Text style={styles.label}>Name</Text>
-              <Text style={styles.value}>{person.first_name} {person.last_name}</Text>
-            </View>
-            <View style={styles.readOnlyField}>
-              <Text style={styles.label}>Email</Text>
-              <Text style={styles.value}>{person.email}</Text>
-            </View>
-          </View>
-        ) : (
-          // Manual Contact - All fields editable
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Basic Information</Text>
-            <CustomInput
-              label="First Name"
-              value={formData.first_name}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, first_name: text }))}
-              placeholder="Enter first name"
-            />
-            <CustomInput
-              label="Last Name"
-              value={formData.last_name}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, last_name: text }))}
-              placeholder="Enter last name"
-            />
-            <CustomInput
-              label="Email"
-              value={formData.email}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, email: text }))}
-              placeholder="Enter email"
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-          </View>
-        )}
-
-        {/* Common Editable Fields */}
+        {/* Date Picker */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Contact Details</Text>
-          <CustomInput
-            label="Phone"
-            value={formData.phone}
-            onChangeText={(text) => setFormData(prev => ({ ...prev, phone: text }))}
-            placeholder="Enter phone number"
-            keyboardType="phone-pad"
-          />
-          
-          {/* Birthday Picker */}
-          <Text style={styles.label}>Birthday</Text>
+          <Text style={styles.label}>Date</Text>
           <CustomButton
-            title={formData.birthday ? formData.birthday.toLocaleDateString() : 'Select Birthday'}
+            title={formData.date.toLocaleDateString()}
             variant="outline"
             onPress={() => {
               const now = new Date();
               setShowDatePicker(true);
-              setTempDate(formData.birthday || now);
+              setTempDate(formData.date || now);
             }}
             style={styles.dateButton}
           />
@@ -212,7 +142,7 @@ const EditContactScreen = () => {
                   title="Confirm"
                   onPress={() => {
                     if (tempDate) {
-                      setFormData(prev => ({ ...prev, birthday: tempDate }));
+                      setFormData(prev => ({ ...prev, date: tempDate }));
                     }
                     setShowDatePicker(false);
                   }}
@@ -231,7 +161,7 @@ const EditContactScreen = () => {
               onChange={(event, selectedDate) => {
                 if (event.type === 'set') {
                   if (selectedDate) {
-                    setFormData(prev => ({ ...prev, birthday: selectedDate }));
+                    setFormData(prev => ({ ...prev, date: selectedDate }));
                   }
                 }
                 setShowDatePicker(false);
@@ -240,23 +170,36 @@ const EditContactScreen = () => {
           )}
         </View>
 
+        {/* Interaction Type */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Additional Information</Text>
+          <Text style={styles.label}>Type of Interaction</Text>
+          <View style={styles.pickerContainer}>
+            <Picker
+              selectedValue={formData.type}
+              onValueChange={(value) => setFormData(prev => ({ ...prev, type: value }))}
+              style={styles.picker}
+            >
+              {interactionTypes.map(type => (
+                <Picker.Item 
+                  key={type.value} 
+                  label={type.label} 
+                  value={type.value}
+                />
+              ))}
+            </Picker>
+          </View>
+        </View>
+
+        {/* Notes */}
+        <View style={styles.section}>
           <CustomInput
             label="Notes"
             value={formData.notes}
             onChangeText={(text) => setFormData(prev => ({ ...prev, notes: text }))}
-            placeholder="Add notes about this contact"
+            placeholder="Add notes about this interaction"
             multiline
             numberOfLines={4}
             style={styles.notesInput}
-          />
-          <CustomInput
-            label="Tags"
-            value={formData.tags}
-            onChangeText={(text) => setFormData(prev => ({ ...prev, tags: text }))}
-            placeholder="Enter tags separated by commas"
-            helper="Example: family, work, gym"
           />
         </View>
 
@@ -286,12 +229,17 @@ const styles = StyleSheet.create({
     padding: wp(5),
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
+    alignItems: 'center',
   },
   title: {
     fontSize: wp(5),
     fontWeight: '600',
     color: theme.colors.text,
-    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: wp(4),
+    color: theme.colors.textLight,
+    marginTop: wp(1),
   },
   container: {
     flex: 1,
@@ -302,35 +250,25 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: wp(6),
   },
-  sectionTitle: {
-    fontSize: wp(4.5),
-    fontWeight: '600',
-    color: theme.colors.text,
-    marginBottom: wp(3),
-  },
-  sectionSubtitle: {
-    fontSize: wp(3.5),
-    color: theme.colors.textLight,
-    marginBottom: wp(3),
-    fontStyle: 'italic',
-  },
-  readOnlyField: {
-    marginBottom: wp(3),
-  },
   label: {
-    fontSize: wp(3.5),
-    color: theme.colors.textLight,
-    marginBottom: wp(1),
-  },
-  value: {
     fontSize: wp(4),
-    color: theme.colors.text,
+    color: theme.colors.textLight,
+    marginBottom: wp(2),
   },
   dateButton: {
     marginBottom: wp(3),
   },
+  pickerContainer: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: wp(2),
+    backgroundColor: theme.colors.backgroundSecondary,
+  },
+  picker: {
+    color: theme.colors.text,
+  },
   notesInput: {
-    height: wp(30),
+    height: wp(40),
     textAlignVertical: 'top',
   },
   actions: {
@@ -358,4 +296,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default EditContactScreen; 
+export default LogInteractionScreen; 

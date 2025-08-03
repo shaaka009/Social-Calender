@@ -1,3 +1,5 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useQuery } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -5,12 +7,24 @@ import CustomButton from '../../../components/CustomButton';
 import LoadingState from '../../../components/LoadingState';
 import ScreenWrapper from '../../../components/ScreenWrapper';
 import { theme } from '../../../constants/theme';
+import { ENDPOINTS, apiFetch } from '../../../helpers/api';
 import { wp } from '../../../helpers/common';
-import useContact from '../../../helpers/useContact';
+import useConnection from '../../../helpers/useConnection';
 
 const ContactProfileScreen = () => {
   const { id } = useLocalSearchParams();
-  const { data: contact, isLoading } = useContact(id);
+  const { data: contact, isLoading } = useConnection(id);
+  const person = contact?.target || {};
+  
+  // Fetch recent interactions
+  const { data: interactions = [] } = useQuery({
+    queryKey: ['interactions', id],
+    queryFn: async () => {
+      const response = await apiFetch(`${ENDPOINTS.INTERACTIONS}?target=${id}`);
+      return response;
+    },
+    enabled: Boolean(id),
+  });
 
   if (isLoading || !contact) {
     return <LoadingState />;
@@ -20,6 +34,10 @@ const ContactProfileScreen = () => {
   const formatDate = (dateStr) => {
     if (!dateStr) return '—';
     return new Date(dateStr).toLocaleDateString();
+  };
+
+  const handleLogInteraction = () => {
+    router.push(`/contacts/${id}/log-interaction`);
   };
 
   return (
@@ -37,33 +55,73 @@ const ContactProfileScreen = () => {
         {/* Avatar */}
         <View style={styles.avatarContainer}>
           <Text style={styles.avatarText}>
-            {contact.first_name?.[0]}{contact.last_name?.[0]}
+            {person.first_name?.[0]}{person.last_name?.[0]}
           </Text>
+        </View>
+
+        {/* Quick Actions */}
+        <View style={styles.quickActions}>
+          <CustomButton
+            title="Log Interaction"
+            onPress={handleLogInteraction}
+            style={styles.quickActionButton}
+            variant="outline"
+            icon={<Ionicons name="add-circle-outline" size={wp(5)} color={theme.colors.primary} style={styles.buttonIcon} />}
+          />
         </View>
 
         {/* Basic Info */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Basic Info</Text>
-          <InfoRow label="Name" value={`${contact.first_name} ${contact.last_name}`} />
-          <InfoRow label="Email" value={contact.email || '—'} />
-          <InfoRow label="Phone" value={contact.phone || '—'} />
-          <InfoRow label="Birthday" value={formatDate(contact.birthday)} />
+          <InfoRow label="Name" value={`${person.first_name} ${person.last_name}`} />
+          <InfoRow label="Email" value={person.email || '—'} />
+          <InfoRow label="Phone" value={person.phone || '—'} />
+          <InfoRow label="Birthday" value={formatDate(person.birthday)} />
+          <InfoRow 
+            label="Last Contact" 
+            value={contact.last_contact_date ? formatDate(contact.last_contact_date) : 'No interactions logged'}
+          />
+        </View>
+
+        {/* Recent Interactions */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Recent Interactions</Text>
+          {interactions.length > 0 ? (
+            interactions.map((interaction) => (
+              <View key={interaction.id} style={styles.interactionCard}>
+                <View style={styles.interactionHeader}>
+                  <Text style={styles.interactionType}>
+                    {interaction.type_display}
+                    {interaction.is_mirrored && (
+                      <Text style={styles.loggedBy}> (logged by {person.first_name})</Text>
+                    )}
+                  </Text>
+                  <Text style={styles.interactionDate}>{formatDate(interaction.date)}</Text>
+                </View>
+                {interaction.notes && (
+                  <Text style={styles.interactionNotes}>{interaction.notes}</Text>
+                )}
+              </View>
+            ))
+          ) : (
+            <Text style={styles.emptyText}>No interactions logged yet</Text>
+          )}
         </View>
 
         {/* Notes */}
-        {contact.notes ? (
+        {person.notes ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Notes</Text>
-            <Text style={styles.notesText}>{contact.notes}</Text>
+            <Text style={styles.notesText}>{person.notes}</Text>
           </View>
         ) : null}
 
         {/* Tags */}
-        {contact.tags?.length ? (
+        {person.tags?.length ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Tags</Text>
             <View style={styles.tagContainer}>
-              {contact.tags.map((tag) => (
+              {person.tags.map((tag) => (
                 <View key={tag} style={styles.tag}>
                   <Text style={styles.tagText}>{tag}</Text>
                 </View>
@@ -72,7 +130,7 @@ const ContactProfileScreen = () => {
           </View>
         ) : null}
 
-        {/* Actions (Edit/Delete to be implemented later) */}
+        {/* Actions (Edit/Delete) */}
         <View style={styles.actions}>
           <CustomButton
             title="Edit Contact"
@@ -134,6 +192,17 @@ const styles = StyleSheet.create({
     fontSize: wp(10),
     fontWeight: '700',
   },
+  quickActions: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: wp(2),
+  },
+  quickActionButton: {
+    minWidth: wp(40),
+  },
+  buttonIcon: {
+    marginRight: wp(2),
+  },
   section: {
     gap: wp(2),
   },
@@ -154,6 +223,39 @@ const styles = StyleSheet.create({
   infoValue: {
     color: theme.colors.text,
     fontSize: wp(4),
+  },
+  interactionCard: {
+    backgroundColor: theme.colors.backgroundSecondary,
+    borderRadius: wp(2),
+    padding: wp(3),
+    marginVertical: wp(1),
+  },
+  interactionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: wp(1),
+  },
+  interactionType: {
+    fontSize: wp(3.8),
+    fontWeight: '500',
+    color: theme.colors.text,
+  },
+  interactionDate: {
+    fontSize: wp(3.5),
+    color: theme.colors.textLight,
+  },
+  interactionNotes: {
+    fontSize: wp(3.5),
+    color: theme.colors.text,
+    marginTop: wp(1),
+  },
+  emptyText: {
+    fontSize: wp(4),
+    color: theme.colors.textLight,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: wp(3),
   },
   notesText: {
     fontSize: wp(4),
@@ -177,6 +279,11 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     marginTop: wp(4),
+  },
+  loggedBy: {
+    fontSize: wp(3),
+    color: theme.colors.textLight,
+    fontStyle: 'italic',
   },
 });
 

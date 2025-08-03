@@ -9,23 +9,27 @@ import ScreenWrapper from '../../../components/ScreenWrapper';
 import { theme } from '../../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../../helpers/api';
 import { wp } from '../../../helpers/common';
-import useContact from '../../../helpers/useContact';
+import useConnection from '../../../helpers/useConnection';
 
 const DeleteContactScreen = () => {
   const { id } = useLocalSearchParams();
-  const { data: contact, isLoading } = useContact(id);
+  const { data: contact, isLoading } = useConnection(id);
+  const person = contact?.target || {};
   const queryClient = useQueryClient();
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
-      await apiFetch(`${ENDPOINTS.CONTACTS}${id}/`, {
+      await apiFetch(`${ENDPOINTS.CONNECTIONS}${id}/`, {
         method: 'DELETE',
       });
       
+      // Remove the specific contact query from cache
+      queryClient.removeQueries(['connection', id]);
+      
       // Invalidate contacts queries to refresh the list
-      queryClient.invalidateQueries(['contacts']);
+      queryClient.invalidateQueries(['connections']);
       
       // Show success toast
       Toast.show('Contact deleted successfully', {
@@ -38,10 +42,8 @@ const DeleteContactScreen = () => {
         delay: 0,
       });
 
-      // Navigate back to contacts list with a slight delay to allow toast to be seen
-      setTimeout(() => {
-        router.replace('/contacts');
-      }, 500);
+      // Navigate back to contacts list immediately
+      router.replace('/contacts');
     } catch (error) {
       console.error('Failed to delete contact:', error);
       Alert.alert('Error', error.message || 'Failed to delete contact');
@@ -53,7 +55,7 @@ const DeleteContactScreen = () => {
     return <LoadingState />;
   }
 
-  const isAppUser = Boolean(contact.contact_user);
+  const isAppUser = Boolean(contact.target?.is_app_user);
 
   return (
     <ScreenWrapper>
@@ -70,7 +72,7 @@ const DeleteContactScreen = () => {
 
         {/* Confirmation Message */}
         <Text style={styles.message}>
-          Are you sure you want to delete {contact.first_name} {contact.last_name} from your contacts?
+          Are you sure you want to delete {person.first_name} {person.last_name} from your contacts?
         </Text>
 
         {isAppUser ? (
@@ -79,7 +81,7 @@ const DeleteContactScreen = () => {
               This action will:
             </Text>
             <View style={styles.bulletPoints}>
-              <Text style={styles.bulletPoint}>• Remove {contact.first_name} from your contacts</Text>
+              <Text style={styles.bulletPoint}>• Remove {person.first_name} from your contacts</Text>
               <Text style={styles.bulletPoint}>• Remove you from their contacts list</Text>
               <Text style={styles.bulletPoint}>• Delete all associated notes and reminders</Text>
             </View>
