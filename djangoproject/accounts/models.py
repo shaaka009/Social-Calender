@@ -1,10 +1,16 @@
 from django.db import models
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 
+# ---------------------------------------------------
+# Event & Notification (legacy, still used by dashboard)
+# ---------------------------------------------------
 class Event(models.Model):
     BIRTHDAY = "birthday"
     GENERAL = "general"
+
     EVENT_TYPE_CHOICES = [
         (BIRTHDAY, "Birthday"),
         (GENERAL, "General"),
@@ -14,7 +20,13 @@ class Event(models.Model):
     date = models.DateField()
     type = models.CharField(max_length=32, choices=EVENT_TYPE_CHOICES, default=GENERAL)
     title = models.CharField(max_length=255)
-    contact_id = models.PositiveIntegerField(null=True, blank=True)
+    person = models.ForeignKey(
+        'Person',
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='events_related',
+    )  # Replaces contact_id
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -29,6 +41,7 @@ class Event(models.Model):
 class Notification(models.Model):
     UPCOMING_EVENT = "UPCOMING_EVENT"
     NO_CONTACT = "NO_CONTACT"
+
     NOTIFICATION_TYPE_CHOICES = [
         (UPCOMING_EVENT, "Upcoming Event"),
         (NO_CONTACT, "No Contact"),
@@ -38,7 +51,13 @@ class Notification(models.Model):
     type = models.CharField(max_length=32, choices=NOTIFICATION_TYPE_CHOICES)
     message = models.TextField()
     event = models.ForeignKey(Event, on_delete=models.CASCADE, null=True, blank=True, related_name="notifications")
-    contact_id = models.PositiveIntegerField(null=True, blank=True)
+    person = models.ForeignKey(
+        'Person',
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='notifications_related',
+    )  # Replaces contact_id
     date = models.DateField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -49,75 +68,150 @@ class Notification(models.Model):
     def __str__(self):
         return f"{self.type}: {self.message[:30]}"
 
-
-# ---------------- New Contact model -----------------
-
-
-class Contact(models.Model):
-    # Contact status choices
-    PENDING = "pending"      # Initial request sent
-    ACCEPTED = "accepted"    # Both users have accepted
-    DECLINED = "declined"    # Request was declined
-    STATUS_CHOICES = [
-        (PENDING, "Pending"),
-        (ACCEPTED, "Accepted"),
-        (DECLINED, "Declined"),
-    ]
-
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="contacts")
+# ---------------------------------------------------
+# Core "Person" model (applies to EVERY individual)
+# ---------------------------------------------------
+class Person(models.Model):
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100, blank=True)
     email = models.EmailField(blank=True)
     phone = models.CharField(max_length=30, blank=True)
     birthday = models.DateField(null=True, blank=True)
-    last_contact_date = models.DateField(null=True, blank=True)
     notes = models.TextField(blank=True)
     tags = models.JSONField(default=list, blank=True)
-    # Add reference to another registered user when contact is an in-app user
-    contact_user = models.ForeignKey(
-        User,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="contact_of",
-        help_text="If this contact is another registered user, reference them here."
-    )
-    status = models.CharField(
-        max_length=20,
-        choices=STATUS_CHOICES,
-        default=PENDING,
-        help_text="Status of the contact relationship. Only relevant for app users."
-    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["first_name", "last_name"]
-        # Ensure a user cannot add the same app-user contact twice
-        constraints = [
-            models.UniqueConstraint(
-                fields=["user", "contact_user"],
-                name="unique_contact_user_pair",
-                condition=models.Q(contact_user__isnull=False),
-            )
-        ]
 
     def __str__(self):
-        if self.contact_user:
-            return f"{self.user} ➜ {self.contact_user} ({self.status})"
-        return f"{self.first_name} {self.last_name}".strip()
+        name = f"{self.first_name} {self.last_name}".strip()
+        return name or self.email or f"Person {self.id}"
+
+    # Convenience for UI – do we have a full app account?
+    @property
+    def is_app_user(self):
+        return hasattr(self, "account")
+
+
+# ---------------------------------------------------
+# Account wrapper – ties `auth_user` to a `Person`
+# ---------------------------------------------------
+class Account(models.Model):
+    person = models.OneToOneField(
+        Person,
+        primary_key=True,
+        on_delete=models.CASCADE,
+        related_name="account",
+    )
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="account",
+    )
+
+    def __str__(self):
+        return str(self.user)
+
+
+# ---------------------------------------------------
+# Connection (replaces old Contact model)
+# ---------------------------------------------------
+class Connection(models.Model):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    DECLINED = "declined"
+
+    STATUS_CHOICES = [
+        (PENDING, "Pending"),
+        (ACCEPTED, "Accepted"),
+        (DECLINED, "Declined"),
+    ]
+
+    owner = models.ForeignKey(
+        Person,
+        on_delete=models.CASCADE,
+        related_name="connections",
+        help_text="Person who owns this connection entry (the list it appears in).",
+    )
+    target = models.ForeignKey(
+        Person,
+        on_delete=models.CASCADE,
+        related_name="connected_to",
+        help_text="The person this entry points to.",
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("owner", "target")
+        ordering = ["owner__first_name", "owner__last_name", "target__first_name"]
+
+    def __str__(self):
+        return f"{self.owner} ➜ {self.target} ({self.status})"
 
     @property
     def is_mutual(self):
-        """Check if this is a mutual connection (both users have accepted)."""
-        if not self.contact_user:
-            return False
+        """Both sides marked as accepted."""
         return (
-            self.status == self.ACCEPTED and
-            Contact.objects.filter(
-                user=self.contact_user,
-                contact_user=self.user,
-                status=self.ACCEPTED
+            self.status == self.ACCEPTED
+            and Connection.objects.filter(
+                owner=self.target,
+                target=self.owner,
+                status=self.ACCEPTED,
             ).exists()
         )
+
+
+# ---------------------------------------------------
+# Interaction – now uses Person ↔ Person
+# ---------------------------------------------------
+class Interaction(models.Model):
+    CALL = "call"
+    MEETING = "meeting"
+    MESSAGE = "message"
+    EMAIL = "email"
+    VIDEO_CALL = "video_call"
+    SOCIAL = "social"
+    OTHER = "other"
+
+    INTERACTION_TYPE_CHOICES = [
+        (CALL, "Phone Call"),
+        (MEETING, "In-person Meeting"),
+        (MESSAGE, "Message/Text"),
+        (EMAIL, "Email"),
+        (VIDEO_CALL, "Video Call"),
+        (SOCIAL, "Social Media"),
+        (OTHER, "Other"),
+    ]
+
+    actor = models.ForeignKey(
+        Person, on_delete=models.CASCADE, related_name="interactions_made"
+    )
+    target = models.ForeignKey(
+        Person, on_delete=models.CASCADE, related_name="interactions_received"
+    )
+    date = models.DateField()
+    type = models.CharField(max_length=20, choices=INTERACTION_TYPE_CHOICES)
+    notes = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-date", "-created_at"]
+
+    def __str__(self):
+        return f"{self.get_type_display()} {self.actor} → {self.target} on {self.date}"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # Update last_contact_date on both sides of the connection (if it exists)
+        for person_a, person_b in ((self.actor, self.target), (self.target, self.actor)):
+            conn = Connection.objects.filter(owner=person_a, target=person_b).order_by("-updated_at").first()
+            if conn:
+                # Assume Connection has a last_contact_date if UI needs – can extend later
+                pass

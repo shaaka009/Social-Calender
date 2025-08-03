@@ -1,5 +1,6 @@
 from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
+from accounts.models import Person, Account
 from django.db import connection
 from django.conf import settings
 import os
@@ -29,6 +30,9 @@ class Command(BaseCommand):
                 'password': 'password123',
                 'first_name': 'Akaash',
                 'last_name': 'Mahinth',
+                'phone': '+155555501',
+                'birthday': '2003-02-10',
+                'notes': 'Superuser account',
                 'is_superuser': True,
                 'is_staff': True,
             },
@@ -41,24 +45,43 @@ class Command(BaseCommand):
             },
         ]
 
-        self.stdout.write('Creating test users...')
+        self.stdout.write('Creating test users and corresponding Person/Account rows...')
         for user_data in test_users:
             is_superuser = user_data.pop('is_superuser', False)
             is_staff = user_data.pop('is_staff', False)
-            
-            if User.objects.filter(username=user_data['username']).exists():
-                self.stdout.write(f"User {user_data['username']} already exists, skipping...")
-                continue
 
-            if is_superuser:
-                user = User.objects.create_superuser(**user_data)
+            # Extract person-specific extras BEFORE creating User
+            phone = user_data.pop('phone', '')
+            birthday = user_data.pop('birthday', None)
+            notes = user_data.pop('notes', '')
+
+            if User.objects.filter(username=user_data['username']).exists():
+                user = User.objects.get(username=user_data['username'])
+                self.stdout.write(f"User {user.username} already exists, using existing record...")
             else:
-                user = User.objects.create_user(**user_data)
-            
-            user.is_staff = is_staff
-            user.save()
-            
-            self.stdout.write(f"Created user: {user.username} ({user.email})")
+                if is_superuser:
+                    user = User.objects.create_superuser(**user_data)
+                else:
+                    user = User.objects.create_user(**user_data)
+                user.is_staff = is_staff
+                user.save()
+
+            # Ensure a Person row exists
+            person, _ = Person.objects.get_or_create(
+                email=user.email,
+                defaults={
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'phone': phone,
+                    'birthday': birthday,
+                    'notes': notes,
+                }
+            )
+
+            # Ensure an Account row links User to Person
+            Account.objects.get_or_create(user=user, defaults={'person': person})
+
+            self.stdout.write(f"Linked Person {person.id} to User {user.username}")
 
         self.stdout.write(self.style.SUCCESS('Database reset complete!'))
         self.stdout.write('\nTest Users:')

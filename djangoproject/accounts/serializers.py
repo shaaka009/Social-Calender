@@ -1,66 +1,59 @@
-from rest_framework import serializers
+from datetime import date
+
 from django.contrib.auth.models import User
-from datetime import date, timedelta
+from rest_framework import serializers
 
-from .models import Event, Notification
-from .models import Contact
+from .models import (
+    Person,
+    Account,
+    Connection,
+    Interaction,
+    Event,  # Existing models left intact for now
+    Notification,
+)
 
+# -------------------------------------------------------------------
+# Person / Account
+# -------------------------------------------------------------------
+class PersonSerializer(serializers.ModelSerializer):
+    is_app_user = serializers.BooleanField(read_only=True)
 
-class EventSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Event
+        model = Person
         fields = (
             "id",
-            "date",
-            "type",
-            "title",
-            "contact_id",
+            "first_name",
+            "last_name",
+            "email",
+            "phone",
+            "birthday",
+            "is_app_user",
         )
+        read_only_fields = ("id", "is_app_user")
 
 
-class NotificationSerializer(serializers.ModelSerializer):
-    daysSince = serializers.SerializerMethodField()
-
-    def get_daysSince(self, obj):
-        if obj.date:
-            return (date.today() - obj.date).days
-        return None
-    class Meta:
-        model = Notification
-        fields = ("id", "type", "message", "event", "contact_id", "date", "daysSince")
-
-
-# ---------------- ContactSerializer -----------------
-
-
+# -------------------------------------------------------------------
+# User search – expose connection status
+# -------------------------------------------------------------------
 class UserSearchSerializer(serializers.ModelSerializer):
-    """Serializer for user search results."""
     connection_status = serializers.SerializerMethodField()
 
     def get_connection_status(self, user):
         request_user = self.context['request'].user
-        if user == request_user:
+        try:
+            request_person = request_user.account.person
+        except Exception:
             return None
 
-        # Check both directions of the relationship
-        outgoing = Contact.objects.filter(
-            user=request_user,
-            contact_user=user
-        ).first()
-        incoming = Contact.objects.filter(
-            user=user,
-            contact_user=request_user
-        ).first()
+        outgoing = Connection.objects.filter(owner=request_person, target__account__user=user).first()
+        incoming = Connection.objects.filter(owner__account__user=user, target=request_person).first()
 
         if not outgoing and not incoming:
             return {'status': 'none'}
-        
         return {
             'status': outgoing.status if outgoing else 'none',
             'incoming_status': incoming.status if incoming else 'none',
-            'is_mutual': bool(outgoing and incoming and 
-                            outgoing.status == Contact.ACCEPTED and 
-                            incoming.status == Contact.ACCEPTED)
+            'is_mutual': bool(outgoing and incoming and outgoing.status == Connection.ACCEPTED and incoming.status == Connection.ACCEPTED)
         }
 
     class Meta:
@@ -74,106 +67,149 @@ class UserSearchSerializer(serializers.ModelSerializer):
         )
         read_only_fields = fields
 
-class ContactSerializer(serializers.ModelSerializer):
-    # Allow clients to specify another app user to add as a contact
-    contact_user_id = serializers.IntegerField(
-        write_only=True, 
-        required=False,
-        allow_null=True
-    )
+# -------------------------------------------------------------------
+# Connection (replaces Contact)
+# -------------------------------------------------------------------
+class ConnectionSerializer(serializers.ModelSerializer):
+    target_person_id = serializers.IntegerField(write_only=True)
 
-    # Expose the contacted user info (read-only) so the client can easily display it
-    contact_user = serializers.SerializerMethodField(read_only=True)
-    user = serializers.SerializerMethodField(read_only=True)
+    target = PersonSerializer(read_only=True)
+    owner = serializers.SerializerMethodField(read_only=True)
     is_mutual = serializers.BooleanField(read_only=True)
 
-    # Make first_name not required at the field level
-    first_name = serializers.CharField(max_length=100, required=False)
-    last_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
-    email = serializers.EmailField(required=False, allow_blank=True)
-
-    def get_user(self, obj):
-        """Return info about the user who created this contact."""
+    def get_owner(self, obj):
         return {
-            "id": obj.user.id,
-            "first_name": obj.user.first_name,
-            "last_name": obj.user.last_name,
-            "email": obj.user.email,
+            "id": obj.owner.id,
+            "first_name": obj.owner.first_name,
+            "last_name": obj.owner.last_name,
+            "email": obj.owner.email,
         }
 
-    def get_contact_user(self, obj):
-        if obj.contact_user:
-            return {
-                "id": obj.contact_user.id,
-                "first_name": obj.contact_user.first_name,
-                "last_name": obj.contact_user.last_name,
-                "email": obj.contact_user.email,
-            }
-        return None
+    def validate(self, attrs):
 
-    def validate(self, data):
-        # Get the instance being updated (if this is an update)
-        instance = getattr(self, 'instance', None)
-        
-        # If this is an app user contact, first_name is not required
-        contact_user_id = data.get('contact_user_id')
-        if contact_user_id:
-            try:
-                User.objects.get(id=contact_user_id)
-                return data
-            except User.DoesNotExist:
-                raise serializers.ValidationError({
-                    'contact_user_id': 'User does not exist.'
-                })
-        
-        # For manual contacts, first_name is required only during creation
-        if not instance and not data.get('first_name'):
-            raise serializers.ValidationError({
-                'first_name': 'This field is required for manual contacts.'
-            })
-        return data
+
+        # Ensure target person exists
+        if not Person.objects.filter(id=attrs['target_person_id']).exists():
+            raise serializers.ValidationError({'target_person_id': 'Person does not exist'})
+        return attrs
 
     def create(self, validated_data):
-        contact_user_id = validated_data.pop("contact_user_id", None)
-        try:
-            contact_user = User.objects.get(id=contact_user_id) if contact_user_id else None
-        except User.DoesNotExist:
-            raise serializers.ValidationError({
-                'contact_user_id': 'User does not exist.'
-            })
-        
-        # If the contact is an in-app user and names/emails not provided, pre-fill
-        if contact_user:
-            validated_data["contact_user"] = contact_user
-            validated_data["first_name"] = contact_user.first_name
-            validated_data["last_name"] = contact_user.last_name
-            validated_data["email"] = contact_user.email
-            validated_data.setdefault("notes", "")
-            # For app users, always start as pending
-            validated_data["status"] = Contact.PENDING
+        owner_person: Person = self.context["request"].user.account.person
 
-        else:
-            # For non-app contacts, mark as accepted immediately
-            validated_data["status"] = Contact.ACCEPTED
-        return Contact.objects.create(**validated_data)
+        target_id = validated_data.pop("target_person_id")
+        target_person = Person.objects.get(id=target_id)
+
+        # If the connection already exists, return it
+        conn, _ = Connection.objects.get_or_create(
+            owner=owner_person,
+            target=target_person,
+            defaults={
+                **validated_data,
+                "status": Connection.PENDING if target_person.is_app_user else Connection.ACCEPTED,
+            },
+        )
+        return conn
 
     class Meta:
-        model = Contact
+        model = Connection
         fields = (
             "id",
-            "contact_user_id",
-            "contact_user",
-            "user",
-            "first_name",
-            "last_name",
-            "email",
-            "phone",
-            "birthday",
-            "last_contact_date",
-            "notes",
-            "tags",
+            "target_person_id",
+            "target",
+            "owner",
             "status",
             "is_mutual",
+            "created_at",
+        )
+        read_only_fields = ("id", "owner", "is_mutual", "created_at")
+
+
+# -------------------------------------------------------------------
+# Interaction
+# -------------------------------------------------------------------
+class InteractionSerializer(serializers.ModelSerializer):
+    actor = PersonSerializer(read_only=True)
+    target = PersonSerializer(read_only=True)
+    actor_person_id = serializers.IntegerField(write_only=True)
+    target_person_id = serializers.IntegerField(write_only=True)
+    type_display = serializers.SerializerMethodField(read_only=True)
+
+    def get_type_display(self, obj):
+        return obj.get_type_display()
+
+    def validate(self, attrs):
+        # Basic validation that actor owns a connection to target (for permission)
+        request = self.context.get("request")
+        if request:
+            actor_person = request.user.account.person
+            target_id = attrs.get("target_person_id")
+            if not Connection.objects.filter(owner=actor_person, target_id=target_id, status__in=[Connection.ACCEPTED, Connection.PENDING]).exists():
+                raise serializers.ValidationError("You need a connection before logging an interaction.")
+        return attrs
+
+    def create(self, validated_data):
+        actor_id = validated_data.pop("actor_person_id")
+        target_id = validated_data.pop("target_person_id")
+        actor_person = Person.objects.get(id=actor_id)
+        target_person = Person.objects.get(id=target_id)
+        return Interaction.objects.create(actor=actor_person, target=target_person, **validated_data)
+
+    class Meta:
+        model = Interaction
+        fields = (
+            "id",
+            "actor_person_id",
+            "target_person_id",
+            "actor",
+            "target",
+            "date",
+            "type",
+            "type_display",
+            "notes",
+            "created_at",
+        )
+        read_only_fields = ("id", "actor", "target", "created_at", "type_display")
+
+
+# -------------------------------------------------------------------
+# Dashboard bits (existing)
+# -------------------------------------------------------------------
+class EventSerializer(serializers.ModelSerializer):
+    person = PersonSerializer(read_only=True)
+    person_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    class Meta:
+        model = Event
+        fields = (
+            "id",
+            "date",
+            "type",
+            "title",
+            "person",  # nested read-only data
+            "person_id",
+        )
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    person = PersonSerializer(read_only=True)
+    person_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    daysSince = serializers.SerializerMethodField()
+
+    def get_daysSince(self, obj):
+        if obj.date:
+            return (date.today() - obj.date).days
+        return None
+
+    class Meta:
+        model = Notification
+        fields = (
+            "id",
+            "type",
+            "message",
+            "event",
+            "person",
+            "person_id",
+            "date",
+            "daysSince",
         )
 
 
@@ -192,4 +228,4 @@ class DashboardSerializer(serializers.Serializer):
         }
 
     class Meta:
-        fields = ("user", "events", "notifications") 
+        fields = ("user", "events", "notifications")
