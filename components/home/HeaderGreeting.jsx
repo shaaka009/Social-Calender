@@ -16,7 +16,7 @@ const HeaderGreeting = ({ user }) => {
       <Text style={styles.greeting}>
         {getGreeting()}, {user?.first_name || 'there'}!
       </Text>
-      <Text style={styles.subtitle}>Here's what's happening in your social circle</Text>
+      <Text style={styles.subtitle}>Here&apos;s what&apos;s happening in your social circle</Text>
     </View>
   );
 };

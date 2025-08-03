@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import React, { useCallback } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import CustomButton from '../../components/CustomButton';
 import LoadingState from '../../components/LoadingState';
 import ScreenWrapper from '../../components/ScreenWrapper';
@@ -20,16 +20,22 @@ const ContactRequestsScreen = () => {
   
   // Fetch contacts with pending status
   const { data: requests = [], isLoading } = useQuery({
-    queryKey: ['contacts', 'pending'],
+    queryKey: ['connections', 'pending'],
     queryFn: async () => {
-      const contacts = await apiFetch(ENDPOINTS.CONTACTS);
-      console.log('All contacts:', contacts);
-      console.log('Current user:', currentUser);
-      return contacts.filter(c => {
-        return c.contact_user && // Only app users
-          c.status === 'pending' && // Only pending
-          c.user.id !== currentUser?.user?.id; // Request is from someone else
+      const contacts = await apiFetch(ENDPOINTS.CONNECTIONS);
+      console.log('Requests - All contacts:', JSON.stringify(contacts, null, 2));
+      console.log('Requests - Current user:', JSON.stringify(currentUser, null, 2));
+      
+      const filteredContacts = contacts.filter(c => {
+        const isPending = c.status === 'pending';
+        const isFromSomeoneElse = c.owner.id !== currentUser?.user?.id;
+        const isToCurrentUser = c.target.id === currentUser?.user?.id;
+
+        return isPending && isFromSomeoneElse && isToCurrentUser;
       });
+      
+      console.log('Filtered contacts:', JSON.stringify(filteredContacts, null, 2));
+      return filteredContacts;
     },
     // Only run this query when we have user data
     enabled: Boolean(currentUser?.success)
@@ -37,10 +43,10 @@ const ContactRequestsScreen = () => {
 
   const handleAccept = useCallback(async (contactId) => {
     try {
-      await apiFetch(`${ENDPOINTS.CONTACTS}${contactId}/accept/`, {
+      await apiFetch(`${ENDPOINTS.CONNECTIONS}${contactId}/accept/`, {
         method: 'POST'
       });
-      queryClient.invalidateQueries(['contacts']);
+      queryClient.invalidateQueries(['connections']);
     } catch (err) {
       Alert.alert('Error', err.message || 'Failed to accept request');
     }
@@ -48,10 +54,10 @@ const ContactRequestsScreen = () => {
 
   const handleDecline = useCallback(async (contactId) => {
     try {
-      await apiFetch(`${ENDPOINTS.CONTACTS}${contactId}/decline/`, {
+      await apiFetch(`${ENDPOINTS.CONNECTIONS}${contactId}/decline/`, {
         method: 'POST'
       });
-      queryClient.invalidateQueries(['contacts']);
+      queryClient.invalidateQueries(['connections']);
     } catch (err) {
       Alert.alert('Error', err.message || 'Failed to decline request');
     }
@@ -61,9 +67,9 @@ const ContactRequestsScreen = () => {
     <View style={styles.requestCard}>
       <View>
         <Text style={styles.userName}>
-          {contact.user.first_name} {contact.user.last_name}
+          {contact.owner.first_name} {contact.owner.last_name}
         </Text>
-        <Text style={styles.userEmail}>{contact.user.email}</Text>
+        <Text style={styles.userEmail}>{contact.owner.email}</Text>
       </View>
       
       <View style={styles.actionButtons}>

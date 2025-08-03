@@ -10,8 +10,8 @@ const useContactRequests = () => {
   });
 
   const { data: contacts = [] } = useQuery({
-    queryKey: ['contacts'],
-    queryFn: () => apiFetch(ENDPOINTS.CONTACTS),
+    queryKey: ['connections'],
+    queryFn: () => apiFetch(ENDPOINTS.CONNECTIONS),
     staleTime: 30000, // Re-fetch after 30 seconds
   });
 
@@ -20,9 +20,8 @@ const useContactRequests = () => {
 
   // Count incoming pending requests
   const pendingCount = contacts.filter(c => 
-    c.contact_user && // Only app users
-    c.status === 'pending' && // Only pending
-    c.user.id !== currentUser?.user?.id // Request is from someone else
+    c.status === 'pending' &&
+    c.target.id === currentUser?.user?.id // Request addressed to me
   ).length;
 
   console.log('useContactRequests - Pending count:', pendingCount);

@@ -13,10 +13,10 @@ const Contacts = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState([]);
 
-  const { data: contacts = [], isLoading } = useContacts();
+  const { data: contacts = [], } = useContacts();
   const { pendingCount } = useContactRequests();
 
-  const allTags = [...new Set(contacts.flatMap(contact => contact.tags || []))];
+  const allTags = [...new Set(contacts.flatMap(contact => contact.target?.tags || []))];
 
   const toggleTag = (tag) => {
     setSelectedTags(prev => 
@@ -28,15 +28,15 @@ const Contacts = () => {
 
   const filterContacts = useCallback((contact) => {
     const matchesSearch = searchQuery.trim() === '' || 
-      `${contact.first_name} ${contact.last_name}`
+      `${contact.target.first_name} ${contact.target.last_name}`
         .toLowerCase()
         .includes(searchQuery.toLowerCase());
 
     const matchesTags = selectedTags.length === 0 ||
-      selectedTags.some(tag => (contact.tags || []).includes(tag));
+      selectedTags.some(tag => (contact.target?.tags || []).includes(tag));
 
-    // Only show accepted contacts
-    const isAccepted = !contact.contact_user || contact.status === 'accepted';
+    // Only show accepted connections
+    const isAccepted = contact.status === 'accepted';
 
     return matchesSearch && matchesTags && isAccepted;
   }, [searchQuery, selectedTags]);

@@ -1,14 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { ENDPOINTS, apiFetch } from "./api";
 
-const fetchContacts = () => apiFetch(ENDPOINTS.CONTACTS);
-
 const useContacts = () => {
   return useQuery({
-    queryKey: ["contacts"],
-    queryFn: fetchContacts,
-    staleTime: 5 * 60 * 1000,
+    queryKey: ["connections"],
+    queryFn: () => apiFetch(ENDPOINTS.CONNECTIONS),
+    staleTime: 0,  // Make it refetch immediately when invalidated
   });
 };
 
-export default useContacts; 
+export default useContacts;

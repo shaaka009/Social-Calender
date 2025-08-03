@@ -1,5 +1,5 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -33,30 +33,20 @@ const AddContactScreen = () => {
     tags: '',
   });
   const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState({});
+  const [errors, ] = useState({});
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [tempDate, setTempDate] = useState(null);
-  const queryClient = useQueryClient();
 
   const handleChange = (key, value) => {
     setForm(prev => ({ ...prev, [key]: value }));
   };
 
-  const validate = () => {
-    const newErrors = {};
-    if (!form.first_name.trim()) newErrors.first_name = 'Required';
-    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) newErrors.email = 'Invalid email';
-    // birthday is always ISO string from date picker; no manual regex check needed
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
   const handleAddContact = useCallback(async (userId) => {
     try {
-      await apiFetch(ENDPOINTS.CONTACTS, {
+      await apiFetch(ENDPOINTS.CONNECTIONS, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contact_user_id: Number(userId) }),
+        body: JSON.stringify({ target_person_id: Number(userId) }),
       });
       Alert.alert('Success', 'Contact request sent!');
       router.replace('/contacts');
@@ -78,7 +68,7 @@ const AddContactScreen = () => {
 
     setLoading(true);
     try {
-      await apiFetch(ENDPOINTS.CONTACTS, {
+      await apiFetch(ENDPOINTS.CONNECTIONS, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

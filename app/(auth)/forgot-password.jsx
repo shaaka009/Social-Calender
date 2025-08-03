@@ -74,7 +74,7 @@ const ForgotPassword = () => {
           <View style={styles.content}>
             <Text style={styles.title}>Check Your Email</Text>
             <Text style={styles.description}>
-              We've sent password reset instructions to your email address.
+              We&apos;ve sent password reset instructions to your email address.
               Please check your inbox and follow the link to reset your password.
             </Text>
             {resetLink ? (
@@ -106,7 +106,7 @@ const ForgotPassword = () => {
           <View style={styles.content}>
             <Text style={styles.title}>Reset Password</Text>
             <Text style={styles.description}>
-              Enter your email address and we'll send you instructions to reset your password
+              Enter your email address and we&apos;ll send you instructions to reset your password
             </Text>
 
             <View style={styles.form}>
