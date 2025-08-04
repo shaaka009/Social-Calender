@@ -495,8 +495,7 @@ class InteractionViewSet(viewsets.ModelViewSet):
         )
 
     def perform_create(self, serializer):
-        person = _get_person_for_request(self.request)
-        serializer.save(actor=person)
+        serializer.save()
 
 
     def perform_update(self, serializer):

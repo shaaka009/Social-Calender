@@ -18,12 +18,13 @@ const ContactProfileScreen = () => {
   
   // Fetch recent interactions
   const { data: interactions = [] } = useQuery({
-    queryKey: ['interactions', id],
+    queryKey: ['interactions', person.id],
     queryFn: async () => {
-      const response = await apiFetch(`${ENDPOINTS.INTERACTIONS}?target=${id}`);
+      const response = await apiFetch(`${ENDPOINTS.INTERACTIONS}?target=${person.id}`);
       return response;
     },
-    enabled: Boolean(id),
+    // Only fetch when we have both the connection ID and the person ID
+    enabled: Boolean(id) && Boolean(person.id),
   });
 
   if (isLoading || !contact) {

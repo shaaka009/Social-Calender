@@ -1,6 +1,6 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -16,9 +16,15 @@ import useConnection from '../../../helpers/useConnection';
 
 const LogInteractionScreen = () => {
   const { id } = useLocalSearchParams();
-  const { data: contact, isLoading } = useConnection(id);
+  const { data: contact, isLoading: isLoadingContact } = useConnection(id);
   const person = contact?.target || {};
   const queryClient = useQueryClient();
+  
+  // Get current user data
+  const { data: currentUser, isLoading: isLoadingUser } = useQuery({
+    queryKey: ['user'],
+    queryFn: () => apiFetch(ENDPOINTS.USER),
+  });
   const [isSaving, setIsSaving] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [tempDate, setTempDate] = useState(null);
@@ -46,7 +52,8 @@ const LogInteractionScreen = () => {
       await apiFetch(ENDPOINTS.INTERACTIONS, {
         method: 'POST',
         body: JSON.stringify({
-          target_person_id: id,
+          actor_person_id: contact.owner.id,
+          target_person_id: person.id,
           date: formData.date.toISOString().split('T')[0],
           type: formData.type,
           notes: formData.notes,
@@ -88,7 +95,7 @@ const LogInteractionScreen = () => {
     }
   };
 
-  if (isLoading || !contact) {
+  if (isLoadingContact || isLoadingUser || !contact || !currentUser) {
     return <LoadingState />;
   }
 
