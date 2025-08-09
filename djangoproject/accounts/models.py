@@ -79,6 +79,17 @@ class Person(models.Model):
     birthday = models.DateField(null=True, blank=True)
     notes = models.TextField(blank=True)
     tags = models.JSONField(default=list, blank=True)
+    
+    # For manual contacts, points to the Person who created this record
+    # Null for app users (who have an Account instead)
+    owner = models.ForeignKey(
+        'self',
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='manual_contacts',
+        help_text='For manual contacts, the Person who created this record. Null for app users.'
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

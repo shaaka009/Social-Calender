@@ -71,8 +71,19 @@ class UserSearchSerializer(serializers.ModelSerializer):
 # Connection (replaces Contact)
 # -------------------------------------------------------------------
 class ConnectionSerializer(serializers.ModelSerializer):
-    target_person_id = serializers.IntegerField(write_only=True)
+    # Fields for app user connection
+    target_person_id = serializers.IntegerField(write_only=True, required=False)
+    
+    # Fields for manual contact creation
+    first_name = serializers.CharField(write_only=True, required=False)
+    last_name = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    email = serializers.EmailField(write_only=True, required=False, allow_blank=True)
+    phone = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    birthday = serializers.DateField(write_only=True, required=False, allow_null=True)
+    notes = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    tags = serializers.ListField(write_only=True, required=False, child=serializers.CharField())
 
+    # Read-only fields
     target = PersonSerializer(read_only=True)
     owner = serializers.SerializerMethodField(read_only=True)
     is_mutual = serializers.BooleanField(read_only=True)
@@ -86,18 +97,38 @@ class ConnectionSerializer(serializers.ModelSerializer):
         }
 
     def validate(self, attrs):
+        # For manual contacts, first_name is required
+        if 'first_name' in attrs:
+            if not attrs['first_name'].strip():
+                raise serializers.ValidationError({'first_name': 'First name is required'})
+            return attrs
 
-
-        # Ensure target person exists
-        if not Person.objects.filter(id=attrs['target_person_id']).exists():
-            raise serializers.ValidationError({'target_person_id': 'Person does not exist'})
+        # For app user connections, ensure target person exists
+        if 'target_person_id' in attrs:
+            if not Person.objects.filter(id=attrs['target_person_id']).exists():
+                raise serializers.ValidationError({'target_person_id': 'Person does not exist'})
         return attrs
 
     def create(self, validated_data):
         owner_person: Person = self.context["request"].user.account.person
 
-        target_id = validated_data.pop("target_person_id")
-        target_person = Person.objects.get(id=target_id)
+        # Handle manual contact creation
+        if 'first_name' in validated_data:
+            # Create a new Person record for the manual contact
+            target_person = Person.objects.create(
+                owner=owner_person,  # Set the owner for manual contacts
+                first_name=validated_data.pop('first_name'),
+                last_name=validated_data.pop('last_name', ''),
+                email=validated_data.pop('email', ''),
+                phone=validated_data.pop('phone', ''),
+                birthday=validated_data.pop('birthday', None),
+                notes=validated_data.pop('notes', ''),
+                tags=validated_data.pop('tags', []),
+            )
+        else:
+            # Handle app user connection
+            target_id = validated_data.pop("target_person_id")
+            target_person = Person.objects.get(id=target_id)
 
         # If the connection already exists, return it
         conn, _ = Connection.objects.get_or_create(
@@ -115,6 +146,13 @@ class ConnectionSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "target_person_id",
+            "first_name",
+            "last_name",
+            "email",
+            "phone",
+            "birthday",
+            "notes",
+            "tags",
             "target",
             "owner",
             "status",

@@ -31,7 +31,7 @@ from .serializers import (
     UserSearchSerializer,
     InteractionSerializer,
 )
-from .models import Connection, Interaction, Person
+from .models import Connection, Interaction, Person, Account
 from .authentication import CsrfExemptSessionAuthentication
 
 from .forms import UserRegistrationForm
@@ -81,20 +81,32 @@ def signup(request):
         data = json.loads(request.body)
         form = UserRegistrationForm(data)
         if form.is_valid():
-            user = form.save()
-            login(request, user)
-            return JsonResponse(
-                {
-                    "success": True,
-                    "message": "Registration successful!",
-                    "user": {
-                        "id": user.id,
-                        "email": user.email,
-                        "first_name": user.first_name,
-                        "last_name": user.last_name,
-                    },
-                }
-            )
+            with transaction.atomic():  # Ensure all records are created or none
+                user = form.save()
+                
+                # Create Person record
+                person = Person.objects.create(
+                    first_name=user.first_name,
+                    last_name=user.last_name,
+                    email=user.email,
+                )
+                
+                # Create Account to link User and Person
+                Account.objects.create(user=user, person=person)
+                
+                login(request, user)
+                return JsonResponse(
+                    {
+                        "success": True,
+                        "message": "Registration successful!",
+                        "user": {
+                            "id": user.id,
+                            "email": user.email,
+                            "first_name": user.first_name,
+                            "last_name": user.last_name,
+                        },
+                    }
+                )
         else:
             return JsonResponse({"success": False, "errors": form.errors}, status=400)
 
