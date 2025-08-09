@@ -60,3 +60,7 @@ clean:
 migrate:
 	@echo "$(CYAN)Running database migrations...$(NC)"
 	cd djangoproject && ../$(PYTHON_VENV) manage.py migrate 
+
+reset-db:
+	@echo "$(CYAN)Resetting database...$(NC)"
+	cd djangoproject && ../$(PYTHON_VENV) manage.py reset_db

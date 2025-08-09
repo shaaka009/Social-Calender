@@ -4,10 +4,9 @@ import { theme } from '../../constants/theme';
 import { wp } from '../../helpers/common';
 
 const ContactCard = ({ contact, onPress }) => {
-  // Calculate days since last contact
-  const daysSinceContact = contact.lastContactDate 
-    ? Math.floor((new Date() - new Date(contact.lastContactDate)) / (1000 * 60 * 60 * 24))
-    : null;
+  const person = contact.target || {};
+  // Days since last contact is out of scope for new schema – set null for now
+  const daysSinceContact = null;
 
   return (
     <TouchableOpacity 
@@ -16,19 +15,19 @@ const ContactCard = ({ contact, onPress }) => {
     >
       <View style={styles.avatarContainer}>
         <Text style={styles.avatarText}>
-          {contact.firstName?.[0]}{contact.lastName?.[0]}
+          {person.first_name?.[0]}{person.last_name?.[0]}
         </Text>
       </View>
       
       <View style={styles.details}>
         <Text style={styles.name}>
-          {contact.firstName} {contact.lastName}
+          {person.first_name} {person.last_name}
         </Text>
         
         <View style={styles.infoRow}>
-          {contact.birthday && (
+          {person.birthday && (
             <Text style={styles.infoText}>
-              🎂 {new Date(contact.birthday).toLocaleDateString()}
+              🎂 {new Date(person.birthday).toLocaleDateString()}
             </Text>
           )}
           {daysSinceContact !== null && (

@@ -9,7 +9,6 @@ const CalendarPreview = ({ events = [] }) => {
   const markedDates = events.reduce((acc, event) => {
     // Count events on this date
     const eventsOnThisDate = events.filter(e => e.date === event.date);
-    const numEvents = eventsOnThisDate.length;
 
     acc[event.date] = {
       // Different dot styles based on event type

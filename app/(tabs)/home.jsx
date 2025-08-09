@@ -7,35 +7,12 @@ import NotificationList from "../../components/home/NotificationList";
 import QuickActions from "../../components/home/QuickActions";
 import LoadingState from "../../components/LoadingState";
 import ScreenWrapper from "../../components/ScreenWrapper";
-import { ENDPOINTS } from "../../helpers/api";
 import { wp } from "../../helpers/common";
 import useDashboard from "../../helpers/useDashboard";
-import useLoading from "../../helpers/useLoading";
 
 const Home = () => {
-  const { withLoading } = useLoading();
-  const { data: dashboard, isLoading, refetch, isFetching } = useDashboard();
+  const { data: dashboard, isLoading, refetch, } = useDashboard();
   const [refreshing, setRefreshing] = React.useState(false);
-
-  const handleLogout = () => {
-    withLoading(async () => {
-      try {
-        const response = await fetch(ENDPOINTS.SIGN_OUT, {
-          method: "POST",
-          credentials: "include",
-        });
-
-        if (!response.ok) {
-          throw new Error("Logout failed");
-        }
-
-        router.replace("/welcome");
-      } catch (err) {
-        console.error("Logout error:", err);
-        router.replace("/welcome");
-      }
-    });
-  };
 
   const handleNotificationPress = useCallback((notification) => {
     if (notification.type === 'UPCOMING_EVENT') {

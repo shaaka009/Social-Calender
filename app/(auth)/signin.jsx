@@ -104,7 +104,7 @@ const SignIn = () => {
           <View style={styles.bottomContainer}>
             <TouchableOpacity onPress={() => router.push("/(auth)/signup")}>
               <Text style={styles.linkText}>
-                Don't have an account? Sign Up
+                Don&apos;t have an account? Sign Up
               </Text>
             </TouchableOpacity>
           </View>

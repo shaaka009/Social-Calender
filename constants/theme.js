@@ -12,10 +12,11 @@ export const theme = {
     roseLight: '#f87171',
     border: '#E1E1E1',
     error: '#ef4444',
-    success: '#10b981',
+    success: '#28a745',
     warning: '#f59e0b',
     background: '#FFFFFF',
     backgroundSecondary: '#F8F9FA',
+    danger: '#dc3545',
   },
   fonts: {
     medium: '500',

@@ -1,18 +1,22 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import ContactCard from '../../components/contacts/ContactCard';
-import { mockContacts } from '../../constants/mockData';
 import { theme } from '../../constants/theme';
 import { wp } from '../../helpers/common';
+import useContactRequests from '../../helpers/useContactRequests';
+import useContacts from '../../helpers/useContacts';
 
 const Contacts = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState([]);
 
-  // Get unique tags from all contacts
-  const allTags = [...new Set(mockContacts.flatMap(contact => contact.tags || []))];
+  const { data: contacts = [], } = useContacts();
+  const { pendingCount } = useContactRequests();
+
+  const allTags = [...new Set(contacts.flatMap(contact => contact.target?.tags || []))];
 
   const toggleTag = (tag) => {
     setSelectedTags(prev => 
@@ -22,32 +26,27 @@ const Contacts = () => {
     );
   };
 
-  const filteredContacts = mockContacts.filter(contact => {
+  const filterContacts = useCallback((contact) => {
     const matchesSearch = searchQuery.trim() === '' || 
-      `${contact.firstName} ${contact.lastName}`
+      `${contact.target.first_name} ${contact.target.last_name}`
         .toLowerCase()
         .includes(searchQuery.toLowerCase());
 
     const matchesTags = selectedTags.length === 0 ||
-      selectedTags.some(tag => contact.tags?.includes(tag));
+      selectedTags.some(tag => (contact.target?.tags || []).includes(tag));
 
-    return matchesSearch && matchesTags;
-  });
+    // Only show accepted connections
+    const isAccepted = contact.status === 'accepted';
+
+    return matchesSearch && matchesTags && isAccepted;
+  }, [searchQuery, selectedTags]);
 
   const handleContactPress = useCallback((contact) => {
     router.push(`/contacts/${contact.id}`);
   }, []);
 
-  const renderHeader = () => (
+  const renderTags = () => (
     <View style={styles.header}>
-      <TextInput
-        style={styles.searchInput}
-        placeholder="Search contacts..."
-        value={searchQuery}
-        onChangeText={setSearchQuery}
-        placeholderTextColor={theme.colors.textLight}
-      />
-      
       <View style={styles.tagsContainer}>
         {allTags.map(tag => (
           <TouchableOpacity
@@ -75,16 +74,41 @@ const Contacts = () => {
       <View style={styles.container}>
         <View style={styles.titleContainer}>
           <Text style={styles.title}>Contacts</Text>
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={() => router.push('/contacts/new')}
-          >
-            <Text style={styles.addButtonText}>+ Add</Text>
-          </TouchableOpacity>
+          <View style={styles.titleActions}>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => router.push('/contacts/requests')}
+            >
+              <Ionicons 
+                name="notifications-outline" 
+                size={wp(6)} 
+                color={theme.colors.text}
+              />
+              {pendingCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{pendingCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.addButton]}
+              onPress={() => router.push('/contacts/new')}
+            >
+              <Text style={styles.actionButtonText}>+ Add</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search contacts..."
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholderTextColor={theme.colors.textLight}
+        />
+
         <FlatList
-          data={filteredContacts}
+          data={contacts.filter(filterContacts)}
           keyExtractor={item => item.id.toString()}
           renderItem={({ item }) => (
             <ContactCard
@@ -92,7 +116,7 @@ const Contacts = () => {
               onPress={handleContactPress}
             />
           )}
-          ListHeaderComponent={renderHeader}
+          ListHeaderComponent={renderTags}
           contentContainerStyle={styles.listContent}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
         />
@@ -117,14 +141,40 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: theme.colors.text,
   },
-  addButton: {
-    backgroundColor: theme.colors.primary,
+  titleActions: {
+    flexDirection: 'row',
+    gap: wp(3),
+  },
+  actionButton: {
     paddingHorizontal: wp(4),
     paddingVertical: wp(2),
     borderRadius: wp(2),
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
   },
-  addButtonText: {
+  addButton: {
+    backgroundColor: theme.colors.primary,
+  },
+  actionButtonText: {
     color: '#fff',
+    fontWeight: '600',
+  },
+  badge: {
+    backgroundColor: theme.colors.error,
+    borderRadius: wp(4),
+    minWidth: wp(4),
+    height: wp(4),
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'absolute',
+    top: -wp(1),
+    right: -wp(1),
+    paddingHorizontal: wp(1),
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: wp(3),
     fontWeight: '600',
   },
   header: {
@@ -134,7 +184,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.backgroundSecondary,
     borderRadius: wp(2),
     padding: wp(3),
-    marginBottom: wp(3),
+    marginBottom: wp(4),
     fontSize: wp(4),
     color: theme.colors.text,
   },
