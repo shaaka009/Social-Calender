@@ -35,7 +35,7 @@ const AddContactScreen = () => {
   const [loading, setLoading] = useState(false);
   const [errors, ] = useState({});
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [tempDate, setTempDate] = useState(null);
+  const [tempDate, setTempDate] = useState(new Date().toISOString());
 
   const handleChange = (key, value) => {
     setForm(prev => ({ ...prev, [key]: value }));
@@ -232,7 +232,7 @@ const AddContactScreen = () => {
             {showDatePicker && Platform.OS === 'ios' && (
               <View style={styles.datePickerContainer}>
                 <DateTimePicker
-                  value={tempDate || form.birthday ? new Date(tempDate || form.birthday) : new Date()}
+                  value={new Date(tempDate)}
                   mode="date"
                   display="spinner"
                   onChange={(event, selectedDate) => {
@@ -247,7 +247,7 @@ const AddContactScreen = () => {
                     variant="outline"
                     onPress={() => {
                       setShowDatePicker(false);
-                      setTempDate(null);
+                      setTempDate(new Date().toISOString());
                     }}
                     style={styles.datePickerButton}
                   />
@@ -258,7 +258,7 @@ const AddContactScreen = () => {
                         handleChange('birthday', tempDate.slice(0, 10));
                       }
                       setShowDatePicker(false);
-                      setTempDate(null);
+                      setTempDate(new Date().toISOString());
                     }}
                     style={styles.datePickerButton}
                   />
@@ -267,7 +267,7 @@ const AddContactScreen = () => {
             )}
             {showDatePicker && Platform.OS === 'android' && (
               <DateTimePicker
-                value={form.birthday ? new Date(form.birthday) : new Date()}
+                value={new Date(tempDate)}
                 mode="date"
                 display="default"
                 onChange={(event, selectedDate) => {

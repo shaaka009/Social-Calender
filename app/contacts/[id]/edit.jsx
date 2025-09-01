@@ -2,7 +2,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import Toast from 'react-native-root-toast';
 import CustomButton from '../../../components/CustomButton';
 import CustomInput from '../../../components/CustomInput';
@@ -27,6 +27,7 @@ const EditContactScreen = () => {
     email: '',
     phone: '',
     birthday: null,
+    no_contact_threshold: null,
     notes: '',
     tags: '',
   });
@@ -44,6 +45,7 @@ const EditContactScreen = () => {
         email: person.email || '',
         phone: person.phone || '',
         birthday: person.birthday ? new Date(person.birthday) : null,
+        no_contact_threshold: contact.no_contact_threshold,
         notes: person.notes || '',
         tags: (person.tags || []).join(', '),
       });
@@ -171,6 +173,46 @@ const EditContactScreen = () => {
             placeholder="Enter phone number"
             keyboardType="phone-pad"
           />
+
+          {/* No Contact Threshold */}
+          <View style={styles.thresholdContainer}>
+            <View style={styles.thresholdHeader}>
+              <Text style={styles.label}>No Contact Alert</Text>
+              <Switch
+                value={formData.no_contact_threshold !== null}
+                onValueChange={(enabled) => {
+                  setFormData(prev => ({
+                    ...prev,
+                    no_contact_threshold: enabled ? 30 : null
+                  }));
+                }}
+                trackColor={{ false: theme.colors.border, true: theme.colors.primary + '40' }}
+                thumbColor={formData.no_contact_threshold !== null ? theme.colors.primary : theme.colors.textLight}
+              />
+            </View>
+            {formData.no_contact_threshold !== null && (
+              <View style={styles.thresholdContent}>
+                <Text style={styles.thresholdLabel}>Alert me after</Text>
+                <View style={styles.thresholdInputContainer}>
+                  <CustomInput
+                    value={formData.no_contact_threshold.toString()}
+                    onChangeText={(text) => {
+                      const value = text.trim() === '' ? 30 : parseInt(text, 10);
+                      setFormData(prev => ({ ...prev, no_contact_threshold: value }));
+                    }}
+                    keyboardType="number-pad"
+                    style={styles.thresholdInput}
+                  />
+                  <Text style={styles.thresholdUnit}>days</Text>
+                </View>
+              </View>
+            )}
+            <Text style={styles.helper}>
+              {formData.no_contact_threshold === null 
+                ? "No alerts will be generated for this contact" 
+                : `You'll be notified if you haven't contacted ${person.first_name} in ${formData.no_contact_threshold} days`}
+            </Text>
+          </View>
           
           {/* Birthday Picker */}
           <Text style={styles.label}>Birthday</Text>
@@ -355,6 +397,47 @@ const styles = StyleSheet.create({
   datePickerButton: {
     flex: 1,
     marginHorizontal: wp(2),
+  },
+  thresholdContainer: {
+    marginBottom: wp(3),
+    backgroundColor: theme.colors.backgroundSecondary,
+    borderRadius: wp(3),
+    padding: wp(4),
+  },
+  thresholdHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: wp(3),
+  },
+  thresholdContent: {
+    marginTop: wp(2),
+    paddingTop: wp(3),
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  thresholdLabel: {
+    fontSize: wp(3.8),
+    color: theme.colors.text,
+    marginBottom: wp(2),
+  },
+  thresholdInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(2),
+  },
+  thresholdInput: {
+    width: wp(20),
+  },
+  thresholdUnit: {
+    fontSize: wp(4),
+    color: theme.colors.text,
+  },
+  helper: {
+    fontSize: wp(3.5),
+    color: theme.colors.textLight,
+    marginTop: wp(3),
+    fontStyle: 'italic',
   },
 });
 
