@@ -158,6 +158,8 @@ class ConnectionSerializer(serializers.ModelSerializer):
             "status",
             "is_mutual",
             "created_at",
+            "last_contact_date",
+            "no_contact_threshold",
         )
         read_only_fields = ("id", "owner", "is_mutual", "created_at")
 
@@ -215,6 +217,19 @@ class InteractionSerializer(serializers.ModelSerializer):
 class EventSerializer(serializers.ModelSerializer):
     person = PersonSerializer(read_only=True)
     person_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    def update(self, instance, validated_data):
+        # Update person if person_id is provided
+        if 'person_id' in validated_data:
+            person_id = validated_data.pop('person_id')
+            instance.person = Person.objects.get(id=person_id) if person_id else None
+
+        # Update all other fields
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+        
+        instance.save()
+        return instance
+
     class Meta:
         model = Event
         fields = (
@@ -222,20 +237,59 @@ class EventSerializer(serializers.ModelSerializer):
             "date",
             "type",
             "title",
+            "notes",
             "person",  # nested read-only data
             "person_id",
+            "created_at",
+            "updated_at",
         )
+        read_only_fields = ("id", "created_at", "updated_at")
 
 
 class NotificationSerializer(serializers.ModelSerializer):
     person = PersonSerializer(read_only=True)
     person_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     daysSince = serializers.SerializerMethodField()
+    connection_id = serializers.SerializerMethodField()
 
     def get_daysSince(self, obj):
+        # For NO_CONTACT notifications, base the count on the current connection's last_contact_date
+        if obj.type == Notification.NO_CONTACT and obj.person:
+            request = self.context.get("request")
+            if request and hasattr(request.user, "account"):
+                owner_person = request.user.account.person
+                conn = Connection.objects.filter(owner=owner_person, target=obj.person).first()
+                if conn and conn.last_contact_date:
+                    return (date.today() - conn.last_contact_date).days
+        # Fallback: use the notification's stored date
         if obj.date:
             return (date.today() - obj.date).days
         return None
+
+    def get_connection_id(self, obj):
+        """Return the Connection id between request user and person (if any)"""
+        # We need request in context; return None if missing
+        request = self.context.get("request")
+        if not request or not obj.person:
+            return None
+
+        try:
+            owner_person = request.user.account.person
+        except Exception:
+            return None
+
+        conn = Connection.objects.filter(owner=owner_person, target=obj.person).first()
+        return conn.id if conn else None
+
+    # Ensure the main message reflects current days-since value for NO_CONTACT
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if instance.type == Notification.NO_CONTACT and instance.person:
+            days = data.get("daysSince")
+            if days is not None:
+                first_name = instance.person.first_name or "them"
+                data["message"] = f"You haven't talked to {first_name} in {days} days – reach out!"
+        return data
 
     class Meta:
         model = Notification
@@ -248,6 +302,7 @@ class NotificationSerializer(serializers.ModelSerializer):
             "person_id",
             "date",
             "daysSince",
+            "connection_id",
         )
 
 
