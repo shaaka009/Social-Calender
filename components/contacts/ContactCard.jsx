@@ -5,8 +5,7 @@ import { wp } from '../../helpers/common';
 
 const ContactCard = ({ contact, onPress }) => {
   const person = contact.target || {};
-  // Days since last contact is out of scope for new schema – set null for now
-  const daysSinceContact = null;
+  const daysSinceContact = contact.last_contact_date ? Math.floor((new Date() - new Date(contact.last_contact_date)) / (1000 * 60 * 60 * 24)) : null;
 
   return (
     <TouchableOpacity 

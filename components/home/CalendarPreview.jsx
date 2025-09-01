@@ -1,57 +1,180 @@
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { router } from 'expo-router';
+import React, { useState } from 'react';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Calendar } from 'react-native-calendars';
 import { theme } from '../../constants/theme';
 import { wp } from '../../helpers/common';
 
-const CalendarPreview = ({ events = [] }) => {
-  // Transform events into marked dates format for the calendar
-  const markedDates = events.reduce((acc, event) => {
-    // Count events on this date
-    const eventsOnThisDate = events.filter(e => e.date === event.date);
+const EventPreview = ({ event, onPress }) => (
+  <Pressable style={styles.eventPreview} onPress={onPress}>
+    <View style={styles.eventIcon}>
+      <Text style={styles.eventIconText}>
+        {event.type === 'birthday' ? '🎂' : '📅'}
+      </Text>
+      {event.person && (
+        <View style={[
+          styles.eventBadge,
+          { backgroundColor: event.type === 'birthday' ? theme.colors.rose : theme.colors.primary }
+        ]}>
+          <Text style={styles.eventBadgeText}>👤</Text>
+        </View>
+      )}
+    </View>
+    <View style={styles.eventInfo}>
+      <Text style={styles.eventTitle} numberOfLines={1}>{event.title}</Text>
+      {event.person && (
+        <Text style={styles.eventPerson} numberOfLines={1}>
+          {event.person.first_name} {event.person.last_name}
+        </Text>
+      )}
+    </View>
+  </Pressable>
+);
 
-    acc[event.date] = {
-      // Different dot styles based on event type
-      dots: eventsOnThisDate.map(e => ({
-        color: e.type === 'birthday' ? theme.colors.rose : theme.colors.primary,
-        key: e.id.toString(),
-      })),
-      // If it's today's date, show selected style
-      selected: event.date === new Date().toISOString().split('T')[0],
-      selectedColor: theme.colors.primary,
-    };
+const CalendarPreview = ({ events = [], isLoading = false, error = null }) => {
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [showEventModal, setShowEventModal] = useState(false);
+
+  // Group events by date for quick lookup when a day is pressed
+  // NOTE: `event.date` is already a server-provided ISO string (YYYY-MM-DD) so
+  // we can rely on it directly instead of converting it to a Date object first.
+  const eventsByDate = events.reduce((acc, event) => {
+    const dateStr = event.date;
+    if (!acc[dateStr]) {
+      acc[dateStr] = [];
+    }
+    acc[dateStr].push(event);
     return acc;
   }, {});
 
+  // Transform events into the format expected by `react-native-calendars`
+  // Keep the incoming ISO date intact – this prevents off-by-one errors that
+  // were happening because of timezone conversions.
+  const markedDates = events.reduce((acc, event) => {
+    const dateStr = event.date;
+    if (!acc[dateStr]) {
+      const eventsOnThisDate = events.filter(e => e.date === dateStr);
+      const isToday = dateStr === new Date().toISOString().split('T')[0];
+      const isSelected = dateStr === selectedDate;
+
+      acc[dateStr] = {
+        dots: eventsOnThisDate.map(e => ({
+          color: e.type === 'birthday' ? theme.colors.rose : theme.colors.primary,
+          key: e.id.toString(),
+        })),
+        marked: true,
+        selected: isSelected || isToday,
+        selectedColor: isSelected ? theme.colors.primary : theme.colors.primary + '40',
+      };
+    }
+    return acc;
+  }, {});
+
+  if (error) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>Calendar</Text>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Failed to load events. Please try again later.</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <Calendar
-        style={styles.calendar}
-        theme={{
-          backgroundColor: 'transparent',
-          calendarBackground: 'transparent',
-          textSectionTitleColor: theme.colors.text,
-          selectedDayBackgroundColor: theme.colors.primary,
-          selectedDayTextColor: '#ffffff',
-          todayTextColor: theme.colors.primary,
-          dayTextColor: theme.colors.text,
-          textDisabledColor: theme.colors.textLight,
-          dotColor: theme.colors.primary,
-          selectedDotColor: '#ffffff',
-          monthTextColor: theme.colors.text,
-          indicatorColor: theme.colors.primary,
-          // Make dots more prominent
-          dotStyle: {
-            width: 6,
-            height: 6,
-            borderRadius: 3,
-            marginTop: 2,
-          },
-        }}
-        markingType={'multi-dot'}
-        markedDates={markedDates}
-        enableSwipeMonths={true}
-      />
+      <Text style={styles.title}>Calendar</Text>
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator color={theme.colors.primary} />
+        </View>
+      ) : (
+        <View style={styles.calendarWrapper}>
+          <Calendar
+            style={styles.calendar}
+            theme={{
+              backgroundColor: 'transparent',
+              calendarBackground: 'transparent',
+              textSectionTitleColor: theme.colors.text,
+              selectedDayBackgroundColor: theme.colors.primary,
+              selectedDayTextColor: '#ffffff',
+              todayTextColor: theme.colors.primary,
+              dayTextColor: theme.colors.text,
+              textDisabledColor: theme.colors.textLight,
+              dotColor: theme.colors.primary,
+              selectedDotColor: '#ffffff',
+              monthTextColor: theme.colors.text,
+              indicatorColor: theme.colors.primary,
+              // Make dots more prominent
+              dotStyle: {
+                width: 6,
+                height: 6,
+                borderRadius: 3,
+                marginTop: 2,
+              },
+              // Improve day text styling
+              textDayFontSize: wp(3.5),
+              textMonthFontSize: wp(4),
+              textDayHeaderFontSize: wp(3.5),
+              // Add font weights
+              textDayFontWeight: '400',
+              textMonthFontWeight: '600',
+              textDayHeaderFontWeight: '600',
+            }}
+            markingType={'multi-dot'}
+            markedDates={markedDates}
+            enableSwipeMonths={true}
+            onDayPress={(day) => {
+              if (eventsByDate[day.dateString]) {
+                setSelectedDate(day.dateString);
+                setShowEventModal(true);
+              }
+            }}
+          />
+        </View>
+      )}
+      {events.length === 0 && !isLoading && (
+        <Text style={styles.emptyText}>No upcoming events</Text>
+      )}
+
+      {/* Event Modal */}
+      <Modal
+        visible={showEventModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowEventModal(false)}
+      >
+        <Pressable 
+          style={styles.modalOverlay}
+          onPress={() => setShowEventModal(false)}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                Events on {selectedDate ? new Date(`${selectedDate}T00:00:00`).toLocaleDateString() : ''}
+              </Text>
+              <Pressable 
+                onPress={() => setShowEventModal(false)}
+                style={styles.modalCloseButton}
+              >
+                <Text style={styles.modalCloseText}>✕</Text>
+              </Pressable>
+            </View>
+            <ScrollView style={styles.eventList}>
+              {selectedDate && eventsByDate[selectedDate]?.map(event => (
+                <EventPreview
+                  key={event.id}
+                  event={event}
+                  onPress={() => {
+                    setShowEventModal(false);
+                    router.push(`/events/${event.id}`);
+                  }}
+                />
+              ))}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 };
@@ -60,13 +183,135 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: theme.colors.backgroundSecondary,
     borderRadius: wp(4),
-    padding: wp(2),
+    padding: wp(4),
     marginBottom: wp(5),
     ...theme.shadows.small,
+  },
+  title: {
+    fontSize: wp(5),
+    fontWeight: '600',
+    color: theme.colors.text,
+    marginBottom: wp(3),
+  },
+  calendarWrapper: {
+    borderRadius: wp(4),
+    overflow: 'hidden',
+    backgroundColor: theme.colors.background,
   },
   calendar: {
     borderRadius: wp(4),
   },
+  loadingContainer: {
+    height: wp(80),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorContainer: {
+    height: wp(40),
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: wp(4),
+  },
+  errorText: {
+    color: theme.colors.error,
+    textAlign: 'center',
+    fontSize: wp(4),
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: theme.colors.textLight,
+    fontSize: wp(4),
+    fontStyle: 'italic',
+    marginTop: wp(3),
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: wp(5),
+  },
+  modalContent: {
+    backgroundColor: theme.colors.background,
+    borderRadius: wp(4),
+    width: '100%',
+    maxHeight: '80%',
+    ...theme.shadows.medium,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: wp(4),
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  modalTitle: {
+    fontSize: wp(4.5),
+    fontWeight: '600',
+    color: theme.colors.text,
+  },
+  modalCloseButton: {
+    padding: wp(2),
+  },
+  modalCloseText: {
+    fontSize: wp(5),
+    color: theme.colors.textLight,
+  },
+  eventList: {
+    padding: wp(4),
+  },
+  // Event preview styles
+  eventPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: wp(3),
+    backgroundColor: theme.colors.backgroundSecondary,
+    borderRadius: wp(3),
+    marginBottom: wp(2),
+    ...theme.shadows.small,
+  },
+  eventIcon: {
+    width: wp(12),
+    height: wp(12),
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: wp(3),
+    position: 'relative',
+  },
+  eventIconText: {
+    fontSize: wp(6),
+  },
+  eventBadge: {
+    position: 'absolute',
+    bottom: -wp(1),
+    right: -wp(1),
+    width: wp(4),
+    height: wp(4),
+    borderRadius: wp(2),
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.background,
+  },
+  eventBadgeText: {
+    fontSize: wp(2.5),
+    color: theme.colors.background,
+  },
+  eventInfo: {
+    flex: 1,
+  },
+  eventTitle: {
+    fontSize: wp(4),
+    fontWeight: '500',
+    color: theme.colors.text,
+    marginBottom: wp(1),
+  },
+  eventPerson: {
+    fontSize: wp(3.5),
+    color: theme.colors.textLight,
+  },
 });
 
-export default CalendarPreview; 
+export default CalendarPreview;
