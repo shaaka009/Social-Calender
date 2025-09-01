@@ -20,6 +20,7 @@ class Event(models.Model):
     date = models.DateField()
     type = models.CharField(max_length=32, choices=EVENT_TYPE_CHOICES, default=GENERAL)
     title = models.CharField(max_length=255)
+    notes = models.TextField(blank=True)
     person = models.ForeignKey(
         'Person',
         null=True,
@@ -154,6 +155,12 @@ class Connection(models.Model):
         help_text="The person this entry points to.",
     )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=PENDING)
+    last_contact_date = models.DateField(null=True, blank=True, help_text="Date of the most recent interaction")
+    no_contact_threshold = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Number of days after which to generate a no-contact notification for this connection. Null means no notifications."
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -224,5 +231,5 @@ class Interaction(models.Model):
         for person_a, person_b in ((self.actor, self.target), (self.target, self.actor)):
             conn = Connection.objects.filter(owner=person_a, target=person_b).order_by("-updated_at").first()
             if conn:
-                # Assume Connection has a last_contact_date if UI needs – can extend later
-                pass
+                conn.last_contact_date = self.date
+                conn.save(update_fields=['last_contact_date'])

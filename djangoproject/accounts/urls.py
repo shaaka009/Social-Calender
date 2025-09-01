@@ -8,6 +8,7 @@ router = DefaultRouter()
 router.register("connections", views.ConnectionViewSet, basename="connection")
 router.register("users/search", views.UserSearchViewSet, basename="user-search")
 router.register("interactions", views.InteractionViewSet, basename="interaction")
+router.register("events", views.EventViewSet, basename="event")
 
 urlpatterns = [
     path("signup/", views.signup, name="signup"),

@@ -24,14 +24,15 @@ from django.views.decorators.http import require_http_methods
 
 # New imports for DRF class-based view
 from rest_framework.views import APIView
-from rest_framework import viewsets, serializers
+from rest_framework import viewsets, serializers, mixins
 from .serializers import (
     DashboardSerializer,
     ConnectionSerializer,
     UserSearchSerializer,
     InteractionSerializer,
+    EventSerializer,
 )
-from .models import Connection, Interaction, Person, Account
+from .models import Connection, Interaction, Person, Account, Event
 from .authentication import CsrfExemptSessionAuthentication
 
 from .forms import UserRegistrationForm
@@ -485,6 +486,27 @@ class ConnectionViewSet(viewsets.ModelViewSet):
         conn.status = Connection.DECLINED
         conn.save()
         return Response(self.serializer_class(conn).data)
+
+
+class EventViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing events."""
+    serializer_class = EventSerializer
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [CsrfExemptSessionAuthentication]
+
+    def get_queryset(self):
+        """Return events for the current user."""
+        return Event.objects.filter(user=self.request.user).order_by('date')
+
+    def perform_create(self, serializer):
+        """Set the user when creating an event."""
+        serializer.save(user=self.request.user)
+
+    def perform_update(self, serializer):
+        """Ensure user can only update their own events."""
+        if serializer.instance.user != self.request.user:
+            raise PermissionDenied("You can only update your own events.")
+        serializer.save()
 
 
 class InteractionViewSet(viewsets.ModelViewSet):
