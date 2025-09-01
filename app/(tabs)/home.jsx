@@ -4,21 +4,40 @@ import { RefreshControl, ScrollView, StyleSheet } from "react-native";
 import CalendarPreview from "../../components/home/CalendarPreview";
 import HeaderGreeting from "../../components/home/HeaderGreeting";
 import NotificationList from "../../components/home/NotificationList";
-import QuickActions from "../../components/home/QuickActions";
 import LoadingState from "../../components/LoadingState";
 import ScreenWrapper from "../../components/ScreenWrapper";
 import { wp } from "../../helpers/common";
 import useDashboard from "../../helpers/useDashboard";
 
 const Home = () => {
-  const { data: dashboard, isLoading, refetch, } = useDashboard();
+  const { data: dashboard, isLoading, error, refetch } = useDashboard();
   const [refreshing, setRefreshing] = React.useState(false);
 
   const handleNotificationPress = useCallback((notification) => {
+    // For debugging
+    console.log('Notification pressed:', notification);
+
     if (notification.type === 'UPCOMING_EVENT') {
-      router.push(`/events/${notification.eventId}`);
+      // `notification.event` can be the event ID (number) or an object
+      let eventId = null;
+      if (notification.event && typeof notification.event === 'object') {
+        eventId = notification.event.id;
+      } else if (notification.event) {
+        eventId = notification.event;
+      }
+
+      if (eventId) {
+        router.push(`/events/${eventId}`);
+      } else {
+        console.error('No event ID found in notification:', notification);
+      }
     } else if (notification.type === 'NO_CONTACT') {
-      router.push(`/contacts/${notification.contactId}`);
+      const connId = notification.connection_id;
+      if (connId) {
+        router.push(`/contacts/${connId}`);
+      } else {
+        console.error('No connection_id found in notification:', notification);
+      }
     }
   }, []);
 
@@ -41,8 +60,11 @@ const Home = () => {
             notifications={dashboard?.notifications || []}
             onNotificationPress={handleNotificationPress}
           />
-          <CalendarPreview events={dashboard?.events || []} />
-          <QuickActions />
+          <CalendarPreview 
+            events={dashboard?.events || []}
+            isLoading={isLoading}
+            error={error}
+          />
         </ScrollView>
       </ScreenWrapper>
     </LoadingState>
