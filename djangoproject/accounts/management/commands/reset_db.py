@@ -8,7 +8,7 @@ import os
 User = get_user_model()
 
 class Command(BaseCommand):
-    help = 'Resets the database and creates test users'
+    help = 'Resets the database, creates test users, and seeds sample data'
 
     def handle(self, *args, **options):
         # 1. Delete the database file
@@ -83,7 +83,7 @@ class Command(BaseCommand):
 
             self.stdout.write(f"Linked Person {person.id} to User {user.username}")
 
-        self.stdout.write(self.style.SUCCESS('Database reset complete!'))
+        self.stdout.write(self.style.SUCCESS('Base users created!'))
         self.stdout.write('\nTest Users:')
         self.stdout.write('1. Superuser')
         self.stdout.write('   Username: akaash2003@gmail.com')
@@ -92,4 +92,8 @@ class Command(BaseCommand):
         self.stdout.write('\n2. Regular User')
         self.stdout.write('   Username: user@example.com')
         self.stdout.write('   Email: user@example.com')
-        self.stdout.write('   Password: password123') 
+        self.stdout.write('   Password: password123')
+
+        # 4. Seed sample data
+        self.stdout.write('\nSeeding sample data...')
+        call_command('seed_sample_data')
