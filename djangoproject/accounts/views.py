@@ -18,6 +18,7 @@ from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.generics import RetrieveUpdateAPIView
 # added for DashboardAPIView date calculations
 from datetime import date, timedelta
 from django.views.decorators.http import require_http_methods
@@ -31,6 +32,7 @@ from .serializers import (
     UserSearchSerializer,
     InteractionSerializer,
     EventSerializer,
+    UserProfileSerializer,
 )
 from .models import Connection, Interaction, Person, Account, Event
 from .authentication import CsrfExemptSessionAuthentication
@@ -287,11 +289,11 @@ class DashboardAPIView(APIView):
     def get(self, request):
         user = request.user
 
-        today = date.today()
-        upcoming_end = today + timedelta(days=30)
+        window_start = date.today() - timedelta(days=30)
+        window_end = date.today() + timedelta(days=30)
 
         events_qs = (
-            user.events.filter(date__range=(today, upcoming_end))
+            user.events.filter(date__range=(window_start, window_end))
             .order_by("date")
         )
 
@@ -424,11 +426,14 @@ class UserSearchViewSet(viewsets.ReadOnlyModelViewSet):
         contact = self.get_object()
         
         # If this is an app-user contact, delete the reciprocal contact if it exists
-        if contact.contact_user:
-            # Find and delete the reciprocal contact (B → A)
+        if isinstance(contact, Connection):
+            # For new Connection model – delete the reciprocal row regardless of status
+            Connection.objects.filter(owner=contact.target, target=contact.owner).delete()
+        elif contact.contact_user:
+            # Legacy Contact path
             Contact.objects.filter(
-                user=contact.contact_user,  # B's record
-                contact_user=request.user    # pointing to A
+                user=contact.contact_user,
+                contact_user=request.user
             ).delete()
         
         # Delete the original contact (A → B)
@@ -487,6 +492,12 @@ class ConnectionViewSet(viewsets.ModelViewSet):
         conn.save()
         return Response(self.serializer_class(conn).data)
 
+    def destroy(self, request, *args, **kwargs):
+        conn: Connection = self.get_object()
+        # Delete reciprocal row (if exists) before removing this one
+        Connection.objects.filter(owner=conn.target, target=conn.owner).delete()
+        return super().destroy(request, *args, **kwargs)
+
 
 class EventViewSet(viewsets.ModelViewSet):
     """ViewSet for managing events."""
@@ -543,3 +554,20 @@ class InteractionViewSet(viewsets.ModelViewSet):
         if instance.actor != person:
             raise PermissionDenied("You can only delete interactions you created.")
         instance.delete()
+
+
+class UserProfileAPIView(APIView):
+    """Retrieve and update the authenticated user's profile."""
+    serializer_class = UserProfileSerializer
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [CsrfExemptSessionAuthentication]
+
+    def get(self, request):
+        serializer = self.serializer_class(request.user)
+        return Response(serializer.data)
+
+    def patch(self, request):
+        serializer = self.serializer_class(request.user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)

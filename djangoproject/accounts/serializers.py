@@ -17,6 +17,12 @@ from .models import (
 # -------------------------------------------------------------------
 class PersonSerializer(serializers.ModelSerializer):
     is_app_user = serializers.BooleanField(read_only=True)
+    profile_picture_url = serializers.SerializerMethodField()
+
+    def get_profile_picture_url(self, obj):
+        if obj.profile_picture:
+            return self.context['request'].build_absolute_uri(obj.profile_picture.url)
+        return None
 
     class Meta:
         model = Person
@@ -28,6 +34,7 @@ class PersonSerializer(serializers.ModelSerializer):
             "phone",
             "birthday",
             "is_app_user",
+            "profile_picture_url",
         )
         read_only_fields = ("id", "is_app_user")
 
@@ -141,6 +148,41 @@ class ConnectionSerializer(serializers.ModelSerializer):
         )
         return conn
 
+    def update(self, instance, validated_data):
+        """Handle updates for both manual contacts and app-user connections.
+
+        Manual contact edits (first_name, email, etc.) should modify the linked
+        Person record.  For app-user connections these fields are ignored.
+        """
+        # Keep a reference to target person before popping fields
+        target_person = instance.target
+
+        # Fields that belong to the Person model (only editable for manual contacts)
+        person_fields = [
+            "first_name",
+            "last_name",
+            "email",
+            "phone",
+            "birthday",
+            "notes",
+            "tags",
+        ]
+
+        # Determine if this is a manual contact (target.person.owner == connection.owner)
+        is_manual = getattr(target_person, "owner", None) == instance.owner
+
+        if is_manual:
+            # Apply person field updates and remove them from validated_data so
+            # the Connection model isn't affected by unknown attrs.
+            for field in person_fields:
+                if field in validated_data:
+                    setattr(target_person, field, validated_data.pop(field))
+            target_person.save()
+
+        # The remaining validated_data keys correspond to Connection fields –
+        # fall back to the default update implementation for those.
+        return super().update(instance, validated_data)
+
     class Meta:
         model = Connection
         fields = (
@@ -251,6 +293,7 @@ class NotificationSerializer(serializers.ModelSerializer):
     person_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     daysSince = serializers.SerializerMethodField()
     connection_id = serializers.SerializerMethodField()
+    daysUntil = serializers.SerializerMethodField()
 
     def get_daysSince(self, obj):
         # For NO_CONTACT notifications, base the count on the current connection's last_contact_date
@@ -264,6 +307,19 @@ class NotificationSerializer(serializers.ModelSerializer):
         # Fallback: use the notification's stored date
         if obj.date:
             return (date.today() - obj.date).days
+        return None
+
+    def get_daysUntil(self, obj):
+        """Return days until the event date for UPCOMING_EVENT notifications."""
+        if obj.type == Notification.UPCOMING_EVENT:
+            # Prefer the event relation, fallback to stored date field
+            event_date = None
+            if obj.event and obj.event.date:
+                event_date = obj.event.date
+            elif obj.date:
+                event_date = obj.date
+            if event_date:
+                return (event_date - date.today()).days
         return None
 
     def get_connection_id(self, obj):
@@ -289,6 +345,18 @@ class NotificationSerializer(serializers.ModelSerializer):
             if days is not None:
                 first_name = instance.person.first_name or "them"
                 data["message"] = f"You haven't talked to {first_name} in {days} days – reach out!"
+        # Dynamically adjust UPCOMING_EVENT message so the relative days stay accurate
+        if instance.type == Notification.UPCOMING_EVENT:
+            days = data.get("daysUntil")
+            if days is not None:
+                # If the event relation exists, use its title/person to craft message if not already appropriate
+                title = instance.event.title if instance.event else "Event"
+                if days > 0:
+                    data["message"] = f"{title} is in {days} days"
+                elif days == 0:
+                    data["message"] = f"{title} is today"
+                else:
+                    data["message"] = f"{title} was {-days} days ago"
         return data
 
     class Meta:
@@ -303,6 +371,7 @@ class NotificationSerializer(serializers.ModelSerializer):
             "date",
             "daysSince",
             "connection_id",
+            "daysUntil",
         )
 
 
@@ -322,3 +391,55 @@ class DashboardSerializer(serializers.Serializer):
 
     class Meta:
         fields = ("user", "events", "notifications")
+
+
+# -------------------------------------------------------------------
+# Current user profile
+# -------------------------------------------------------------------
+class UserProfileSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    first_name = serializers.CharField(required=False, allow_blank=True)
+    last_name = serializers.CharField(required=False, allow_blank=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
+    phone = serializers.CharField(required=False, allow_blank=True)
+    birthday = serializers.DateField(required=False, allow_null=True)
+    profile_picture = serializers.ImageField(required=False, allow_null=True)
+
+    def to_representation(self, user):
+        person = getattr(user, "account", None)
+        person = getattr(person, "person", None) if person else None
+        first_name = user.first_name or (person.first_name if person else "")
+        last_name = user.last_name or (person.last_name if person else "")
+
+        data = {
+            "id": user.id,
+            "first_name": first_name,
+            "last_name": last_name,
+            "email": user.email,
+            "phone": getattr(person, "phone", "") if person else "",
+            "birthday": getattr(person, "birthday", None) if person else None,
+        }
+
+        # Add profile picture URL if it exists
+        if person and person.profile_picture:
+            data['profile_picture'] = self.context['request'].build_absolute_uri(person.profile_picture.url)
+        else:
+            data['profile_picture'] = None
+
+        return data
+
+    def update(self, user, validated_data):
+        # Update User fields
+        for attr in ("first_name", "last_name", "email"):
+            if attr in validated_data:
+                setattr(user, attr, validated_data[attr])
+        user.save()
+
+        # Update related Person fields if Account & Person exist
+        if hasattr(user, "account") and hasattr(user.account, "person"):
+            person = user.account.person
+            for attr in ("phone", "birthday", "profile_picture"):
+                if attr in validated_data:
+                    setattr(person, attr, validated_data[attr])
+            person.save()
+        return user

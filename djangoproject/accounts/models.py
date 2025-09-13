@@ -80,6 +80,7 @@ class Person(models.Model):
     birthday = models.DateField(null=True, blank=True)
     notes = models.TextField(blank=True)
     tags = models.JSONField(default=list, blank=True)
+    profile_picture = models.ImageField(upload_to='profile_pictures/', null=True, blank=True)
     
     # For manual contacts, points to the Person who created this record
     # Null for app users (who have an Account instead)

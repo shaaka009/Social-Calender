@@ -18,4 +18,5 @@ urlpatterns = [
     path("password-reset/", views.password_reset_request, name="password_reset_request"),
     path("password-reset/<str:uidb64>/<str:token>/", views.password_reset_confirm, name="password_reset_confirm"),
     path("dashboard/", views.DashboardAPIView.as_view(), name="dashboard"),
+    path("profile/", views.UserProfileAPIView.as_view(), name="user_profile"),
 ] + router.urls
