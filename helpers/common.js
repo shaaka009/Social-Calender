@@ -9,3 +9,8 @@ export const hp = percentage => {
 export const wp = percentage => {
   return (percentage * deviceWidth) / 100;
 }
+
+export const formatDateLocal = (date) => {
+  if (!date) return '';
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};

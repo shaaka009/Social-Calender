@@ -9,7 +9,7 @@ import LoadingState from '../../components/LoadingState';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import { theme } from '../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../helpers/api';
-import { wp } from '../../helpers/common';
+import { formatDateLocal, wp } from '../../helpers/common';
 
 const AddContactScreen = () => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -35,7 +35,8 @@ const AddContactScreen = () => {
   const [loading, setLoading] = useState(false);
   const [errors, ] = useState({});
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [tempDate, setTempDate] = useState(new Date().toISOString());
+  // Use a Date object for consistency with the Event picker implementation
+  const [tempDate, setTempDate] = useState(new Date());
 
   const handleChange = (key, value) => {
     setForm(prev => ({ ...prev, [key]: value }));
@@ -232,12 +233,12 @@ const AddContactScreen = () => {
             {showDatePicker && Platform.OS === 'ios' && (
               <View style={styles.datePickerContainer}>
                 <DateTimePicker
-                  value={new Date(tempDate)}
+                  value={tempDate}
                   mode="date"
                   display="spinner"
                   onChange={(event, selectedDate) => {
                     if (selectedDate) {
-                      setTempDate(selectedDate.toISOString());
+                      setTempDate(selectedDate);
                     }
                   }}
                 />
@@ -247,7 +248,7 @@ const AddContactScreen = () => {
                     variant="outline"
                     onPress={() => {
                       setShowDatePicker(false);
-                      setTempDate(new Date().toISOString());
+                      setTempDate(new Date());
                     }}
                     style={styles.datePickerButton}
                   />
@@ -255,10 +256,10 @@ const AddContactScreen = () => {
                     title="Confirm"
                     onPress={() => {
                       if (tempDate) {
-                        handleChange('birthday', tempDate.slice(0, 10));
+                        handleChange('birthday', formatDateLocal(tempDate));
                       }
                       setShowDatePicker(false);
-                      setTempDate(new Date().toISOString());
+                      setTempDate(new Date());
                     }}
                     style={styles.datePickerButton}
                   />
@@ -267,13 +268,13 @@ const AddContactScreen = () => {
             )}
             {showDatePicker && Platform.OS === 'android' && (
               <DateTimePicker
-                value={new Date(tempDate)}
+                value={tempDate}
                 mode="date"
                 display="default"
                 onChange={(event, selectedDate) => {
                   setShowDatePicker(false);
                   if (selectedDate) {
-                    handleChange('birthday', selectedDate.toISOString().slice(0, 10));
+                    handleChange('birthday', formatDateLocal(selectedDate));
                   }
                 }}
               />
