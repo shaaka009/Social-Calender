@@ -19,7 +19,6 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.generics import RetrieveUpdateAPIView
-# added for DashboardAPIView date calculations
 from datetime import date, timedelta
 from django.views.decorators.http import require_http_methods
 
@@ -41,77 +40,55 @@ from .forms import UserRegistrationForm
 
 # Create your views here.
 
-# -------------------------------------------------------------------
-# Stub serializer kept only so legacy Contact-based code still parses
-# -------------------------------------------------------------------
-class ContactSerializer(serializers.Serializer):
-    """Placeholder to satisfy references in deprecated code paths."""
-    pass
-
-class _ContactManager:
-    def filter(self, *args, **kwargs):
-        return Person.objects.none()
-    def update_or_create(self, *args, **kwargs):
-        return (None, False)
-    def delete(self, *args, **kwargs):
-        return 0
-
-class Contact:
-    """Lightweight stand-in for the old Contact model so legacy code still parses."""
-    PENDING = "pending"
-    ACCEPTED = "accepted"
-    DECLINED = "declined"
-    objects = _ContactManager()
-
-    def __init__(self, *args, **kwargs):
-        pass
+# Legacy contact references removed during refactor
 
 # -------------------------------------------------
 # Utility helpers
 # -------------------------------------------------
 
-def _get_person_for_request(request):
-    """Return the Person linked to the authenticated request.user."""
+def get_or_create_person_for_user(user):
+    """Get the Person object for a given User, creating one if it doesn't exist."""
     try:
-        return request.user.account.person
-    except Exception:
-        raise PermissionDenied("Account is not linked to a Person record.")
+        account = Account.objects.get(user=user)
+        return account.person
+    except Account.DoesNotExist:
+        # Create a person and account for this user
+        person = Person.objects.create(
+            first_name=user.first_name,
+            last_name=user.last_name,
+            email=user.email,
+        )
+        Account.objects.create(user=user, person=person)
+        return person
 
+# =========================================================================
+# AUTHENTICATION VIEWS (function based)
+# =========================================================================
 
 @csrf_exempt
 def signup(request):
     if request.method == "POST":
-        data = json.loads(request.body)
-        form = UserRegistrationForm(data)
+        form = UserRegistrationForm(json.loads(request.body))
         if form.is_valid():
-            with transaction.atomic():  # Ensure all records are created or none
+            with transaction.atomic():
                 user = form.save()
                 
-                # Create Person record
+                # Create a Person and Account for this user
                 person = Person.objects.create(
                     first_name=user.first_name,
                     last_name=user.last_name,
                     email=user.email,
                 )
-                
-                # Create Account to link User and Person
                 Account.objects.create(user=user, person=person)
                 
-                login(request, user)
                 return JsonResponse(
-                    {
-                        "success": True,
-                        "message": "Registration successful!",
-                        "user": {
-                            "id": user.id,
-                            "email": user.email,
-                            "first_name": user.first_name,
-                            "last_name": user.last_name,
-                        },
-                    }
+                    {"message": "Account created successfully!", "success": True},
+                    status=201,
                 )
         else:
-            return JsonResponse({"success": False, "errors": form.errors}, status=400)
+            return JsonResponse(
+                {"message": "Invalid form data", "errors": form.errors}, status=400
+            )
 
     return JsonResponse({"message": "Method not allowed"}, status=405)
 
@@ -167,151 +144,125 @@ def signin(request):
 def signout(request):
     if request.method == "POST":
         logout(request)
-        return JsonResponse({"success": True, "message": "Logged out successfully"})
-
+        return JsonResponse({"message": "Logged out successfully!"})
     return JsonResponse({"message": "Method not allowed"}, status=405)
 
-
+@csrf_exempt
 def get_user(request):
     if request.user.is_authenticated:
-        return JsonResponse(
-            {
-                "success": True,
-                "user": {
-                    "id": request.user.id,
-                    "email": request.user.email,
-                    "first_name": request.user.first_name,
-                    "last_name": request.user.last_name,
-                },
-            }
-        )
-    return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
-
-
-@csrf_exempt
-@require_http_methods(["POST"])
-def password_reset_request(request):
-    data = json.loads(request.body)
-    email = data.get('email')
-    
-    if not email:
-        return JsonResponse(
-            {'message': 'Email is required'},
-            status=400
-        )
-
-    User = get_user_model()
-    try:
-        user = User.objects.get(email=email)
-    except User.DoesNotExist:
-        # We return success even if the email doesn't exist for security
-        return JsonResponse({'message': 'Password reset email sent if account exists'})
-
-    # Generate password reset token
-    token = default_token_generator.make_token(user)
-    uid = urlsafe_base64_encode(force_bytes(user.pk))
-    
-    # Build reset URL (this should point to your frontend reset page)
-    reset_url = f"exp://192.168.1.153:8081/--/reset-password/{uid}/{token}"
-    
-    # Email content
-    subject = 'Password Reset Request'
-    message = f'''
-    Hello {user.first_name},
-
-    You requested to reset your password. Please click the link below to reset it:
-
-    {reset_url}
-
-    If you're using Expo Go, you can click the link directly.
-    
-    If you didn't request this, you can safely ignore this email.
-
-    Best regards,
-    Your App Team
-    '''
-    
-    try:
-        send_mail(
-            subject,
-            message,
-            settings.DEFAULT_FROM_EMAIL,
-            [user.email],
-            fail_silently=False,
-        )
         return JsonResponse({
-            'message': 'Password reset email sent if account exists',
-            'reset_link': reset_url  # Include the link in the response for development
+            "success": True,
+            "user": {
+                "id": request.user.id,
+                "email": request.user.email,
+                "first_name": request.user.first_name,
+                "last_name": request.user.last_name,
+            }
         })
-    except Exception as e:
-        print(f"Error sending email: {e}")  # Log the error
-        return JsonResponse(
-            {'message': 'Error sending email'},
-            status=500
-        )
+    else:
+        return JsonResponse({"success": False}, status=401)
 
 @csrf_exempt
-@require_http_methods(["POST"])
-def password_reset_confirm(request, uidb64, token):
-    try:
-        uid = force_str(urlsafe_base64_decode(uidb64))
-        user = get_user_model().objects.get(pk=uid)
-    except (TypeError, ValueError, OverflowError, get_user_model().DoesNotExist):
-        return JsonResponse(
-            {'message': 'Invalid reset link'},
-            status=400
-        )
+def password_reset(request):
+    if request.method == 'POST':
+        data = json.loads(request.body.decode('utf-8'))
+        email = data.get('email')
+        
+        try:
+            user = get_user_model().objects.get(email=email)
+            
+            # Generate token
+            token = default_token_generator.make_token(user)
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            
+            # Generate reset URL
+            reset_url = f"http://localhost:8081/reset-password/{uid}/{token}"
+            
+            # For development, return the link directly
+            # In production, send email instead
+            try:
+                subject = 'Password Reset Request'
+                message = render_to_string('password_reset_email.html', {
+                    'user': user,
+                    'reset_url': reset_url,
+                })
+                send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [email])
+            except Exception:
+                pass  # Silently handle email errors in development
+            
+            return JsonResponse({
+                'message': 'Password reset email sent if account exists',
+                'reset_link': reset_url  # Include the link in the response for development
+            })
+        except get_user_model().DoesNotExist:
+            # Return success even if email doesn't exist (for security)
+            return JsonResponse({
+                'message': 'Password reset email sent if account exists'
+            })
+        except Exception as e:
+            pass  # Silently handle email errors in development
+            return JsonResponse(
+                {'message': 'Error sending email'},
+                status=500
+            )
+    
+    return JsonResponse({'message': 'Method not allowed'}, status=405)
 
-    if not default_token_generator.check_token(user, token):
-        return JsonResponse(
-            {'message': 'Invalid or expired reset link'},
-            status=400
-        )
+@csrf_exempt
+def password_reset_confirm(request, uid, token):
+    if request.method == 'POST':
+        data = json.loads(request.body.decode('utf-8'))
+        new_password = data.get('password')
+        
+        try:
+            user_id = force_str(urlsafe_base64_decode(uid))
+            user = get_user_model().objects.get(pk=user_id)
+            
+            if default_token_generator.check_token(user, token):
+                user.set_password(new_password)
+                user.save()
+                return JsonResponse({'message': 'Password reset successful'})
+            else:
+                return JsonResponse({'message': 'Invalid token'}, status=400)
+                
+        except (ValueError, get_user_model().DoesNotExist):
+            return JsonResponse({'message': 'Invalid request'}, status=400)
+    
+    return JsonResponse({'message': 'Method not allowed'}, status=405)
 
-    data = json.loads(request.body)
-    password = data.get('password')
-    if not password:
-        return JsonResponse(
-            {'message': 'Password is required'},
-            status=400
-        )
-
-    user.set_password(password)
-    user.save()
-    return JsonResponse({'message': 'Password reset successful'})
-
+# =========================================================================
+# API VIEWS (class based)
+# =========================================================================
 
 class DashboardAPIView(APIView):
-    """Returns user info, next 30-day events, and latest notifications."""
-
+    authentication_classes = [CsrfExemptSessionAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        user = request.user
+        user_person = get_or_create_person_for_user(request.user)
+        today = date.today()
+        end_date = today + timedelta(days=30)
 
-        window_start = date.today() - timedelta(days=30)
-        window_end = date.today() + timedelta(days=30)
+        # Get events for next 30 days
+        events = Event.objects.filter(
+            user=request.user,
+            date__range=[today, end_date]
+        ).order_by('date')
 
-        events_qs = (
-            user.events.filter(date__range=(window_start, window_end))
-            .order_by("date")
-        )
+        # Get notifications
+        from .management.commands.generate_no_contact_notifications import Command as NotificationCommand
+        NotificationCommand().handle()
+        
+        notifications = request.user.notifications.order_by('-created_at')[:10]
 
-        notifications_qs = user.notifications.all()[:50]
+        data = {
+            'user': request.user,
+            'events': events,
+            'notifications': notifications,
+        }
 
-        serializer = DashboardSerializer(
-            {
-                "events": events_qs,
-                "notifications": notifications_qs,
-            },
-            context={"request": request},
-        )
-
+        serializer = DashboardSerializer(data, context={'request': request})
         return Response(serializer.data)
-
-
-'''DEPRECATED CONTACT VIEWSET (old schema) ----------------'''
-
 
 
 class UserSearchViewSet(viewsets.ReadOnlyModelViewSet):
@@ -333,241 +284,149 @@ class UserSearchViewSet(viewsets.ReadOnlyModelViewSet):
             id=self.request.user.id  # Don't show current user
         )
 
-# DEPRECATED CONTACT SCHEMA REMOVED BELOW
-    # serializer_class = ContactSerializer  # deprecated
-    permission_classes = [IsAuthenticated]
-    authentication_classes = [CsrfExemptSessionAuthentication]
 
-    def deprecated_contact_get_queryset(self):
-        # Return:
-        # 1. Contacts I own (for my contact list)
-        # 2. Pending contacts where I'm the target (for requests)
-        return Contact.objects.filter(
-            Q(user=self.request.user) |  # My contacts
-            Q(contact_user=self.request.user, status='pending')  # Requests to me
-        ).order_by("first_name", "last_name")
-
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
-
-    def partial_update(self, request, *args, **kwargs):
-        #Handle PATCH requests with proper validation.
-        instance = self.get_object()
-        
-        # If this is an app-user contact, only allow updating certain fields
-        if instance.contact_user:
-            allowed_fields = {'phone', 'birthday', 'notes', 'tags'}
-            data = {k: v for k, v in request.data.items() if k in allowed_fields}
-            if not data:
-                return Response(
-                    {"detail": "No valid fields to update"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-        else:
-            # For manual contacts, allow updating all fields
-            data = request.data
-
-        serializer = self.get_serializer(instance, data=data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-
-        return Response(serializer.data)
-
-    @action(detail=True, methods=['post'])
-    def accept(self, request, pk=None):
-        #Accept a contact request.
-        contact = self.get_object()
-        
-        if not contact.contact_user:
-            return Response(
-                {"detail": "Can only accept app user contacts"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        if contact.status != Contact.PENDING:
-            return Response(
-                {"detail": "Contact is not in pending state"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Mark the original request as accepted
-        contact.status = Contact.ACCEPTED
-        contact.save()
-
-        # Ensure the accepter has a corresponding accepted contact pointing to the requester
-        reciprocal, _ = Contact.objects.update_or_create(
-            user=request.user,                    # current user (accepter)
-            contact_user=contact.user,            # original requester
-            defaults={
-                "first_name": contact.user.first_name,
-                "last_name": contact.user.last_name,
-                "email": contact.user.email,
-                "status": Contact.ACCEPTED,
-            },
-        )
-        
-        return Response(self.serializer_class(contact).data)
-
-    @action(detail=True, methods=['post'])
-    def decline(self, request, pk=None):
-        #Decline a contact request.
-        contact = self.get_object()
-        
-        if not contact.contact_user:
-            return Response(
-                {"detail": "Can only decline app user contacts"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-            
-        contact.status = Contact.DECLINED
-        contact.save()
-        return Response(self.serializer_class(contact).data)
-
-    def destroy(self, request, *args, **kwargs):
-        contact = self.get_object()
-        
-        # If this is an app-user contact, delete the reciprocal contact if it exists
-        if isinstance(contact, Connection):
-            # For new Connection model – delete the reciprocal row regardless of status
-            Connection.objects.filter(owner=contact.target, target=contact.owner).delete()
-        elif contact.contact_user:
-            # Legacy Contact path
-            Contact.objects.filter(
-                user=contact.contact_user,
-                contact_user=request.user
-            ).delete()
-        
-        # Delete the original contact (A → B)
-        contact.delete()
-        
-        return Response({
-            "success": True,
-            "message": "Contact deleted successfully"
-        }, status=status.HTTP_200_OK)
+# =========================================================================
+# VIEWSETS FOR MAIN MODELS
+# =========================================================================
 
 class ConnectionViewSet(viewsets.ModelViewSet):
-    """ViewSet for managing person-to-person connections (friends/contacts)."""
+    """Manage connections between people."""
     serializer_class = ConnectionSerializer
     permission_classes = [IsAuthenticated]
     authentication_classes = [CsrfExemptSessionAuthentication]
 
     def get_queryset(self):
-        person = _get_person_for_request(self.request)
+        user_person = get_or_create_person_for_user(self.request.user)
+        # Show connections where user is owner, plus pending connections where user is target
         return Connection.objects.filter(
-            models.Q(owner=person) |
-            models.Q(target=person, status=Connection.PENDING)
-        )
+            Q(owner=user_person) | 
+            Q(target=user_person, status='pending')
+        ).order_by('target__first_name', 'target__last_name')
 
     def perform_create(self, serializer):
-        owner_person = _get_person_for_request(self.request)
-        serializer.save(owner=owner_person)
+        user_person = get_or_create_person_for_user(self.request.user)
+        serializer.save(owner=user_person)
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=['post'])
     def accept(self, request, pk=None):
-        conn: Connection = self.get_object()
-        person = _get_person_for_request(request)
+        """Accept a connection request."""
+        connection = self.get_object()
+        user_person = get_or_create_person_for_user(request.user)
+        
+        if connection.target != user_person:
+            raise PermissionDenied("You can only accept requests sent to you")
+        if connection.status != 'pending':
+            return Response(
+                {"detail": "Connection is not in pending state"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        if conn.target != person:
-            raise PermissionDenied("Only the target person can accept this connection request.")
-        if conn.status != Connection.PENDING:
-            return Response({"detail": "Connection is not pending."}, status=status.HTTP_400_BAD_REQUEST)
-
-        conn.status = Connection.ACCEPTED
-        conn.save()
-
-        # Ensure reciprocal row exists
+        connection.status = 'accepted'
+        connection.save()
+        
+        # Create reciprocal connection
         Connection.objects.update_or_create(
-            owner=person,
-            target=conn.owner,
-            defaults={"status": Connection.ACCEPTED},
+            owner=user_person,
+            target=connection.owner,
+            defaults={'status': 'accepted', 'no_contact_threshold': connection.no_contact_threshold}
         )
-        return Response(self.serializer_class(conn).data)
+        
+        return Response({"detail": "Connection accepted"})
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=['post'])
     def decline(self, request, pk=None):
-        conn: Connection = self.get_object()
-        person = _get_person_for_request(request)
-        if conn.target != person:
-            raise PermissionDenied("Only the target person can decline.")
-        conn.status = Connection.DECLINED
-        conn.save()
-        return Response(self.serializer_class(conn).data)
+        """Decline a connection request."""
+        connection = self.get_object()
+        user_person = get_or_create_person_for_user(request.user)
+        
+        if connection.target != user_person:
+            raise PermissionDenied("You can only decline requests sent to you")
+        if connection.status != 'pending':
+            return Response(
+                {"detail": "Connection is not in pending state"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        connection.status = 'declined'
+        connection.save()
+        return Response({"detail": "Connection declined"})
 
     def destroy(self, request, *args, **kwargs):
-        conn: Connection = self.get_object()
-        # Delete reciprocal row (if exists) before removing this one
-        Connection.objects.filter(owner=conn.target, target=conn.owner).delete()
-        return super().destroy(request, *args, **kwargs)
-
-
-class EventViewSet(viewsets.ModelViewSet):
-    """ViewSet for managing events."""
-    serializer_class = EventSerializer
-    permission_classes = [IsAuthenticated]
-    authentication_classes = [CsrfExemptSessionAuthentication]
-
-    def get_queryset(self):
-        """Return events for the current user."""
-        return Event.objects.filter(user=self.request.user).order_by('date')
-
-    def perform_create(self, serializer):
-        """Set the user when creating an event."""
-        serializer.save(user=self.request.user)
-
-    def perform_update(self, serializer):
-        """Ensure user can only update their own events."""
-        if serializer.instance.user != self.request.user:
-            raise PermissionDenied("You can only update your own events.")
-        serializer.save()
+        """Delete a connection and its reciprocal."""
+        connection = self.get_object()
+        user_person = get_or_create_person_for_user(request.user)
+        
+        # Only allow deletion if user is the owner
+        if connection.owner != user_person:
+            raise PermissionDenied("You can only delete connections you own")
+        
+        # Delete reciprocal connection if it exists
+        Connection.objects.filter(
+            owner=connection.target,
+            target=connection.owner
+        ).delete()
+        
+        # Delete the original connection
+        connection.delete()
+        
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class InteractionViewSet(viewsets.ModelViewSet):
-    """ViewSet for managing contact interactions."""
+    """Manage interactions between people."""
     serializer_class = InteractionSerializer
     permission_classes = [IsAuthenticated]
     authentication_classes = [CsrfExemptSessionAuthentication]
 
     def get_queryset(self):
-        """Return interactions involving the current person. Optional filter by target person ID."""
-        person = _get_person_for_request(self.request)
-        target_id = self.request.query_params.get('target')
-        if target_id:
-            return Interaction.objects.filter(
-                models.Q(actor=person, target_id=target_id) |
-                models.Q(actor_id=target_id, target=person)
+        user_person = get_or_create_person_for_user(self.request.user)
+        queryset = Interaction.objects.filter(
+            Q(actor=user_person) | Q(target=user_person)
+        ).order_by('-date')
+        
+        # Filter by specific target person if provided
+        target_person_id = self.request.query_params.get('target')
+        if target_person_id:
+            queryset = queryset.filter(
+                Q(actor=user_person, target_id=target_person_id) |
+                Q(target=user_person, actor_id=target_person_id)
             )
-        return Interaction.objects.filter(
-            models.Q(actor=person) | models.Q(target=person)
-        )
+        
+        return queryset
 
     def perform_create(self, serializer):
+        user_person = get_or_create_person_for_user(self.request.user)
+        # The serializer handles actor assignment from request data
         serializer.save()
 
 
-    def perform_update(self, serializer):
-        person = _get_person_for_request(self.request)
-        if serializer.instance.actor != person:
-            raise PermissionDenied("You can only update interactions you created.")
-        serializer.save()
+class EventViewSet(viewsets.ModelViewSet):
+    """Manage events."""
+    serializer_class = EventSerializer
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [CsrfExemptSessionAuthentication]
 
-    def perform_destroy(self, instance):
-        person = _get_person_for_request(self.request)
-        if instance.actor != person:
-            raise PermissionDenied("You can only delete interactions you created.")
-        instance.delete()
+    def get_queryset(self):
+        return Event.objects.filter(user=self.request.user).order_by('date')
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
 
 
 class UserProfileAPIView(APIView):
-    """Retrieve and update the authenticated user's profile."""
+    """Get and update user profile data."""
     serializer_class = UserProfileSerializer
     permission_classes = [IsAuthenticated]
     authentication_classes = [CsrfExemptSessionAuthentication]
 
     def get(self, request):
-        serializer = self.serializer_class(request.user)
+        person = get_or_create_person_for_user(request.user)
+        serializer = self.serializer_class(person, context={'request': request})
         return Response(serializer.data)
 
     def patch(self, request):
-        serializer = self.serializer_class(request.user, data=request.data, partial=True)
+        person = get_or_create_person_for_user(request.user)
+        serializer = self.serializer_class(person, data=request.data, partial=True, context={'request': request})
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)

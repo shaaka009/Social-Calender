@@ -11,7 +11,7 @@ GREEN = \033[0;32m
 YELLOW = \033[0;33m
 NC = \033[0m # No Color
 
-.PHONY: help install run-backend run-frontend setup-backend setup-frontend clean
+.PHONY: help install run-backend run-frontend setup-backend setup-frontend clean test test-backend test-frontend
 
 # Default target
 help:
@@ -21,6 +21,9 @@ help:
 	@echo "$(GREEN)make setup-frontend$(NC) - Install frontend dependencies"
 	@echo "$(GREEN)make run-backend$(NC)    - Start Django development server"
 	@echo "$(GREEN)make run-frontend$(NC)   - Start Expo development server"
+	@echo "$(GREEN)make test$(NC)           - Run all tests (backend + frontend)"
+	@echo "$(GREEN)make test-backend$(NC)   - Run Django backend tests"
+	@echo "$(GREEN)make test-frontend$(NC)  - Run frontend tests"
 	@echo "$(GREEN)make clean$(NC)          - Remove virtual environment and node_modules"
 	@echo "$(GREEN)make migrate$(NC)        - Run Django database migrations"
 	@echo "$(YELLOW)Note: Run 'make install' first time setup$(NC)"
@@ -64,3 +67,16 @@ migrate:
 reset-db:
 	@echo "$(CYAN)Resetting database...$(NC)"
 	cd djangoproject && ../$(PYTHON_VENV) manage.py reset_db
+
+# Test commands
+test: test-backend test-frontend
+
+# Backend tests
+test-backend:
+	@echo "$(CYAN)Running Django backend tests...$(NC)"
+	cd djangoproject && ../$(PYTHON_VENV) manage.py test
+
+# Frontend tests
+test-frontend:
+	@echo "$(CYAN)Running frontend tests...$(NC)"
+	$(NPM) test

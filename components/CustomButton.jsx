@@ -6,7 +6,7 @@ import { wp } from "../helpers/common";
 const CustomButton = ({
   title,
   onPress,
-  variant = "primary", // primary, secondary, outline
+  variant = "primary", // primary, secondary, outline, danger, text
   disabled = false,
   style,
   textStyle,
@@ -18,6 +18,10 @@ const CustomButton = ({
         return styles.buttonSecondary;
       case "outline":
         return styles.buttonOutline;
+      case "danger":
+        return styles.buttonDanger;
+      case "text":
+        return styles.buttonTextVariant;
       default:
         return styles.buttonPrimary;
     }
@@ -27,6 +31,10 @@ const CustomButton = ({
     switch (variant) {
       case "outline":
         return styles.buttonTextOutline;
+      case "danger":
+        return styles.buttonTextDanger;
+      case "text":
+        return styles.buttonTextOnly;
       default:
         return styles.buttonText;
     }
@@ -69,6 +77,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.primary,
   },
+  buttonDanger: {
+    backgroundColor: theme.colors.danger,
+  },
+  buttonTextVariant: {
+    backgroundColor: "transparent",
+  },
   buttonDisabled: {
     backgroundColor: theme.colors.gray,
     opacity: 0.6,
@@ -79,6 +93,16 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   buttonTextOutline: {
+    color: theme.colors.primary,
+    fontSize: wp(4),
+    fontWeight: "600",
+  },
+  buttonTextDanger: {
+    color: "white",
+    fontSize: wp(4),
+    fontWeight: "600",
+  },
+  buttonTextOnly: {
     color: theme.colors.primary,
     fontSize: wp(4),
     fontWeight: "600",

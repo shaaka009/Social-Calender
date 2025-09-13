@@ -80,7 +80,6 @@ const LogInteractionScreen = () => {
         router.back();
       }, 500);
     } catch (error) {
-      console.error('Failed to log interaction:', error);
       Toast.show(error.message || 'Failed to log interaction', {
         duration: Toast.durations.LONG,
         position: Toast.positions.BOTTOM,

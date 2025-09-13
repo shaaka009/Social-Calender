@@ -217,7 +217,10 @@ class InteractionSerializer(serializers.ModelSerializer):
     type_display = serializers.SerializerMethodField(read_only=True)
 
     def get_type_display(self, obj):
-        return obj.get_type_display()
+        if hasattr(obj, 'get_type_display'):
+            return obj.get_type_display()
+        # During validation/creation, obj might be a dict
+        return dict(Interaction.INTERACTION_TYPE_CHOICES).get(obj.get('type', obj) if isinstance(obj, dict) else obj, '')
 
     def validate(self, attrs):
         # Basic validation that actor owns a connection to target (for permission)
@@ -405,41 +408,45 @@ class UserProfileSerializer(serializers.Serializer):
     birthday = serializers.DateField(required=False, allow_null=True)
     profile_picture = serializers.ImageField(required=False, allow_null=True)
 
-    def to_representation(self, user):
-        person = getattr(user, "account", None)
-        person = getattr(person, "person", None) if person else None
-        first_name = user.first_name or (person.first_name if person else "")
-        last_name = user.last_name or (person.last_name if person else "")
+    def to_representation(self, person):
+        # The instance is a Person object, get the linked User
+        user = getattr(person, "account", None)
+        user = getattr(user, "user", None) if user else None
 
         data = {
-            "id": user.id,
-            "first_name": first_name,
-            "last_name": last_name,
-            "email": user.email,
-            "phone": getattr(person, "phone", "") if person else "",
-            "birthday": getattr(person, "birthday", None) if person else None,
+            "id": person.id,
+            "first_name": person.first_name or (user.first_name if user else ""),
+            "last_name": person.last_name or (user.last_name if user else ""),
+            "email": user.email if user else person.email,
+            "phone": person.phone or "",
+            "birthday": person.birthday,
         }
 
         # Add profile picture URL if it exists
-        if person and person.profile_picture:
-            data['profile_picture'] = self.context['request'].build_absolute_uri(person.profile_picture.url)
+        if person.profile_picture:
+            request = self.context.get('request')
+            if request:
+                data['profile_picture'] = request.build_absolute_uri(person.profile_picture.url)
+            else:
+                data['profile_picture'] = person.profile_picture.url
         else:
             data['profile_picture'] = None
 
         return data
 
-    def update(self, user, validated_data):
-        # Update User fields
-        for attr in ("first_name", "last_name", "email"):
+    def update(self, person, validated_data):
+        # Update Person fields
+        for attr in ("phone", "birthday", "profile_picture"):
             if attr in validated_data:
-                setattr(user, attr, validated_data[attr])
-        user.save()
+                setattr(person, attr, validated_data[attr])
+        person.save()
 
-        # Update related Person fields if Account & Person exist
-        if hasattr(user, "account") and hasattr(user.account, "person"):
-            person = user.account.person
-            for attr in ("phone", "birthday", "profile_picture"):
+        # Update related User fields if Account & User exist
+        if hasattr(person, "account") and hasattr(person.account, "user"):
+            user = person.account.user
+            for attr in ("first_name", "last_name", "email"):
                 if attr in validated_data:
-                    setattr(person, attr, validated_data[attr])
-            person.save()
-        return user
+                    setattr(user, attr, validated_data[attr])
+            user.save()
+        
+        return person

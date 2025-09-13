@@ -66,7 +66,6 @@ const SignUp = () => {
 
         router.replace("/(auth)/signin");
       } catch (err) {
-        console.error("Signup error:", err);
         setError("Network error or server is not responding");
       }
     });

@@ -5,7 +5,7 @@ const useContacts = () => {
   return useQuery({
     queryKey: ["connections"],
     queryFn: () => apiFetch(ENDPOINTS.CONNECTIONS),
-    staleTime: 0,  // Make it refetch immediately when invalidated
+    staleTime: 30000,  // 30 seconds - reasonable for contact data
   });
 };
 
