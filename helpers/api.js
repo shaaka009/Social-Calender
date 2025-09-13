@@ -19,29 +19,22 @@ export const ENDPOINTS = {
 
 // Lightweight wrapper around fetch that always includes credentials and throws on non-2xx
 export const apiFetch = async (url, options = {}) => {
-  // Add Content-Type: application/json for non-GET requests that have a body
-  const headers = options.body ? {
+  // Add Content-Type: application/json for non-GET requests that have a body (except FormData)
+  const isFormData = options.body instanceof FormData;
+  const headers = options.body && !isFormData ? {
     'Content-Type': 'application/json',
     ...options.headers,
   } : options.headers;
 
-  console.log(`Making API request to ${url}`);
   try {
     const response = await fetch(url, { 
       credentials: 'include',  // This ensures cookies are sent
       ...options,
       headers,
     });
-    
-    console.log(`Got response from ${url}:`, {
-      status: response.status,
-      ok: response.ok,
-      headers: Object.fromEntries(response.headers.entries()),
-    });
 
     let data = null;
     const text = await response.text();
-    console.log(`Response text from ${url}:`, text);
     
     try {
       data = JSON.parse(text);
@@ -52,11 +45,6 @@ export const apiFetch = async (url, options = {}) => {
 
     if (!response.ok) {
       const message = data?.message || data?.detail || 'Network request failed';
-      console.error('API Error:', {
-        status: response.status,
-        message,
-        data,
-      });
       const error = new Error(message);
       error.status = response.status;
       error.data = data;
@@ -65,7 +53,10 @@ export const apiFetch = async (url, options = {}) => {
 
     return data;
   } catch (error) {
-    console.error(`API Request to ${url} failed:`, error);
+    // Only log actual errors, not debug info
+    if (error.status >= 500 || !error.status) {
+      console.error(`API Request to ${url} failed:`, error.message);
+    }
     throw error;
   }
 }; 
