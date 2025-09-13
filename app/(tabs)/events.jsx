@@ -30,7 +30,7 @@ const EventCard = ({ event }) => {
         </Text>
       </View>
       <Text style={styles.eventDate}>
-        {new Date(event.date).toLocaleDateString()}
+        {new Date(`${event.date}T00:00:00`).toLocaleDateString()}
       </Text>
       {event.person && (
         <Text style={styles.eventPerson}>

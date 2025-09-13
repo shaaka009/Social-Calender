@@ -34,6 +34,9 @@ const EventPreview = ({ event, onPress }) => (
 const CalendarPreview = ({ events = [], isLoading = false, error = null }) => {
   const [selectedDate, setSelectedDate] = useState(null);
   const [showEventModal, setShowEventModal] = useState(false);
+  const closeEventModal = React.useCallback(() => {
+    setShowEventModal(false);
+  }, []);
 
   // Group events by date for quick lookup when a day is pressed
   // NOTE: `event.date` is already a server-provided ISO string (YYYY-MM-DD) so
@@ -142,11 +145,12 @@ const CalendarPreview = ({ events = [], isLoading = false, error = null }) => {
         visible={showEventModal}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setShowEventModal(false)}
+        onRequestClose={closeEventModal}
+        onDismiss={() => setSelectedDate(null)}
       >
         <Pressable 
           style={styles.modalOverlay}
-          onPress={() => setShowEventModal(false)}
+          onPress={closeEventModal}
         >
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
@@ -154,7 +158,7 @@ const CalendarPreview = ({ events = [], isLoading = false, error = null }) => {
                 Events on {selectedDate ? new Date(`${selectedDate}T00:00:00`).toLocaleDateString() : ''}
               </Text>
               <Pressable 
-                onPress={() => setShowEventModal(false)}
+                onPress={closeEventModal}
                 style={styles.modalCloseButton}
               >
                 <Text style={styles.modalCloseText}>✕</Text>
@@ -166,7 +170,7 @@ const CalendarPreview = ({ events = [], isLoading = false, error = null }) => {
                   key={event.id}
                   event={event}
                   onPress={() => {
-                    setShowEventModal(false);
+                    closeEventModal();
                     router.push(`/events/${event.id}`);
                   }}
                 />
