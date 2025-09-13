@@ -101,7 +101,6 @@ const EditContactScreen = () => {
         router.back();
       }, 500);
     } catch (error) {
-      console.error('Failed to update contact:', error);
       Alert.alert('Error', error.message || 'Failed to update contact');
     } finally {
       setIsSaving(false);

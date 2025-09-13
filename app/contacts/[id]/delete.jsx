@@ -45,7 +45,6 @@ const DeleteContactScreen = () => {
       // Navigate back to contacts list immediately
       router.replace('/contacts');
     } catch (error) {
-      console.error('Failed to delete contact:', error);
       Alert.alert('Error', error.message || 'Failed to delete contact');
       setIsDeleting(false);
     }

@@ -23,8 +23,6 @@ const ContactRequestsScreen = () => {
     queryKey: ['connections', 'pending'],
     queryFn: async () => {
       const contacts = await apiFetch(ENDPOINTS.CONNECTIONS);
-      console.log('Requests - All contacts:', JSON.stringify(contacts, null, 2));
-      console.log('Requests - Current user:', JSON.stringify(currentUser, null, 2));
       
       const filteredContacts = contacts.filter(c => {
         const isPending = c.status === 'pending';
@@ -34,7 +32,6 @@ const ContactRequestsScreen = () => {
         return isPending && isFromSomeoneElse && isToCurrentUser;
       });
       
-      console.log('Filtered contacts:', JSON.stringify(filteredContacts, null, 2));
       return filteredContacts;
     },
     // Only run this query when we have user data

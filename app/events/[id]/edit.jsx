@@ -83,7 +83,6 @@ const EditEventScreen = () => {
       // Navigate back
       router.back();
     } catch (error) {
-      console.error('Failed to update event:', error);
       Toast.show(error.message || 'Failed to update event', {
         duration: Toast.durations.LONG,
         position: Toast.positions.BOTTOM,

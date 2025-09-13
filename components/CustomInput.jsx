@@ -12,6 +12,7 @@ const CustomInput = ({
   autoCapitalize = "none",
   keyboardType = "default",
   error,
+  helper,
   ...props
 }) => {
   return (
@@ -29,6 +30,7 @@ const CustomInput = ({
         {...props}
       />
       {error && <Text style={styles.errorText}>{error}</Text>}
+      {helper && !error && <Text style={styles.helperText}>{helper}</Text>}
     </View>
   );
 };
@@ -55,6 +57,10 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: theme.colors.error,
+    fontSize: wp(3.5),
+  },
+  helperText: {
+    color: theme.colors.textLight,
     fontSize: wp(3.5),
   },
 });
