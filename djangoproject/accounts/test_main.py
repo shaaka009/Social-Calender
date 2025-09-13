@@ -243,6 +243,114 @@ class InteractionAPITests(APITestCase):
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("connection", str(resp.data).lower())
 
+    def test_interactions_filtered_by_user(self):
+        """Test that interactions are properly filtered per user."""
+        # Create a third user with connection to bob
+        charlie_user, charlie_person = create_user_with_person("charlie@example.com")
+        Connection.objects.create(owner=self.bob_person, target=charlie_person, status=Connection.ACCEPTED)
+        Connection.objects.create(owner=charlie_person, target=self.bob_person, status=Connection.ACCEPTED)
+        
+        # Create interactions:
+        # 1. Alice -> Bob
+        # 2. Bob -> Charlie  
+        # 3. Charlie -> Bob
+        interaction1 = Interaction.objects.create(
+            actor=self.alice_person,
+            target=self.bob_person,
+            date=date.today(),
+            type=Interaction.CALL,
+            notes="Alice to Bob"
+        )
+        interaction2 = Interaction.objects.create(
+            actor=self.bob_person,
+            target=charlie_person,
+            date=date.today(),
+            type=Interaction.MESSAGE,
+            notes="Bob to Charlie"
+        )
+        interaction3 = Interaction.objects.create(
+            actor=charlie_person,
+            target=self.bob_person,
+            date=date.today(),
+            type=Interaction.EMAIL,
+            notes="Charlie to Bob"
+        )
+        
+        # Test Alice's view - should see only interaction1 (Alice->Bob)
+        self.client.force_authenticate(self.alice_user)
+        resp = self.client.get(self.interaction_list_url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        alice_interactions = resp.data
+        self.assertEqual(len(alice_interactions), 1)
+        self.assertEqual(alice_interactions[0]["id"], interaction1.id)
+        
+        # Test Bob's view - should see interaction1 (Alice->Bob) and interactions 2,3 (Bob<->Charlie)
+        self.client.force_authenticate(self.bob_user)
+        resp = self.client.get(self.interaction_list_url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        bob_interactions = resp.data
+        self.assertEqual(len(bob_interactions), 3)
+        bob_interaction_ids = {i["id"] for i in bob_interactions}
+        self.assertEqual(bob_interaction_ids, {interaction1.id, interaction2.id, interaction3.id})
+        
+        # Test Charlie's view - should see only interactions 2,3 (Bob<->Charlie)
+        self.client.force_authenticate(charlie_user)
+        resp = self.client.get(self.interaction_list_url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        charlie_interactions = resp.data
+        self.assertEqual(len(charlie_interactions), 2)
+        charlie_interaction_ids = {i["id"] for i in charlie_interactions}
+        self.assertEqual(charlie_interaction_ids, {interaction2.id, interaction3.id})
+
+    def test_interactions_filtered_by_target_parameter(self):
+        """Test that interactions can be filtered by target query parameter."""
+        # Create a third user with connection to both alice and bob
+        charlie_user, charlie_person = create_user_with_person("charlie@example.com")
+        Connection.objects.create(owner=self.alice_person, target=charlie_person, status=Connection.ACCEPTED)
+        Connection.objects.create(owner=charlie_person, target=self.alice_person, status=Connection.ACCEPTED)
+        
+        # Create interactions:
+        # 1. Alice -> Bob
+        # 2. Alice -> Charlie
+        # 3. Bob -> Alice
+        interaction1 = Interaction.objects.create(
+            actor=self.alice_person,
+            target=self.bob_person,
+            date=date.today(),
+            type=Interaction.CALL,
+            notes="Alice to Bob"
+        )
+        interaction2 = Interaction.objects.create(
+            actor=self.alice_person,
+            target=charlie_person,
+            date=date.today(),
+            type=Interaction.MESSAGE,
+            notes="Alice to Charlie"
+        )
+        interaction3 = Interaction.objects.create(
+            actor=self.bob_person,
+            target=self.alice_person,
+            date=date.today(),
+            type=Interaction.EMAIL,
+            notes="Bob to Alice"
+        )
+        
+        # Test Alice filtering by Bob - should see interactions 1,3 (Alice<->Bob)
+        self.client.force_authenticate(self.alice_user)
+        resp = self.client.get(f"{self.interaction_list_url}?target={self.bob_person.id}")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        alice_bob_interactions = resp.data
+        self.assertEqual(len(alice_bob_interactions), 2)
+        alice_bob_ids = {i["id"] for i in alice_bob_interactions}
+        self.assertEqual(alice_bob_ids, {interaction1.id, interaction3.id})
+        
+        # Test Alice filtering by Charlie - should see only interaction2 (Alice->Charlie)
+        resp = self.client.get(f"{self.interaction_list_url}?target={charlie_person.id}")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        alice_charlie_interactions = resp.data
+        self.assertEqual(len(alice_charlie_interactions), 1)
+        self.assertEqual(alice_charlie_interactions[0]["id"], interaction2.id)
+
 
 class DashboardAPITests(APITestCase):
     """Verify upcoming events & notifications logic for /dashboard/ endpoint."""
@@ -412,12 +520,12 @@ class ConnectionReciprocityTests(APITestCase):
 class SignupPasswordResetTests(APITestCase):
     def setUp(self):
         self.signup_url = reverse("signup")
-        self.reset_url = reverse("password_reset_request")
+        self.reset_url = reverse("password_reset")
 
     def test_signup_creates_user_and_person(self):
         payload = {"email": "new@example.com", "first_name": "New", "last_name": "User", "password1": "Passw0rd!", "password2": "Passw0rd!"}
         resp = self.client.post(self.signup_url, payload, format="json")
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
         self.assertTrue(User.objects.filter(email="new@example.com").exists())
         self.assertTrue(Person.objects.filter(email="new@example.com").exists())
 
