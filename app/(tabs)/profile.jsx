@@ -1,7 +1,8 @@
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import React, { useEffect, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import CustomButton from "../../components/CustomButton";
 import CustomInput from "../../components/CustomInput";
 import LoadingState from "../../components/LoadingState";
@@ -19,9 +20,13 @@ const ProfileScreen = () => {
     last_name: "",
     email: "",
     phone: "",
-    birthday: "",
+    birthday: null,
     profile_picture: null,
   });
+
+  // Date picker state
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [tempDate, setTempDate] = useState(null);
 
   useEffect(() => {
     if (data) {
@@ -30,7 +35,7 @@ const ProfileScreen = () => {
         last_name: data.last_name || "",
         email: data.email || "",
         phone: data.phone || "",
-        birthday: data.birthday || "",
+        birthday: data.birthday ? new Date(data.birthday) : null,
         profile_picture: data.profile_picture || null,
       });
     }
@@ -84,7 +89,12 @@ const ProfileScreen = () => {
     const formData = new FormData();
     Object.keys(form).forEach(key => {
       if (key !== "profile_picture" && form[key]) {
-        formData.append(key, form[key]);
+        if (key === "birthday") {
+          // Format date for API
+          formData.append(key, form[key].toISOString().split('T')[0]);
+        } else {
+          formData.append(key, form[key]);
+        }
       }
     });
 
@@ -145,11 +155,73 @@ const ProfileScreen = () => {
           keyboardType="phone-pad"
           onChangeText={(v) => handleChange("phone", v)}
         />
-        <CustomInput
-          label="Birthday (YYYY-MM-DD)"
-          value={form.birthday}
-          onChangeText={(v) => handleChange("birthday", v)}
-        />
+        {/* Birthday */}
+        <View style={styles.section}>
+          <Text style={styles.label}>Birthday</Text>
+          <CustomButton
+            title={form.birthday ? form.birthday.toLocaleDateString() : 'Select Birthday'}
+            variant="outline"
+            onPress={() => {
+              setTempDate(form.birthday || new Date());
+              setShowDatePicker(true);
+            }}
+            style={styles.dateButton}
+          />
+          {showDatePicker && Platform.OS === 'ios' && (
+            <View style={styles.datePickerContainer}>
+              <DateTimePicker
+                value={tempDate || new Date()}
+                mode="date"
+                display="spinner"
+                minimumDate={new Date(1900, 0, 1)}
+                maximumDate={new Date()}
+                onChange={(event, selectedDate) => {
+                  if (selectedDate) {
+                    setTempDate(selectedDate);
+                  }
+                }}
+              />
+              <View style={styles.datePickerButtons}>
+                <CustomButton
+                  title="Cancel"
+                  variant="outline"
+                  onPress={() => {
+                    setShowDatePicker(false);
+                    setTempDate(null);
+                  }}
+                  style={styles.datePickerButton}
+                />
+                <CustomButton
+                  title="Confirm"
+                  onPress={() => {
+                    if (tempDate) {
+                      setForm(prev => ({ ...prev, birthday: tempDate }));
+                    }
+                    setShowDatePicker(false);
+                  }}
+                  style={styles.datePickerButton}
+                />
+              </View>
+            </View>
+          )}
+          {showDatePicker && Platform.OS === 'android' && (
+            <DateTimePicker
+              value={tempDate || new Date()}
+              mode="date"
+              display="default"
+              minimumDate={new Date(1900, 0, 1)}
+              maximumDate={new Date()}
+              onChange={(event, selectedDate) => {
+                if (event.type === 'set') {
+                  if (selectedDate) {
+                    setForm(prev => ({ ...prev, birthday: selectedDate }));
+                  }
+                }
+                setShowDatePicker(false);
+              }}
+            />
+          )}
+        </View>
 
         <CustomButton
           title={updateMutation.isLoading ? "Saving..." : "Save"}
@@ -198,6 +270,35 @@ const styles = StyleSheet.create({
     marginTop: wp(2),
     color: theme.colors.primary,
     fontSize: wp(4),
+  },
+  section: {
+    marginBottom: wp(4),
+  },
+  label: {
+    fontSize: wp(4),
+    fontWeight: "500",
+    color: theme.colors.text,
+    marginBottom: wp(2),
+  },
+  dateButton: {
+    justifyContent: 'flex-start',
+  },
+  datePickerContainer: {
+    backgroundColor: theme.colors.background,
+    borderRadius: wp(2),
+    marginTop: wp(2),
+    padding: wp(3),
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  datePickerButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: wp(3),
+    gap: wp(2),
+  },
+  datePickerButton: {
+    flex: 1,
   },
 });
 
