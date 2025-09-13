@@ -23,7 +23,7 @@ const Index = () => {
       <View style={styles.content}>
         <View style={styles.logoContainer}>
           <Image 
-            source={require("../assets/images/react-logo.png")} 
+            source={require("../assets/images/logo.svg")} 
             style={styles.logo}
             resizeMode="contain"
           />

@@ -24,13 +24,16 @@ const Welcome = () => {
       <ScreenWrapper bg="white">
         <View style={styles.container}>
           <View style={styles.content}>
-            <Image
-              source={require("../assets/images/react-logo.png")}
+            
+            <View style={styles.textContainer}>
+              <Text style={styles.title}>
+                Welcome to
+              </Text>
+              <Image
+              source={require("../assets/images/logo.svg")}
               style={styles.image}
               contentFit="contain"
-            />
-            <View style={styles.textContainer}>
-              <Text style={styles.title}>Welcome to KITcal</Text>
+              />
               <Text style={styles.description}>
                 <Text style={styles.boldText}>Sign in to your account</Text>
                 {" or "}
@@ -85,10 +88,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: wp(4),
   },
   title: {
-    fontSize: wp(8),
+    fontSize: wp(7),
     fontWeight: "bold",
     color: theme.colors.text,
-    marginBottom: wp(2),
     textAlign: "center",
   },
   description: {
@@ -101,10 +103,14 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: theme.colors.text,
   },
+  purpleText: {
+    color: theme.colors.primary,
+  },
   image: {
-    width: wp(20),
-    height: wp(20),
-    marginBottom: wp(6),
+    width: wp(40),
+    height: wp(30),
+    marginBottom: wp(0),
+    marginTop: wp(0),
   },
 });
 
