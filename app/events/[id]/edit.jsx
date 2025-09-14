@@ -2,7 +2,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Toast from 'react-native-root-toast';
 import CustomButton from '../../../components/CustomButton';
@@ -11,7 +11,7 @@ import LoadingState from '../../../components/LoadingState';
 import ScreenWrapper from '../../../components/ScreenWrapper';
 import { theme } from '../../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../../helpers/api';
-import { wp } from '../../../helpers/common';
+import { formatDateLocal, parseDateLocal, wp } from '../../../helpers/common';
 
 const EditEventScreen = () => {
   const { id } = useLocalSearchParams();
@@ -26,20 +26,27 @@ const EditEventScreen = () => {
     queryFn: () => apiFetch(`${ENDPOINTS.EVENTS}${id}/`),
   });
 
-  // Form state - initialize with event data if available
-  const [formData, setFormData] = useState(() => event ? {
-    title: event.title,
-    date: new Date(event.date),
-    type: event.type,
-    person_id: event.person?.id || null,
-    notes: event.notes || '',
-  } : {
+  // Form state
+  const [formData, setFormData] = useState({
     title: '',
     date: new Date(),
     type: 'general',
     person_id: null,
     notes: '',
   });
+
+  // Update form when event data is loaded
+  useEffect(() => {
+    if (event) {
+      setFormData({
+        title: event.title,
+        date: parseDateLocal(event.date),
+        type: event.type,
+        person_id: event.person?.id || null,
+        notes: event.notes || '',
+      });
+    }
+  }, [event]);
 
   const handleSave = async () => {
     if (!formData.title.trim()) {
@@ -57,7 +64,7 @@ const EditEventScreen = () => {
       // Format date as YYYY-MM-DD in local timezone
       const apiData = {
         title: formData.title.trim(),
-        date: `${formData.date.getFullYear()}-${String(formData.date.getMonth() + 1).padStart(2, '0')}-${String(formData.date.getDate()).padStart(2, '0')}`,
+        date: formatDateLocal(formData.date),
         type: formData.type,
         notes: formData.notes.trim(),
         person_id: formData.person_id,

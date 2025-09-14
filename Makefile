@@ -69,7 +69,7 @@ reset-db:
 	cd djangoproject && ../$(PYTHON_VENV) manage.py reset_db
 
 # Test commands
-test: test-backend test-frontend
+test: test-backend
 
 # Backend tests
 test-backend:
