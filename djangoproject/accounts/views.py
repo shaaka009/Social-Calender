@@ -32,8 +32,9 @@ from .serializers import (
     InteractionSerializer,
     EventSerializer,
     UserProfileSerializer,
+    TagSerializer,
 )
-from .models import Connection, Interaction, Person, Account, Event
+from .models import Connection, Interaction, Person, Account, Event, Tag
 from .authentication import CsrfExemptSessionAuthentication
 
 from .forms import UserRegistrationForm
@@ -411,6 +412,45 @@ class EventViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+
+# -------------------------------------------------
+# Tag ViewSet – list & create, scoped to request user
+# -------------------------------------------------
+
+
+class TagViewSet(mixins.ListModelMixin,
+                 mixins.CreateModelMixin,
+                 viewsets.GenericViewSet):
+    serializer_class = TagSerializer
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [CsrfExemptSessionAuthentication]
+
+    def get_queryset(self):
+        user_person = get_or_create_person_for_user(self.request.user)
+        return Tag.objects.filter(owner=user_person).order_by("name")
+
+    def perform_create(self, serializer):
+        user_person = get_or_create_person_for_user(self.request.user)
+        name = serializer.validated_data.get("name")
+        color = serializer.validated_data.get("color", "#cccccc")
+
+        tag, created = Tag.objects.get_or_create(owner=user_person, name=name, defaults={"color": color})
+
+        # If tag existed but color changed, update it
+        if not created and tag.color != color:
+            tag.color = color
+            tag.save(update_fields=["color"])
+
+        self._created = created  # flag for custom status
+        self.tag_instance = tag
+
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        if hasattr(self, "_created") and not self._created:
+            response.status_code = status.HTTP_200_OK
+            response.data = TagSerializer(self.tag_instance).data
+        return response
 
 
 class UserProfileAPIView(APIView):

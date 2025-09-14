@@ -10,6 +10,7 @@ from .models import (
     Interaction,
     Event,  # Existing models left intact for now
     Notification,
+    Tag,
 )
 
 # -------------------------------------------------------------------
@@ -73,6 +74,16 @@ class UserSearchSerializer(serializers.ModelSerializer):
             'connection_status',
         )
         read_only_fields = fields
+
+# -------------------------------------------------------------------
+# Tag
+# -------------------------------------------------------------------
+
+
+class TagSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Tag
+        fields = ("id", "name", "color")
 
 # -------------------------------------------------------------------
 # Connection (replaces Contact)
@@ -165,7 +176,6 @@ class ConnectionSerializer(serializers.ModelSerializer):
             "phone",
             "birthday",
             "notes",
-            "tags",
         ]
 
         # Determine if this is a manual contact (target.person.owner == connection.owner)
@@ -179,9 +189,19 @@ class ConnectionSerializer(serializers.ModelSerializer):
                     setattr(target_person, field, validated_data.pop(field))
             target_person.save()
 
-        # The remaining validated_data keys correspond to Connection fields –
-        # fall back to the default update implementation for those.
+        # Handle tag updates (owner scoped)
+        if "tags" in validated_data:
+            tag_names = validated_data.pop("tags")
+            owner = instance.owner
+            tag_objs = [Tag.objects.get_or_create(owner=owner, name=name.strip())[0] for name in tag_names]
+            instance.tags.set(tag_objs)
+
         return super().update(instance, validated_data)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["tags"] = [tag.name for tag in instance.tags.all()]
+        return data
 
     class Meta:
         model = Connection
