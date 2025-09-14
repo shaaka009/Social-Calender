@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { theme } from '../../constants/theme';
@@ -13,9 +14,17 @@ const ContactCard = ({ contact, onPress }) => {
       onPress={() => onPress(contact)}
     >
       <View style={styles.avatarContainer}>
-        <Text style={styles.avatarText}>
-          {person.first_name?.[0]}{person.last_name?.[0]}
-        </Text>
+        {person.profile_picture_url ? (
+          <Image
+            source={{ uri: person.profile_picture_url }}
+            style={styles.avatarImage}
+            contentFit="cover"
+          />
+        ) : (
+          <Text style={styles.avatarText}>
+            {person.first_name?.[0]}{person.last_name?.[0]}
+          </Text>
+        )}
       </View>
       
       <View style={styles.details}>
@@ -67,6 +76,11 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: wp(5),
     fontWeight: '600',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: wp(6),
   },
   details: {
     flex: 1,
