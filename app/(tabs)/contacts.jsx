@@ -101,7 +101,7 @@ const Contacts = () => {
 
         <TextInput
           style={styles.searchInput}
-          placeholder="Search contacts..."
+          placeholder="Search your contacts..."
           value={searchQuery}
           onChangeText={setSearchQuery}
           placeholderTextColor={theme.colors.textLight}
@@ -118,7 +118,6 @@ const Contacts = () => {
           )}
           ListHeaderComponent={renderTags}
           contentContainerStyle={styles.listContent}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
         />
       </View>
     </ScreenWrapper>
@@ -128,13 +127,14 @@ const Contacts = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: wp(5),
+    paddingVertical: wp(5),
   },
   titleContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: wp(4),
+    paddingHorizontal: wp(5),
   },
   title: {
     fontSize: wp(6),
@@ -179,12 +179,14 @@ const styles = StyleSheet.create({
   },
   header: {
     marginBottom: wp(4),
+    paddingHorizontal: wp(5),
   },
   searchInput: {
     backgroundColor: theme.colors.backgroundSecondary,
     borderRadius: wp(2),
     padding: wp(3),
     marginBottom: wp(4),
+    marginHorizontal: wp(5),
     fontSize: wp(4),
     color: theme.colors.text,
   },
@@ -210,10 +212,7 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   listContent: {
-    gap: wp(3),
-  },
-  separator: {
-    height: wp(3),
+    paddingBottom: wp(3),
   },
 });
 

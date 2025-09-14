@@ -32,23 +32,16 @@ const ContactCard = ({ contact, onPress }) => {
           {person.first_name} {person.last_name}
         </Text>
         
-        <View style={styles.infoRow}>
-          {person.birthday && (
-            <Text style={styles.infoText}>
-              🎂 {new Date(person.birthday).toLocaleDateString()}
-            </Text>
-          )}
-          {daysSinceContact !== null && (
-            <Text style={[
-              styles.infoText,
-              daysSinceContact > 30 && styles.warningText
-            ]}>
-              {daysSinceContact === 0 ? "Contacted today" :
-               daysSinceContact === 1 ? "Contacted yesterday" :
-               `${daysSinceContact} days since last contact`}
-            </Text>
-          )}
-        </View>
+        {daysSinceContact !== null && (
+          <Text style={[
+            styles.infoText,
+            daysSinceContact > 30 && styles.warningText
+          ]}>
+            {daysSinceContact === 0 ? "Contacted today" :
+             daysSinceContact === 1 ? "Contacted yesterday" :
+             `${daysSinceContact} days since last contact`}
+          </Text>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -57,16 +50,17 @@ const ContactCard = ({ contact, onPress }) => {
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    padding: wp(4),
+    paddingVertical: wp(3),
+    paddingHorizontal: wp(5),
     backgroundColor: theme.colors.backgroundSecondary,
-    borderRadius: wp(3),
     alignItems: 'center',
-    ...theme.shadows.small,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
   },
   avatarContainer: {
-    width: wp(12),
-    height: wp(12),
-    borderRadius: wp(6),
+    width: wp(10),
+    height: wp(10),
+    borderRadius: wp(5),
     backgroundColor: theme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -74,30 +68,25 @@ const styles = StyleSheet.create({
   },
   avatarText: {
     color: '#fff',
-    fontSize: wp(5),
+    fontSize: wp(4),
     fontWeight: '600',
   },
   avatarImage: {
     width: '100%',
     height: '100%',
-    borderRadius: wp(6),
+    borderRadius: wp(5),
   },
   details: {
     flex: 1,
   },
   name: {
-    fontSize: wp(4.5),
+    fontSize: wp(4),
     fontWeight: '600',
     color: theme.colors.text,
-    marginBottom: wp(1),
-  },
-  infoRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: wp(2),
+    marginBottom: wp(0.5),
   },
   infoText: {
-    fontSize: wp(3.5),
+    fontSize: wp(3.2),
     color: theme.colors.textLight,
   },
   warningText: {
