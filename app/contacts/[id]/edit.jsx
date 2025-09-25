@@ -2,7 +2,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, Platform, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, FlatList, Modal, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Toast from 'react-native-root-toast';
 import CustomButton from '../../../components/CustomButton';
 import CustomInput from '../../../components/CustomInput';
@@ -12,6 +12,7 @@ import { theme } from '../../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../../helpers/api';
 import { wp } from '../../../helpers/common';
 import useConnection from '../../../helpers/useConnection';
+import { useCreateTag, useTags } from '../../../helpers/useTags';
 
 const EditContactScreen = () => {
   const { id } = useLocalSearchParams();
@@ -29,7 +30,7 @@ const EditContactScreen = () => {
     birthday: null,
     no_contact_threshold: null,
     notes: '',
-    tags: '',
+    tags: [],
   });
   
   // Date picker state
@@ -47,7 +48,7 @@ const EditContactScreen = () => {
         birthday: person.birthday ? new Date(person.birthday) : null,
         no_contact_threshold: contact.no_contact_threshold,
         notes: person.notes || '',
-        tags: (person.tags || []).join(', '),
+        tags: contact.tags || [],
       });
     }
   }, [contact]);
@@ -60,8 +61,7 @@ const EditContactScreen = () => {
       // Prepare the payload
       const payload = {
         ...formData,
-        // Convert tags string back to array
-        tags: formData.tags.split(',').map(tag => tag.trim()).filter(Boolean),
+        tags: formData.tags,
         // Format date for API
         birthday: formData.birthday ? formData.birthday.toISOString().split('T')[0] : null,
       };
@@ -110,6 +110,33 @@ const EditContactScreen = () => {
   if (isLoading || !contact) {
     return <LoadingState />;
   }
+
+  const { data: tagsList = [] } = useTags();
+  const createTagMutation = useCreateTag();
+  const [modalVisible, setModalVisible] = useState(false);
+  const COLOR_OPTIONS = ['#ff8c00', '#ff4d4f', '#40a9ff', '#52c41a', '#faad14', '#722ed1', '#13c2c2'];
+  const [newTag, setNewTag] = useState({ name: '', color: COLOR_OPTIONS[0] });
+
+  const toggleTag = (tag) => {
+    setFormData((prev) => ({
+      ...prev,
+      tags: prev.tags.includes(tag)
+        ? prev.tags.filter((t) => t !== tag)
+        : [...prev.tags, tag],
+    }));
+  };
+
+  const handleSaveTag = () => {
+    if (!newTag.name.trim()) return;
+    createTagMutation.mutate(newTag, {
+      onSuccess: (data) => {
+        setModalVisible(false);
+        setNewTag({ name: '', color: '#ff8c00' });
+        // auto-select
+        toggleTag(data.name);
+      },
+    });
+  };
 
   return (
     <ScreenWrapper>
@@ -161,6 +188,8 @@ const EditContactScreen = () => {
             />
           </View>
         )}
+
+        <View style={styles.divider} />
 
         {/* Common Editable Fields */}
         <View style={styles.section}>
@@ -281,23 +310,68 @@ const EditContactScreen = () => {
           )}
         </View>
 
+        {/* Tags Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Tags</Text>
+          <View style={styles.tagsRow}>
+            <TouchableOpacity style={styles.plusButton} onPress={() => setModalVisible(true)}>
+              <Text style={{ color: '#fff', fontSize: wp(5) }}>＋</Text>
+            </TouchableOpacity>
+
+            <FlatList
+              data={tagsList.map(t=>t)}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(item)=>item.name}
+              contentContainerStyle={styles.tagsContainer}
+              renderItem={({item:tag})=> (
+                <TouchableOpacity
+                  style={[styles.tagButton,{
+                    backgroundColor: formData.tags.includes(tag.name)?((tag.color&&tag.color!=='#cccccc')?tag.color:theme.colors.primary):'transparent',
+                    borderWidth:1,
+                    borderColor: tag.color||theme.colors.primary,
+                  }]}
+                  onPress={()=>toggleTag(tag.name)}
+                >
+                  <Text style={[styles.tagText,{color:formData.tags.includes(tag.name)?'#fff':theme.colors.textLight}]}>{tag.name}</Text>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+
+          {/* Modal copied from main screen */}
+          <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={()=>setModalVisible(false)}>
+            <View style={styles.modalBackdrop}>
+              <View style={styles.modalContent}>
+                <Text style={styles.modalTitle}>Create Tag</Text>
+                <TextInput style={styles.modalInput} placeholder="Tag name" value={newTag.name} onChangeText={(text)=>setNewTag(prev=>({...prev,name:text}))}/>
+                <View style={styles.colorsRow}>
+                  {COLOR_OPTIONS.map(c=> (
+                    <TouchableOpacity key={c} style={[styles.colorDot,{backgroundColor:c},newTag.color===c&&styles.colorDotSelected]} onPress={()=>setNewTag(prev=>({...prev,color:c}))}/>
+                  ))}
+                </View>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity style={styles.modalBtn} onPress={()=>setModalVisible(false)}><Text style={styles.cancelText}>Cancel</Text></TouchableOpacity>
+                  <TouchableOpacity style={styles.modalBtn} onPress={handleSaveTag}><Text style={styles.saveText}>Save</Text></TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
+          </View>
+
+        <View style={styles.divider} />
+
+        {/* Notes Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Additional Information</Text>
           <CustomInput
-            label="Notes"
+            label=""
             value={formData.notes}
             onChangeText={(text) => setFormData(prev => ({ ...prev, notes: text }))}
             placeholder="Add notes about this contact"
             multiline
             numberOfLines={4}
             style={styles.notesInput}
-          />
-          <CustomInput
-            label="Tags"
-            value={formData.tags}
-            onChangeText={(text) => setFormData(prev => ({ ...prev, tags: text }))}
-            placeholder="Enter tags separated by commas"
-            helper="Example: family, work, gym"
           />
         </View>
 
@@ -437,6 +511,125 @@ const styles = StyleSheet.create({
     color: theme.colors.textLight,
     marginTop: wp(3),
     fontStyle: 'italic',
+  },
+
+  /* Tag styles */
+  newTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: wp(3),
+    gap: wp(2),
+  },
+  newTagInput: {
+    flex: 1,
+    backgroundColor: theme.colors.backgroundSecondary,
+    borderRadius: wp(2),
+    padding: wp(3),
+    color: theme.colors.text,
+  },
+  addTagButton: {
+    backgroundColor: theme.colors.primary,
+    paddingHorizontal: wp(3),
+    paddingVertical: wp(2),
+    borderRadius: wp(2),
+  },
+  tagsContainer: {
+    flexDirection: 'row',
+    gap: wp(2),
+  },
+  tagsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(2),
+  },
+  tagButton: {
+    paddingHorizontal: wp(5),
+    borderRadius: wp(4),
+    backgroundColor: theme.colors.backgroundSecondary,
+    height: wp(8),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tagButtonSelected: {
+    backgroundColor: theme.colors.primary,
+  },
+  tagText: {
+    color: '#fff',
+  },
+  tagTextSelected: {
+    color: '#fff',
+  },
+  plusButton: {
+    backgroundColor: theme.colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: wp(8),
+    height: wp(8),
+    borderRadius: wp(4),
+  },
+
+  /* Modal */
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: wp(3),
+    padding: wp(5),
+    width: '80%',
+  },
+  modalTitle: {
+    fontSize: wp(5),
+    fontWeight: '600',
+    marginBottom: wp(3),
+    color: theme.colors.text,
+  },
+  modalInput: {
+    backgroundColor: theme.colors.backgroundSecondary,
+    borderRadius: wp(2),
+    padding: wp(3),
+    marginBottom: wp(3),
+    color: theme.colors.text,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: wp(3),
+  },
+  modalBtn: {
+    flex: 1,
+  },
+  colorsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: wp(2),
+    marginBottom: wp(4),
+  },
+  colorDot: {
+    width: wp(7),
+    height: wp(7),
+    borderRadius: wp(3.5),
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  colorDotSelected: {
+    borderColor: theme.colors.text,
+  },
+  cancelText: {
+    color: theme.colors.text,
+    fontSize: wp(4),
+  },
+  saveText: {
+    color: theme.colors.primary,
+    fontSize: wp(4),
+  },
+
+  divider: {
+    height: 1,
+    backgroundColor: theme.colors.border,
+    marginVertical: wp(4),
   },
 });
 

@@ -10,6 +10,7 @@ from .models import (
     Interaction,
     Event,  # Existing models left intact for now
     Notification,
+    Tag,
 )
 
 # -------------------------------------------------------------------
@@ -75,6 +76,16 @@ class UserSearchSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 # -------------------------------------------------------------------
+# Tag
+# -------------------------------------------------------------------
+
+
+class TagSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Tag
+        fields = ("id", "name", "color")
+
+# -------------------------------------------------------------------
 # Connection (replaces Contact)
 # -------------------------------------------------------------------
 class ConnectionSerializer(serializers.ModelSerializer):
@@ -121,7 +132,9 @@ class ConnectionSerializer(serializers.ModelSerializer):
 
         # Handle manual contact creation
         if 'first_name' in validated_data:
-            # Create a new Person record for the manual contact
+            # Extract tags list (if provided) BEFORE creating Person
+            tag_names = validated_data.pop('tags', [])
+
             target_person = Person.objects.create(
                 owner=owner_person,  # Set the owner for manual contacts
                 first_name=validated_data.pop('first_name'),
@@ -130,7 +143,6 @@ class ConnectionSerializer(serializers.ModelSerializer):
                 phone=validated_data.pop('phone', ''),
                 birthday=validated_data.pop('birthday', None),
                 notes=validated_data.pop('notes', ''),
-                tags=validated_data.pop('tags', []),
             )
         else:
             # Handle app user connection
@@ -146,6 +158,11 @@ class ConnectionSerializer(serializers.ModelSerializer):
                 "status": Connection.PENDING if target_person.is_app_user else Connection.ACCEPTED,
             },
         )
+
+        # Handle tag assignments (only if the request included any)
+        if 'tag_names' in locals() and tag_names:
+            tag_objs = [Tag.objects.get_or_create(owner=owner_person, name=n.strip())[0] for n in tag_names]
+            conn.tags.set(tag_objs)
         return conn
 
     def update(self, instance, validated_data):
@@ -165,7 +182,6 @@ class ConnectionSerializer(serializers.ModelSerializer):
             "phone",
             "birthday",
             "notes",
-            "tags",
         ]
 
         # Determine if this is a manual contact (target.person.owner == connection.owner)
@@ -179,9 +195,19 @@ class ConnectionSerializer(serializers.ModelSerializer):
                     setattr(target_person, field, validated_data.pop(field))
             target_person.save()
 
-        # The remaining validated_data keys correspond to Connection fields –
-        # fall back to the default update implementation for those.
+        # Handle tag updates (owner scoped)
+        if "tags" in validated_data:
+            tag_names = validated_data.pop("tags")
+            owner = instance.owner
+            tag_objs = [Tag.objects.get_or_create(owner=owner, name=name.strip())[0] for name in tag_names]
+            instance.tags.set(tag_objs)
+
         return super().update(instance, validated_data)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["tags"] = [tag.name for tag in instance.tags.all()]
+        return data
 
     class Meta:
         model = Connection
@@ -262,6 +288,13 @@ class InteractionSerializer(serializers.ModelSerializer):
 class EventSerializer(serializers.ModelSerializer):
     person = PersonSerializer(read_only=True)
     person_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    tags = TagSerializer(many=True, read_only=True)
+    tag_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
     def update(self, instance, validated_data):
         # Update person if person_id is provided
         if 'person_id' in validated_data:
@@ -269,11 +302,22 @@ class EventSerializer(serializers.ModelSerializer):
             instance.person = Person.objects.get(id=person_id) if person_id else None
 
         # Update all other fields
+        tag_ids = validated_data.pop('tag_ids', None)
         for field, value in validated_data.items():
             setattr(instance, field, value)
-        
+
         instance.save()
+
+        if tag_ids is not None:
+            instance.tags.set(Tag.objects.filter(id__in=tag_ids))
         return instance
+
+    def create(self, validated_data):
+        tag_ids = validated_data.pop('tag_ids', [])
+        event = Event.objects.create(**validated_data)
+        if tag_ids:
+            event.tags.set(Tag.objects.filter(id__in=tag_ids))
+        return event
 
     class Meta:
         model = Event
@@ -285,10 +329,12 @@ class EventSerializer(serializers.ModelSerializer):
             "notes",
             "person",  # nested read-only data
             "person_id",
+            "tags",
+            "tag_ids",
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "created_at", "updated_at")
+        read_only_fields = ("id", "created_at", "updated_at", "tags")
 
 
 class NotificationSerializer(serializers.ModelSerializer):

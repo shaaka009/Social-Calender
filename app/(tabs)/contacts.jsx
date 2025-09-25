@@ -1,22 +1,28 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import ContactCard from '../../components/contacts/ContactCard';
 import { theme } from '../../constants/theme';
 import { wp } from '../../helpers/common';
 import useContactRequests from '../../helpers/useContactRequests';
 import useContacts from '../../helpers/useContacts';
+import { useCreateTag, useTags } from '../../helpers/useTags';
 
 const Contacts = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState([]);
+  const COLOR_OPTIONS = ['#ff8c00', '#ff4d4f', '#40a9ff', '#52c41a', '#faad14', '#722ed1', '#13c2c2'];
+  const [modalVisible, setModalVisible] = useState(false);
+  const [newTag, setNewTag] = useState({ name: '', color: COLOR_OPTIONS[0] });
 
-  const { data: contacts = [], } = useContacts();
+  const { data: contacts = [] } = useContacts();
+  const { data: tags = [] } = useTags();
+  const createTagMutation = useCreateTag();
   const { pendingCount } = useContactRequests();
 
-  const allTags = [...new Set(contacts.flatMap(contact => contact.target?.tags || []))];
+  const allTags = tags;
 
   const toggleTag = (tag) => {
     setSelectedTags(prev => 
@@ -33,7 +39,7 @@ const Contacts = () => {
         .includes(searchQuery.toLowerCase());
 
     const matchesTags = selectedTags.length === 0 ||
-      selectedTags.some(tag => (contact.target?.tags || []).includes(tag));
+      selectedTags.some(tag => (contact.tags || contact.target?.tags || []).includes(tag));
 
     // Only show accepted connections
     const isAccepted = contact.status === 'accepted';
@@ -45,27 +51,93 @@ const Contacts = () => {
     router.push(`/contacts/${contact.id}`);
   }, []);
 
+  const handleSaveTag = () => {
+    if (!newTag.name.trim()) return;
+    createTagMutation.mutate(newTag, {
+      onSuccess: () => {
+        setModalVisible(false);
+        setNewTag({ name: '', color: COLOR_OPTIONS[0] });
+      },
+    });
+  };
+
   const renderTags = () => (
     <View style={styles.header}>
-      <View style={styles.tagsContainer}>
-        {allTags.map(tag => (
-          <TouchableOpacity
-            key={tag}
-            style={[
-              styles.tagButton,
-              selectedTags.includes(tag) && styles.tagButtonSelected
-            ]}
-            onPress={() => toggleTag(tag)}
-          >
-            <Text style={[
-              styles.tagText,
-              selectedTags.includes(tag) && styles.tagTextSelected
-            ]}>
-              {tag}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      <View style={styles.tagsRow}>
+        <TouchableOpacity style={styles.plusButton} onPress={() => setModalVisible(true)}>
+          <Ionicons name="add" size={wp(6)} color="#fff" />
+        </TouchableOpacity>
+
+        <FlatList
+          data={allTags}
+          horizontal
+          keyExtractor={(item) => item.name}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tagsContainer}
+          renderItem={({ item: tag }) => (
+            <TouchableOpacity
+              style={[
+                styles.tagButton,
+                {
+                  backgroundColor: selectedTags.includes(tag.name)
+                    ? tag.color || theme.colors.primary
+                    : 'transparent',
+                  borderWidth: 1,
+                  borderColor: tag.color || theme.colors.primary,
+                },
+              ]}
+              onPress={() => toggleTag(tag.name)}
+            >
+              <Text
+                style={[
+                  styles.tagText,
+                  {
+                    color: selectedTags.includes(tag.name) ? '#fff' : theme.colors.textLight,
+                  },
+                ]}>
+                {tag.name}
+              </Text>
+            </TouchableOpacity>
+          )}
+        />
       </View>
+
+      {/* Modal */}
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Create Tag</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Tag name"
+              value={newTag.name}
+              onChangeText={(text) => setNewTag((prev) => ({ ...prev, name: text }))}
+            />
+            <View style={styles.colorsRow}>
+              {COLOR_OPTIONS.map((c) => (
+                <TouchableOpacity
+                  key={c}
+                  style={[styles.colorDot, { backgroundColor: c }, newTag.color === c && styles.colorDotSelected]}
+                  onPress={() => setNewTag((prev) => ({ ...prev, color: c }))}
+                />
+              ))}
+            </View>
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalBtn} onPress={() => setModalVisible(false)}>
+                <Text style={styles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalBtn} onPress={handleSaveTag}>
+                <Text style={styles.saveText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 
@@ -107,6 +179,8 @@ const Contacts = () => {
           placeholderTextColor={theme.colors.textLight}
         />
 
+        {renderTags()}
+
         <FlatList
           data={contacts.filter(filterContacts)}
           keyExtractor={item => item.id.toString()}
@@ -116,7 +190,6 @@ const Contacts = () => {
               onPress={handleContactPress}
             />
           )}
-          ListHeaderComponent={renderTags}
           contentContainerStyle={styles.listContent}
         />
       </View>
@@ -192,14 +265,46 @@ const styles = StyleSheet.create({
   },
   tagsContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: wp(2),
+  },
+  tagsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(2),
+  },
+  plusButton: {
+    backgroundColor: theme.colors.primary,
+    width: wp(8),
+    height: wp(8),
+    borderRadius: wp(4),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  newTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: wp(2),
+  },
+  newTagInput: {
+    flex: 1,
+    backgroundColor: theme.colors.backgroundSecondary,
+    borderRadius: wp(2),
+    padding: wp(3),
+    marginRight: wp(2),
+    color: theme.colors.text,
+  },
+  addTagButton: {
+    backgroundColor: theme.colors.primary,
+    padding: wp(2),
+    borderRadius: wp(2),
   },
   tagButton: {
     paddingHorizontal: wp(3),
     paddingVertical: wp(1.5),
     borderRadius: wp(4),
     backgroundColor: theme.colors.backgroundSecondary,
+    minHeight: wp(8),
+    justifyContent: 'center',
   },
   tagButtonSelected: {
     backgroundColor: theme.colors.primary,
@@ -213,6 +318,67 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: wp(3),
+  },
+
+  /* Modal styles */
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: wp(3),
+    padding: wp(5),
+    width: '80%',
+  },
+  modalTitle: {
+    fontSize: wp(5),
+    fontWeight: '600',
+    marginBottom: wp(3),
+    color: theme.colors.text,
+  },
+  modalInput: {
+    backgroundColor: theme.colors.backgroundSecondary,
+    borderRadius: wp(2),
+    padding: wp(3),
+    marginBottom: wp(3),
+    color: theme.colors.text,
+  },
+  colorsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: wp(2),
+    marginBottom: wp(4),
+  },
+  colorDot: {
+    width: wp(7),
+    height: wp(7),
+    borderRadius: wp(3.5),
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  colorDotSelected: {
+    borderColor: theme.colors.text,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: wp(3),
+  },
+  modalBtn: {
+    paddingHorizontal: wp(3),
+    paddingVertical: wp(1),
+  },
+  cancelText: {
+    color: theme.colors.text,
+    fontSize: wp(4),
+  },
+  saveText: {
+    color: theme.colors.primary,
+    fontSize: wp(4),
+    fontWeight: '600',
   },
 });
 

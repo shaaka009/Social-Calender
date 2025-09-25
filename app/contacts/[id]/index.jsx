@@ -10,12 +10,18 @@ import { theme } from '../../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../../helpers/api';
 import { wp } from '../../../helpers/common';
 import useConnection from '../../../helpers/useConnection';
+import { useTags } from '../../../helpers/useTags';
 
 const ContactProfileScreen = () => {
   const { id } = useLocalSearchParams();
   const { data: contact, isLoading } = useConnection(id);
   const person = contact?.target || {};
-  
+
+  // Get user's tag palette to resolve colors
+  const { data: tagsPalette = [] } = useTags();
+
+  const tagColor = (name) => tagsPalette.find((t) => t.name === name)?.color || theme.colors.primary;
+
   // Fetch recent interactions
   const { data: interactions = [] } = useQuery({
     queryKey: ['interactions', person.id],
@@ -78,8 +84,8 @@ const ContactProfileScreen = () => {
           <InfoRow label="Email" value={person.email || '—'} />
           <InfoRow label="Phone" value={person.phone || '—'} />
           <InfoRow label="Birthday" value={formatDate(person.birthday)} />
-          <InfoRow 
-            label="Last Contact" 
+          <InfoRow
+            label="Last Contact"
             value={contact.last_contact_date ? formatDate(contact.last_contact_date) : 'No interactions logged'}
           />
         </View>
@@ -118,13 +124,13 @@ const ContactProfileScreen = () => {
         ) : null}
 
         {/* Tags */}
-        {person.tags?.length ? (
+        {contact.tags?.length ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Tags</Text>
             <View style={styles.tagContainer}>
-              {person.tags.map((tag) => (
-                <View key={tag} style={styles.tag}>
-                  <Text style={styles.tagText}>{tag}</Text>
+              {contact.tags.map((tag) => (
+                <View key={tag} style={[styles.tag, { backgroundColor: tagColor(tag) }] }>
+                  <Text style={styles.tagTextWhite}>{tag}</Text>
                 </View>
               ))}
             </View>
@@ -268,13 +274,13 @@ const styles = StyleSheet.create({
     gap: wp(2),
   },
   tag: {
-    backgroundColor: theme.colors.backgroundSecondary,
+    backgroundColor: theme.colors.primary,
     paddingHorizontal: wp(3),
     paddingVertical: wp(1.5),
     borderRadius: wp(4),
   },
-  tagText: {
-    color: theme.colors.text,
+  tagTextWhite: {
+    color: '#fff',
     fontSize: wp(3.5),
   },
   actions: {

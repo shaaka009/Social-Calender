@@ -15,6 +15,7 @@ export const ENDPOINTS = {
   EVENTS: `${API_BASE_URL}/api/events/`,
   EVENT_DETAIL: (id) => `${API_BASE_URL}/api/events/${id}/`,
   PROFILE: `${API_BASE_URL}/api/profile/`,
+  TAGS: `${API_BASE_URL}/api/tags/`,
 };
 
 // Lightweight wrapper around fetch that always includes credentials and throws on non-2xx

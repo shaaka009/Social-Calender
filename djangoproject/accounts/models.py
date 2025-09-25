@@ -29,6 +29,14 @@ class Event(models.Model):
         related_name='events_related',
     )  # Replaces contact_id
 
+    # Many-to-many tags (share same Tag model as connections)
+    tags = models.ManyToManyField(
+        'Tag',
+        related_name='events',
+        blank=True,
+        help_text='User-defined tags to group events and connect them to contacts.',
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -79,7 +87,6 @@ class Person(models.Model):
     phone = models.CharField(max_length=30, blank=True)
     birthday = models.DateField(null=True, blank=True)
     notes = models.TextField(blank=True)
-    tags = models.JSONField(default=list, blank=True)
     profile_picture = models.ImageField(upload_to='profile_pictures/', null=True, blank=True)
     
     # For manual contacts, points to the Person who created this record
@@ -107,6 +114,34 @@ class Person(models.Model):
     @property
     def is_app_user(self):
         return hasattr(self, "account")
+
+
+# ---------------------------------------------------
+# Tag model – scoped to the owner (Person) so each user maintains
+# their own tag namespace.  A tag can be attached to many connections
+# for that owner.
+# ---------------------------------------------------
+
+
+class Tag(models.Model):
+    owner = models.ForeignKey(
+        Person,
+        on_delete=models.CASCADE,
+        related_name="tags",
+        help_text="The user (Person) who created this tag.",
+    )
+    name = models.CharField(max_length=50)
+    color = models.CharField(max_length=7, default="#cccccc", help_text="Hex color like #FF0000")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("owner", "name")
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
 
 
 # ---------------------------------------------------
@@ -161,6 +196,12 @@ class Connection(models.Model):
         null=True,
         blank=True,
         help_text="Number of days after which to generate a no-contact notification for this connection. Null means no notifications."
+    )
+    # Many-to-many tag assignments (owned by `owner` via Tag.owner)
+    tags = models.ManyToManyField(
+        "Tag",
+        related_name="connections",
+        blank=True,
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
