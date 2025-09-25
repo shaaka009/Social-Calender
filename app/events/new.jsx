@@ -250,7 +250,8 @@ const styles = StyleSheet.create({
     padding: wp(5),
   },
   section: {
-    marginBottom: wp(6),
+    marginBottom: wp(3),
+    gap: wp(2),
   },
   sectionTitle: {
     fontSize: wp(4.5),

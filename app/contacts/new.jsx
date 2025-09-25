@@ -2,7 +2,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import CustomButton from '../../components/CustomButton';
 import CustomInput from '../../components/CustomInput';
 import LoadingState from '../../components/LoadingState';
@@ -10,6 +10,7 @@ import ScreenWrapper from '../../components/ScreenWrapper';
 import { theme } from '../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../helpers/api';
 import { formatDateLocal, wp } from '../../helpers/common';
+import { useCreateTag, useTags } from '../../helpers/useTags';
 
 const AddContactScreen = () => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -30,8 +31,15 @@ const AddContactScreen = () => {
     email: '',
     phone: '',
     birthday: '',
-    tags: '',
   });
+  const [selectedTags, setSelectedTags] = useState([]);
+  const { data: tags = [] } = useTags();
+  const createTagMutation = useCreateTag();
+
+  const COLOR_OPTIONS = ['#ff8c00', '#ff4d4f', '#40a9ff', '#52c41a', '#faad14', '#722ed1', '#13c2c2'];
+  const [modalVisible, setModalVisible] = useState(false);
+  const [newTag, setNewTag] = useState({ name: '', color: COLOR_OPTIONS[0] });
+
   const [loading, setLoading] = useState(false);
   const [errors, ] = useState({});
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -69,16 +77,13 @@ const AddContactScreen = () => {
 
     setLoading(true);
     try {
+      const payload = { ...form };
+      if (selectedTags.length) payload.tags = selectedTags;
+
       await apiFetch(ENDPOINTS.CONNECTIONS, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...form,
-          tags: form.tags
-            .split(',')
-            .map(t => t.trim())
-            .filter(Boolean),
-        }),
+        body: JSON.stringify(payload),
       });
       router.replace('/contacts');
     } catch (err) {
@@ -279,11 +284,84 @@ const AddContactScreen = () => {
                 }}
               />
             )}
-            <CustomInput
-              label="Tags (comma separated)"
-              value={form.tags}
-              onChangeText={text => handleChange('tags', text)}
-            />
+            {/* Tags Row */}
+            <View style={styles.tagsRow}>
+              <Pressable style={styles.plusButton} onPress={() => setModalVisible(true)}>
+                <Text style={styles.plusText}>+</Text>
+              </Pressable>
+
+              <FlatList
+                data={tags}
+                horizontal
+                keyExtractor={(item) => item.name}
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.tagsContainer}
+                renderItem={({ item: tag }) => {
+                  const isSelected = selectedTags.includes(tag.name);
+                  return (
+                    <Pressable
+                      onPress={() => setSelectedTags(prev => prev.includes(tag.name) ? prev.filter(t => t !== tag.name) : [...prev, tag.name])}
+                      style={[styles.tagButton, {
+                        backgroundColor: isSelected ? tag.color || theme.colors.primary : 'transparent',
+                        borderColor: tag.color || theme.colors.primary,
+                      }]}
+                    >
+                      <Text style={[styles.tagText, { color: isSelected ? '#fff' : theme.colors.textLight }]}>
+                        {tag.name}
+                      </Text>
+                    </Pressable>
+                  );
+                }}
+              />
+            </View>
+
+            {/* Create Tag Modal */}
+            <Modal
+              visible={modalVisible}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setModalVisible(false)}
+            >
+              <View style={styles.modalBackdrop}>
+                <View style={styles.modalContent}>
+                  <Text style={styles.modalTitle}>Create Tag</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder="Tag name"
+                    value={newTag.name}
+                    onChangeText={(text) => setNewTag((prev) => ({ ...prev, name: text }))}
+                  />
+                  <View style={styles.colorsRow}>
+                    {COLOR_OPTIONS.map((c) => (
+                      <Pressable
+                        key={c}
+                        style={[styles.colorDot, { backgroundColor: c }, newTag.color === c && styles.colorDotSelected]}
+                        onPress={() => setNewTag((prev) => ({ ...prev, color: c }))}
+                      />
+                    ))}
+                  </View>
+                  <View style={styles.modalActions}>
+                    <Pressable style={styles.modalBtn} onPress={() => setModalVisible(false)}>
+                      <Text style={styles.cancelText}>Cancel</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.modalBtn}
+                      onPress={() => {
+                        if (!newTag.name.trim()) return;
+                        createTagMutation.mutate(newTag, {
+                          onSuccess: () => {
+                            setModalVisible(false);
+                            setNewTag({ name: '', color: COLOR_OPTIONS[0] });
+                          },
+                        });
+                      }}
+                    >
+                      <Text style={styles.saveText}>Save</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
+            </Modal>
             <View style={{ height: wp(4) }} />
             <CustomButton 
               title="Save Manual Contact" 
@@ -419,6 +497,102 @@ const styles = StyleSheet.create({
   },
   datePickerButton: {
     flex: 1,
+  },
+  /* Tags */
+  tagsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(2),
+  },
+  plusButton: {
+    backgroundColor: theme.colors.primary,
+    width: wp(8),
+    height: wp(8),
+    borderRadius: wp(4),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  plusText: {
+    color: '#fff',
+    fontSize: wp(6),
+    lineHeight: wp(8),
+  },
+  tagsContainer: {
+    flexDirection: 'row',
+    gap: wp(2),
+  },
+  tagButton: {
+    paddingHorizontal: wp(3),
+    paddingVertical: wp(1.5),
+    borderRadius: wp(4),
+    borderWidth: 1,
+    backgroundColor: theme.colors.backgroundSecondary,
+    minHeight: wp(8),
+    justifyContent: 'center',
+  },
+  tagText: {
+    fontSize: wp(3.5),
+  },
+
+  /* Modal */
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: wp(3),
+    padding: wp(5),
+    width: '80%',
+  },
+  modalTitle: {
+    fontSize: wp(5),
+    fontWeight: '600',
+    marginBottom: wp(3),
+    color: theme.colors.text,
+  },
+  modalInput: {
+    backgroundColor: theme.colors.backgroundSecondary,
+    borderRadius: wp(2),
+    padding: wp(3),
+    marginBottom: wp(3),
+    color: theme.colors.text,
+  },
+  colorsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: wp(2),
+    marginBottom: wp(4),
+  },
+  colorDot: {
+    width: wp(7),
+    height: wp(7),
+    borderRadius: wp(3.5),
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  colorDotSelected: {
+    borderColor: theme.colors.text,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: wp(3),
+  },
+  modalBtn: {
+    paddingHorizontal: wp(3),
+    paddingVertical: wp(1),
+  },
+  cancelText: {
+    color: theme.colors.text,
+    fontSize: wp(4),
+  },
+  saveText: {
+    color: theme.colors.primary,
+    fontSize: wp(4),
+    fontWeight: '600',
   },
 });
 

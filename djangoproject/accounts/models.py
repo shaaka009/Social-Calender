@@ -29,6 +29,14 @@ class Event(models.Model):
         related_name='events_related',
     )  # Replaces contact_id
 
+    # Many-to-many tags (share same Tag model as connections)
+    tags = models.ManyToManyField(
+        'Tag',
+        related_name='events',
+        blank=True,
+        help_text='User-defined tags to group events and connect them to contacts.',
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
