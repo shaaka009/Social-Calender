@@ -1,11 +1,11 @@
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Toast from 'react-native-root-toast';
 import CustomButton from '../../components/CustomButton';
 import CustomInput from '../../components/CustomInput';
+import MonthDayYearPicker from '../../components/MonthDayYearPicker';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import { theme } from '../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../helpers/api';
@@ -19,7 +19,6 @@ const EVENT_TYPES = [
 const AddEventScreen = () => {
   const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Form state
@@ -120,53 +119,11 @@ const AddEventScreen = () => {
           </View>
 
           {/* Date Picker */}
-          <Text style={styles.label}>Date</Text>
-          <CustomButton
-            title={form.date.toLocaleDateString()}
-            variant="outline"
-            onPress={() => setShowDatePicker(true)}
-            style={styles.dateButton}
+          <MonthDayYearPicker
+            label="Date"
+            date={form.date}
+            onChange={(d)=>setForm(prev=>({...prev,date:d}))}
           />
-          {showDatePicker && Platform.OS === 'ios' && (
-            <View style={styles.datePickerContainer}>
-              <DateTimePicker
-                value={form.date}
-                mode="date"
-                display="spinner"
-                onChange={(event, selectedDate) => {
-                  if (selectedDate) {
-                    setForm(prev => ({ ...prev, date: selectedDate }));
-                  }
-                }}
-              />
-              <View style={styles.datePickerButtons}>
-                <CustomButton
-                  title="Cancel"
-                  variant="outline"
-                  onPress={() => setShowDatePicker(false)}
-                  style={styles.datePickerButton}
-                />
-                <CustomButton
-                  title="Confirm"
-                  onPress={() => setShowDatePicker(false)}
-                  style={styles.datePickerButton}
-                />
-              </View>
-            </View>
-          )}
-          {showDatePicker && Platform.OS === 'android' && (
-            <DateTimePicker
-              value={form.date}
-              mode="date"
-              display="default"
-              onChange={(event, selectedDate) => {
-                setShowDatePicker(false);
-                if (selectedDate) {
-                  setForm(prev => ({ ...prev, date: selectedDate }));
-                }
-              }}
-            />
-          )}
         </View>
 
         {/* Associated Contact */}

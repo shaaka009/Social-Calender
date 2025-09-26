@@ -1,16 +1,16 @@
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, FlatList, Modal, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, Modal, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Toast from 'react-native-root-toast';
 import CustomButton from '../../../components/CustomButton';
 import CustomInput from '../../../components/CustomInput';
 import LoadingState from '../../../components/LoadingState';
+import MonthDayYearPicker from '../../../components/MonthDayYearPicker';
 import ScreenWrapper from '../../../components/ScreenWrapper';
 import { theme } from '../../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../../helpers/api';
-import { wp } from '../../../helpers/common';
+import { formatDateLocal, parseDateLocal, wp } from '../../../helpers/common';
 import useConnection from '../../../helpers/useConnection';
 import { useCreateTag, useTags } from '../../../helpers/useTags';
 
@@ -33,9 +33,7 @@ const EditContactScreen = () => {
     tags: [],
   });
   
-  // Date picker state
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [tempDate, setTempDate] = useState(null);
+  // MonthDayYearPicker handles date selection
 
   // Initialize form data when contact loads
   React.useEffect(() => {
@@ -63,7 +61,11 @@ const EditContactScreen = () => {
         ...formData,
         tags: formData.tags,
         // Format date for API
-        birthday: formData.birthday ? formData.birthday.toISOString().split('T')[0] : null,
+        birthday: formData.birthday
+          ? (formData.birthday instanceof Date
+              ? formatDateLocal(formData.birthday)
+              : formData.birthday)
+          : null,
       };
 
       // For app users, only send editable fields
@@ -242,72 +244,17 @@ const EditContactScreen = () => {
             </Text>
           </View>
           
-          {/* Birthday Picker */}
-          <Text style={styles.label}>Birthday</Text>
-          <CustomButton
-            title={formData.birthday ? formData.birthday.toLocaleDateString() : 'Select Birthday'}
-            variant="outline"
-            onPress={() => {
-              const now = new Date();
-              setShowDatePicker(true);
-              setTempDate(formData.birthday || now);
-            }}
-            style={styles.dateButton}
+          {/* Birthday */}
+          <MonthDayYearPicker
+            label="Birthday"
+            date={(() => {
+              if (!formData.birthday) return new Date();
+              return typeof formData.birthday === 'string'
+                ? parseDateLocal(formData.birthday)
+                : new Date(formData.birthday);
+            })()}
+            onChange={(d)=>setFormData(prev=>({...prev,birthday:d}))}
           />
-          {showDatePicker && Platform.OS === 'ios' && (
-            <View style={styles.datePickerContainer}>
-              <DateTimePicker
-                value={tempDate || new Date()}
-                mode="date"
-                display="spinner"
-                minimumDate={new Date(1900, 0, 1)}
-                maximumDate={new Date()}
-                onChange={(event, selectedDate) => {
-                  if (selectedDate) {
-                    setTempDate(selectedDate);
-                  }
-                }}
-              />
-              <View style={styles.datePickerButtons}>
-                <CustomButton
-                  title="Cancel"
-                  variant="outline"
-                  onPress={() => {
-                    setShowDatePicker(false);
-                    setTempDate(null);
-                  }}
-                  style={styles.datePickerButton}
-                />
-                <CustomButton
-                  title="Confirm"
-                  onPress={() => {
-                    if (tempDate) {
-                      setFormData(prev => ({ ...prev, birthday: tempDate }));
-                    }
-                    setShowDatePicker(false);
-                  }}
-                  style={styles.datePickerButton}
-                />
-              </View>
-            </View>
-          )}
-          {showDatePicker && Platform.OS === 'android' && (
-            <DateTimePicker
-              value={tempDate || new Date()}
-              mode="date"
-              display="default"
-              minimumDate={new Date(1900, 0, 1)}
-              maximumDate={new Date()}
-              onChange={(event, selectedDate) => {
-                if (event.type === 'set') {
-                  if (selectedDate) {
-                    setFormData(prev => ({ ...prev, birthday: selectedDate }));
-                  }
-                }
-                setShowDatePicker(false);
-              }}
-            />
-          )}
         </View>
 
         {/* Tags Section */}

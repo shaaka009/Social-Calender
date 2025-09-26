@@ -532,3 +532,83 @@ class SignupPasswordResetTests(APITestCase):
     def test_password_reset_request_nonexistent_email_still_200(self):
         resp = self.client.post(self.reset_url, {"email": "ghost@example.com"}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage – Tags, User Search, Password Reset confirm, etc.
+# ---------------------------------------------------------------------------
+
+from django.utils.http import urlsafe_base64_encode
+from django.utils.encoding import force_bytes
+from django.contrib.auth.tokens import default_token_generator
+from .models import Tag  # noqa: E402 – placed after original imports for clarity
+
+
+class TagAPITests(APITestCase):
+    """Tests for TagViewSet behavior."""
+    def setUp(self):
+        self.user, self.person = create_user_with_person("tagger@example.com")
+        self.client.force_authenticate(self.user)
+        self.tag_list_url = reverse("tag-list")
+
+    def test_create_tag(self):
+        payload = {"name": "Friends", "color": "#ff0000"}
+        resp = self.client.post(self.tag_list_url, payload, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(Tag.objects.filter(owner=self.person, name="Friends", color="#ff0000").exists())
+
+    def test_create_duplicate_tag_returns_200_and_updates_color(self):
+        Tag.objects.create(owner=self.person, name="Work", color="#000000")
+        payload = {"name": "Work", "color": "#123456"}
+        resp = self.client.post(self.tag_list_url, payload, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)  # Existing tag updated, per view logic
+        tag = Tag.objects.get(owner=self.person, name="Work")
+        self.assertEqual(tag.color, "#123456")
+
+
+class UserSearchAPITests(APITestCase):
+    """Verify that connection status metadata is returned correctly during user search."""
+    def setUp(self):
+        self.bob_user, self.bob_person = create_user_with_person("bobsearch@example.com")
+        self.alice_user, self.alice_person = create_user_with_person("alicesearch@example.com")
+        self.client.force_authenticate(self.bob_user)
+        self.search_url = reverse("user-search-list")
+
+    def _search_for(self, term: str):
+        return self.client.get(f"{self.search_url}?q={term}")
+
+    def test_no_connection_status_none(self):
+        resp = self._search_for("alice")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data[0]["connection_status"]["status"], "none")
+
+    def test_pending_connection_status(self):
+        # Bob sends request to Alice – pending
+        Connection.objects.create(owner=self.bob_person, target=self.alice_person, status=Connection.PENDING)
+        resp = self._search_for("alice")
+        self.assertEqual(resp.data[0]["connection_status"]["status"], Connection.PENDING)
+        self.assertEqual(resp.data[0]["connection_status"]["is_mutual"], False)
+
+    def test_mutual_accepted_connection_status(self):
+        Connection.objects.create(owner=self.bob_person, target=self.alice_person, status=Connection.ACCEPTED)
+        Connection.objects.create(owner=self.alice_person, target=self.bob_person, status=Connection.ACCEPTED)
+        resp = self._search_for("alice")
+        self.assertTrue(resp.data[0]["connection_status"]["is_mutual"])
+        self.assertEqual(resp.data[0]["connection_status"]["status"], Connection.ACCEPTED)
+
+
+class PasswordResetFlowTests(APITestCase):
+    """Ensure password reset confirm endpoint resets the password successfully."""
+    def setUp(self):
+        self.user, _ = create_user_with_person("resetme@example.com", password="OldPass123!")
+        self.reset_confirm_base = reverse("password_reset_confirm", args=["dummy", "dummy"]).rsplit("/", 2)[0]  # get base path up to /password-reset/
+
+    def test_password_reset_confirm_success(self):
+        uid = urlsafe_base64_encode(force_bytes(self.user.pk))
+        token = default_token_generator.make_token(self.user)
+        url = reverse("password_reset_confirm", args=[uid, token])
+        resp = self.client.post(url, {"password": "NewPass123!"}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        # Authenticate with new password to confirm
+        login_resp = self.client.post(reverse("signin"), {"email": self.user.email, "password": "NewPass123!"}, format="json")
+        self.assertTrue(login_resp.json().get("success"))

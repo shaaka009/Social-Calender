@@ -1,15 +1,15 @@
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { Alert, FlatList, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import CustomButton from '../../components/CustomButton';
 import CustomInput from '../../components/CustomInput';
 import LoadingState from '../../components/LoadingState';
+import MonthDayYearPicker from '../../components/MonthDayYearPicker';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import { theme } from '../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../helpers/api';
-import { formatDateLocal, wp } from '../../helpers/common';
+import { formatDateLocal, parseDateLocal, wp } from '../../helpers/common';
 import { useCreateTag, useTags } from '../../helpers/useTags';
 
 const AddContactScreen = () => {
@@ -42,10 +42,6 @@ const AddContactScreen = () => {
 
   const [loading, setLoading] = useState(false);
   const [errors, ] = useState({});
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  // Use a Date object for consistency with the Event picker implementation
-  const [tempDate, setTempDate] = useState(new Date());
-
   const handleChange = (key, value) => {
     setForm(prev => ({ ...prev, [key]: value }));
   };
@@ -216,74 +212,11 @@ const AddContactScreen = () => {
               keyboardType="phone-pad"
             />
             {/* Birthday Picker */}
-            <View style={styles.birthdayContainer}>
-              <Text style={styles.label}>Birthday</Text>
-              <TouchableOpacity 
-                style={[
-                  styles.birthdayButton,
-                  form.birthday && styles.birthdayButtonSelected
-                ]} 
-                onPress={() => setShowDatePicker(true)}
-              >
-                <Text style={[
-                  styles.birthdayButtonText,
-                  form.birthday && styles.birthdayButtonTextSelected
-                ]}>
-                  {form.birthday 
-                    ? new Date(form.birthday).toLocaleDateString() 
-                    : 'Select date'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            {showDatePicker && Platform.OS === 'ios' && (
-              <View style={styles.datePickerContainer}>
-                <DateTimePicker
-                  value={tempDate}
-                  mode="date"
-                  display="spinner"
-                  onChange={(event, selectedDate) => {
-                    if (selectedDate) {
-                      setTempDate(selectedDate);
-                    }
-                  }}
-                />
-                <View style={styles.datePickerButtons}>
-                  <CustomButton
-                    title="Cancel"
-                    variant="outline"
-                    onPress={() => {
-                      setShowDatePicker(false);
-                      setTempDate(new Date());
-                    }}
-                    style={styles.datePickerButton}
-                  />
-                  <CustomButton
-                    title="Confirm"
-                    onPress={() => {
-                      if (tempDate) {
-                        handleChange('birthday', formatDateLocal(tempDate));
-                      }
-                      setShowDatePicker(false);
-                      setTempDate(new Date());
-                    }}
-                    style={styles.datePickerButton}
-                  />
-                </View>
-              </View>
-            )}
-            {showDatePicker && Platform.OS === 'android' && (
-              <DateTimePicker
-                value={tempDate}
-                mode="date"
-                display="default"
-                onChange={(event, selectedDate) => {
-                  setShowDatePicker(false);
-                  if (selectedDate) {
-                    handleChange('birthday', formatDateLocal(selectedDate));
-                  }
-                }}
-              />
-            )}
+            <MonthDayYearPicker
+              label="Birthday"
+              date={form.birthday ? parseDateLocal(form.birthday) : new Date()}
+              onChange={(d)=>handleChange('birthday', formatDateLocal(d))}
+            />
             {/* Tags Row */}
             <View style={styles.tagsRow}>
               <Pressable style={styles.plusButton} onPress={() => setModalVisible(true)}>

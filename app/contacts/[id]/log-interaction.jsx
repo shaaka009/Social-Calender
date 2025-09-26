@@ -1,13 +1,13 @@
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
-import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Toast from 'react-native-root-toast';
 import CustomButton from '../../../components/CustomButton';
 import CustomInput from '../../../components/CustomInput';
 import LoadingState from '../../../components/LoadingState';
+import MonthDayYearPicker from '../../../components/MonthDayYearPicker';
 import ScreenWrapper from '../../../components/ScreenWrapper';
 import { theme } from '../../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../../helpers/api';
@@ -26,8 +26,7 @@ const LogInteractionScreen = () => {
     queryFn: () => apiFetch(ENDPOINTS.USER),
   });
   const [isSaving, setIsSaving] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [tempDate, setTempDate] = useState(null);
+  // MonthDayYearPicker handles date selection
   
   // Form state
   const [formData, setFormData] = useState({
@@ -109,71 +108,11 @@ const LogInteractionScreen = () => {
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
         {/* Date Picker */}
         <View style={styles.section}>
-          <Text style={styles.label}>Date</Text>
-          <CustomButton
-            title={formData.date.toLocaleDateString()}
-            variant="outline"
-            onPress={() => {
-              const now = new Date();
-              setShowDatePicker(true);
-              setTempDate(formData.date || now);
-            }}
-            style={styles.dateButton}
+          <MonthDayYearPicker
+            label="Date"
+            date={formData.date}
+            onChange={(d)=>setFormData(prev=>({...prev,date:d}))}
           />
-          {showDatePicker && Platform.OS === 'ios' && (
-            <View style={styles.datePickerContainer}>
-              <DateTimePicker
-                value={tempDate || new Date()}
-                mode="date"
-                display="spinner"
-                minimumDate={new Date(1900, 0, 1)}
-                maximumDate={new Date()}
-                onChange={(event, selectedDate) => {
-                  if (selectedDate) {
-                    setTempDate(selectedDate);
-                  }
-                }}
-              />
-              <View style={styles.datePickerButtons}>
-                <CustomButton
-                  title="Cancel"
-                  variant="outline"
-                  onPress={() => {
-                    setShowDatePicker(false);
-                    setTempDate(null);
-                  }}
-                  style={styles.datePickerButton}
-                />
-                <CustomButton
-                  title="Confirm"
-                  onPress={() => {
-                    if (tempDate) {
-                      setFormData(prev => ({ ...prev, date: tempDate }));
-                    }
-                    setShowDatePicker(false);
-                  }}
-                  style={styles.datePickerButton}
-                />
-              </View>
-            </View>
-          )}
-          {showDatePicker && Platform.OS === 'android' && (
-            <DateTimePicker
-              value={tempDate || new Date()}
-              mode="date"
-              display="default"
-              minimumDate={new Date(1900, 0, 1)}
-              maximumDate={new Date()}
-              onChange={(event, selectedDate) => {
-                if (event.type === 'set') {
-                  if (selectedDate) {
-                    setFormData(prev => ({ ...prev, date: selectedDate }));
-                  }
-                }
-                setShowDatePicker(false);
-              }}
-            />
-          )}
         </View>
 
         {/* Interaction Type */}

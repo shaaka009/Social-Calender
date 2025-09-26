@@ -8,7 +8,7 @@ import LoadingState from '../../../components/LoadingState';
 import ScreenWrapper from '../../../components/ScreenWrapper';
 import { theme } from '../../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../../helpers/api';
-import { wp } from '../../../helpers/common';
+import { parseDateLocal, wp } from '../../../helpers/common';
 import useConnection from '../../../helpers/useConnection';
 import { useTags } from '../../../helpers/useTags';
 
@@ -40,7 +40,7 @@ const ContactProfileScreen = () => {
   // Helper to format date
   const formatDate = (dateStr) => {
     if (!dateStr) return '—';
-    return new Date(dateStr).toLocaleDateString();
+    return parseDateLocal(dateStr).toLocaleDateString();
   };
 
   const handleLogInteraction = () => {

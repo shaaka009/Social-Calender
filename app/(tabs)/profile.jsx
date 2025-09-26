@@ -1,14 +1,14 @@
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import React, { useEffect, useState } from "react";
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
 import CustomButton from "../../components/CustomButton";
 import CustomInput from "../../components/CustomInput";
 import LoadingState from "../../components/LoadingState";
+import MonthDayYearPicker from '../../components/MonthDayYearPicker';
 import ScreenWrapper from "../../components/ScreenWrapper";
 import { theme } from "../../constants/theme";
-import { wp } from "../../helpers/common";
+import { formatDateLocal, parseDateLocal, wp } from "../../helpers/common";
 import useProfile, { useUpdateProfileMutation } from "../../helpers/useProfile";
 
 const ProfileScreen = () => {
@@ -24,9 +24,7 @@ const ProfileScreen = () => {
     profile_picture: null,
   });
 
-  // Date picker state
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [tempDate, setTempDate] = useState(null);
+  // MonthDayYearPicker handles date selection
 
   useEffect(() => {
     if (data) {
@@ -157,70 +155,11 @@ const ProfileScreen = () => {
         />
         {/* Birthday */}
         <View style={styles.section}>
-          <Text style={styles.label}>Birthday</Text>
-          <CustomButton
-            title={form.birthday ? form.birthday.toLocaleDateString() : 'Select Birthday'}
-            variant="outline"
-            onPress={() => {
-              setTempDate(form.birthday || new Date());
-              setShowDatePicker(true);
-            }}
-            style={styles.dateButton}
+          <MonthDayYearPicker
+            label="Birthday"
+            date={form.birthday ? parseDateLocal(form.birthday) : new Date()}
+            onChange={(d)=>setForm(prev=>({...prev,birthday:formatDateLocal(d)}))}
           />
-          {showDatePicker && Platform.OS === 'ios' && (
-            <View style={styles.datePickerContainer}>
-              <DateTimePicker
-                value={tempDate || new Date()}
-                mode="date"
-                display="spinner"
-                minimumDate={new Date(1900, 0, 1)}
-                maximumDate={new Date()}
-                onChange={(event, selectedDate) => {
-                  if (selectedDate) {
-                    setTempDate(selectedDate);
-                  }
-                }}
-              />
-              <View style={styles.datePickerButtons}>
-                <CustomButton
-                  title="Cancel"
-                  variant="outline"
-                  onPress={() => {
-                    setShowDatePicker(false);
-                    setTempDate(null);
-                  }}
-                  style={styles.datePickerButton}
-                />
-                <CustomButton
-                  title="Confirm"
-                  onPress={() => {
-                    if (tempDate) {
-                      setForm(prev => ({ ...prev, birthday: tempDate }));
-                    }
-                    setShowDatePicker(false);
-                  }}
-                  style={styles.datePickerButton}
-                />
-              </View>
-            </View>
-          )}
-          {showDatePicker && Platform.OS === 'android' && (
-            <DateTimePicker
-              value={tempDate || new Date()}
-              mode="date"
-              display="default"
-              minimumDate={new Date(1900, 0, 1)}
-              maximumDate={new Date()}
-              onChange={(event, selectedDate) => {
-                if (event.type === 'set') {
-                  if (selectedDate) {
-                    setForm(prev => ({ ...prev, birthday: selectedDate }));
-                  }
-                }
-                setShowDatePicker(false);
-              }}
-            />
-          )}
         </View>
 
         <CustomButton
