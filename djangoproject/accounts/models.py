@@ -81,9 +81,11 @@ class Notification(models.Model):
 # Core "Person" model (applies to EVERY individual)
 # ---------------------------------------------------
 class Person(models.Model):
-    first_name = models.CharField(max_length=100)
-    last_name = models.CharField(max_length=100, blank=True)
-    email = models.EmailField(blank=True)
+    # Identity fields are now optional because for app users we defer to the linked
+    # auth_user record.  For manual contacts (no account), they behave as before.
+    first_name = models.CharField(max_length=100, blank=True, null=True)
+    last_name = models.CharField(max_length=100, blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
     phone = models.CharField(max_length=30, blank=True)
     birthday = models.DateField(null=True, blank=True)
     notes = models.TextField(blank=True)

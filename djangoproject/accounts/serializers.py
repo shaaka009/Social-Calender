@@ -461,9 +461,11 @@ class UserProfileSerializer(serializers.Serializer):
 
         data = {
             "id": person.id,
-            "first_name": person.first_name or (user.first_name if user else ""),
-            "last_name": person.last_name or (user.last_name if user else ""),
-            "email": user.email if user else person.email,
+            # For account holders (person.account.user exists), the authoritative
+            # data lives on auth_user.  For standalone contacts, it lives on Person.
+            "first_name": (user.first_name if user and user.first_name else person.first_name) or "",
+            "last_name": (user.last_name if user and user.last_name else person.last_name) or "",
+            "email": (user.email if user else person.email) or "",
             "phone": person.phone or "",
             "birthday": person.birthday,
         }
@@ -493,6 +495,9 @@ class UserProfileSerializer(serializers.Serializer):
             for attr in ("first_name", "last_name", "email"):
                 if attr in validated_data:
                     setattr(user, attr, validated_data[attr])
+                    # Clear duplicates on Person so it behaves like a wrapper
+                    setattr(person, attr, None)
             user.save()
+            person.save()
         
         return person
