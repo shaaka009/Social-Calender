@@ -1,7 +1,7 @@
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import React, { useEffect, useState } from "react";
-import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import CustomButton from "../../components/CustomButton";
 import CustomInput from "../../components/CustomInput";
 import LoadingState from "../../components/LoadingState";
@@ -33,7 +33,7 @@ const ProfileScreen = () => {
         last_name: data.last_name || "",
         email: data.email || "",
         phone: data.phone || "",
-        birthday: data.birthday ? new Date(data.birthday) : null,
+        birthday: data.birthday || null,
         profile_picture: data.profile_picture || null,
       });
     }
@@ -52,7 +52,7 @@ const ProfileScreen = () => {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: [ImagePicker.MediaType.Images],
+        mediaTypes: ImagePicker.Images,
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
@@ -87,12 +87,7 @@ const ProfileScreen = () => {
     const formData = new FormData();
     Object.keys(form).forEach(key => {
       if (key !== "profile_picture" && form[key]) {
-        if (key === "birthday") {
-          // Format date for API
-          formData.append(key, form[key].toISOString().split('T')[0]);
-        } else {
           formData.append(key, form[key]);
-        }
       }
     });
 

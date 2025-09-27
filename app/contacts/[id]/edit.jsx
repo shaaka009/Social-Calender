@@ -43,7 +43,8 @@ const EditContactScreen = () => {
         last_name: person.last_name || '',
         email: person.email || '',
         phone: person.phone || '',
-        birthday: person.birthday ? new Date(person.birthday) : null,
+        // Use parseDateLocal to construct the date in local timezone to avoid off-by-one errors
+        birthday: person.birthday ? parseDateLocal(person.birthday) : null,
         no_contact_threshold: contact.no_contact_threshold,
         notes: person.notes || '',
         tags: contact.tags || [],
