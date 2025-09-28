@@ -34,6 +34,7 @@ class PersonSerializer(serializers.ModelSerializer):
             "email",
             "phone",
             "birthday",
+            "extra_contacts",
             "is_app_user",
             "profile_picture_url",
         )
@@ -97,6 +98,9 @@ class ConnectionSerializer(serializers.ModelSerializer):
     last_name = serializers.CharField(write_only=True, required=False, allow_blank=True)
     email = serializers.EmailField(write_only=True, required=False, allow_blank=True)
     phone = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    extra_contacts = serializers.ListField(
+        child=serializers.DictField(), write_only=True, required=False
+    )
     birthday = serializers.DateField(write_only=True, required=False, allow_null=True)
     notes = serializers.CharField(write_only=True, required=False, allow_blank=True)
     tags = serializers.ListField(write_only=True, required=False, child=serializers.CharField())
@@ -143,6 +147,7 @@ class ConnectionSerializer(serializers.ModelSerializer):
                 phone=validated_data.pop('phone', ''),
                 birthday=validated_data.pop('birthday', None),
                 notes=validated_data.pop('notes', ''),
+                extra_contacts=validated_data.pop('extra_contacts', []),
             )
         else:
             # Handle app user connection
@@ -182,6 +187,7 @@ class ConnectionSerializer(serializers.ModelSerializer):
             "phone",
             "birthday",
             "notes",
+            "extra_contacts",
         ]
 
         # Determine if this is a manual contact (target.person.owner == connection.owner)
@@ -228,6 +234,7 @@ class ConnectionSerializer(serializers.ModelSerializer):
             "created_at",
             "last_contact_date",
             "no_contact_threshold",
+            "extra_contacts",
         )
         read_only_fields = ("id", "owner", "is_mutual", "created_at")
 
@@ -479,6 +486,7 @@ class UserProfileSerializer(serializers.Serializer):
     email = serializers.EmailField(required=False, allow_blank=True)
     phone = serializers.CharField(required=False, allow_blank=True)
     birthday = serializers.DateField(required=False, allow_null=True)
+    extra_contacts = serializers.ListField(child=serializers.DictField(), required=False)
     profile_picture = serializers.ImageField(required=False, allow_null=True)
 
     def to_representation(self, person):
@@ -495,6 +503,7 @@ class UserProfileSerializer(serializers.Serializer):
             "email": (user.email if user else person.email) or "",
             "phone": person.phone or "",
             "birthday": person.birthday,
+            "extra_contacts": person.extra_contacts,
         }
 
         # Add profile picture URL if it exists
@@ -511,7 +520,7 @@ class UserProfileSerializer(serializers.Serializer):
 
     def update(self, person, validated_data):
         # Update Person fields
-        for attr in ("phone", "birthday", "profile_picture"):
+        for attr in ("phone", "birthday", "profile_picture", "extra_contacts"):
             if attr in validated_data:
                 setattr(person, attr, validated_data[attr])
         person.save()

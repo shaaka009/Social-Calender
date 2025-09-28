@@ -88,6 +88,13 @@ class Person(models.Model):
     phone = models.CharField(max_length=30, blank=True)
     birthday = models.DateField(null=True, blank=True)
     notes = models.TextField(blank=True)
+    # Flexible additional contact methods (e.g. social links)
+    # Stored as a list of objects: [{"type": "LinkedIn", "value": "https://…"}, …]
+    extra_contacts = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Additional contact infos beyond phone/email. List of {type, value} objects.",
+    )
     profile_picture = models.ImageField(upload_to='profile_pictures/', null=True, blank=True)
     
     # For manual contacts, points to the Person who created this record

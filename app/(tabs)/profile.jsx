@@ -71,6 +71,18 @@ const ProfileScreen = () => {
             <Text style={styles.value}>{data.phone || "-"}</Text>
           </View>
 
+          {/* Extra contact methods */}
+          {data.extra_contacts?.length > 0 && (
+            <View style={styles.infoRow}>
+              <Text style={styles.label}>Other Contacts</Text>
+              <View style={{ gap: wp(2) }}>
+                {data.extra_contacts.map((c, idx) => (
+                  <Text key={idx} style={styles.value}>{c.type}: {c.value}</Text>
+                ))}
+              </View>
+            </View>
+          )}
+
           <View style={styles.infoRow}>
             <Text style={styles.label}>Birthday</Text>
             <Text style={styles.value}>
