@@ -362,12 +362,16 @@ class DashboardAPITests(APITestCase):
 
     def test_dashboard_returns_one_year_range_events(self):
         today = date.today()
-        Event.objects.bulk_create([
-            Event(user=self.user, date=today - timedelta(days=364), type=Event.GENERAL, title="Inside Past Year", person=self.person),
-            Event(user=self.user, date=today + timedelta(days=364), type=Event.GENERAL, title="Inside Future Year", person=self.person),
-            Event(user=self.user, date=today - timedelta(days=366), type=Event.GENERAL, title="Outside Past Year", person=self.person),
-            Event(user=self.user, date=today + timedelta(days=366), type=Event.GENERAL, title="Outside Future Year", person=self.person),
+        events = Event.objects.bulk_create([
+            Event(user=self.user, date=today - timedelta(days=364), type=Event.GENERAL, title="Inside Past Year"),
+            Event(user=self.user, date=today + timedelta(days=364), type=Event.GENERAL, title="Inside Future Year"),
+            Event(user=self.user, date=today - timedelta(days=366), type=Event.GENERAL, title="Outside Past Year"),
+            Event(user=self.user, date=today + timedelta(days=366), type=Event.GENERAL, title="Outside Future Year"),
         ])
+        
+        # Add people to events after bulk creation
+        for event in events:
+            event.people.add(self.person)
         resp = self.client.get(self.dashboard_url)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         returned_titles = {e["title"] for e in resp.data["events"]}
