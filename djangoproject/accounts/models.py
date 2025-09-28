@@ -21,13 +21,12 @@ class Event(models.Model):
     type = models.CharField(max_length=32, choices=EVENT_TYPE_CHOICES, default=GENERAL)
     title = models.CharField(max_length=255)
     notes = models.TextField(blank=True)
-    person = models.ForeignKey(
+    people = models.ManyToManyField(
         'Person',
-        null=True,
-        blank=True,
-        on_delete=models.CASCADE,
         related_name='events_related',
-    )  # Replaces contact_id
+        blank=True,
+        help_text='People associated with this event.',
+    )
 
     # Many-to-many tags (share same Tag model as connections)
     tags = models.ManyToManyField(

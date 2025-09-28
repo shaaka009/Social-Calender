@@ -242,12 +242,13 @@ class DashboardAPIView(APIView):
     def get(self, request):
         user_person = get_or_create_person_for_user(request.user)
         today = date.today()
-        end_date = today + timedelta(days=30)
+        start_date = today - timedelta(days=365)  # 1 year back
+        end_date = today + timedelta(days=365)    # 1 year ahead
 
-        # Get events for next 30 days
+        # Get events within 1 year range
         events = Event.objects.filter(
             user=request.user,
-            date__range=[today, end_date]
+            date__range=[start_date, end_date]
         ).order_by('date')
 
         # Get notifications
