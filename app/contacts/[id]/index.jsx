@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
+import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
-import React from 'react';
+import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import CustomButton from '../../../components/CustomButton';
 import LoadingState from '../../../components/LoadingState';
@@ -33,6 +34,8 @@ const ContactProfileScreen = () => {
     enabled: Boolean(id) && Boolean(person.id),
   });
 
+  const [tab, setTab] = useState('info');
+
   if (isLoading || !contact) {
     return <LoadingState />;
   }
@@ -56,101 +59,129 @@ const ContactProfileScreen = () => {
             <Text style={styles.backText}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.title}>Contact Profile</Text>
-          <View style={styles.backBtn} />
+          <CustomButton
+            title="Edit"
+            variant="text"
+            onPress={() => router.push(`/contacts/${id}/edit`)}
+            style={styles.backBtn}
+          />
         </View>
 
         {/* Avatar */}
         <View style={styles.avatarContainer}>
-          <Text style={styles.avatarText}>
-            {person.first_name?.[0]}{person.last_name?.[0]}
-          </Text>
-        </View>
-
-        {/* Quick Actions */}
-        <View style={styles.quickActions}>
-          <CustomButton
-            title="Log Interaction"
-            onPress={handleLogInteraction}
-            style={styles.quickActionButton}
-            variant="outline"
-            icon={<Ionicons name="add-circle-outline" size={wp(5)} color={theme.colors.primary} style={styles.buttonIcon} />}
-          />
-        </View>
-
-        {/* Basic Info */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Basic Info</Text>
-          <InfoRow label="Name" value={`${person.first_name} ${person.last_name}`} />
-          <InfoRow label="Email" value={person.email || '—'} />
-          <InfoRow label="Phone" value={person.phone || '—'} />
-          <InfoRow label="Birthday" value={formatDate(person.birthday)} />
-          <InfoRow
-            label="Last Contact"
-            value={contact.last_contact_date ? formatDate(contact.last_contact_date) : 'No interactions logged'}
-          />
-        </View>
-
-        {/* Recent Interactions */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recent Interactions</Text>
-          {interactions.length > 0 ? (
-            interactions.map((interaction) => (
-              <View key={interaction.id} style={styles.interactionCard}>
-                <View style={styles.interactionHeader}>
-                  <Text style={styles.interactionType}>
-                    {interaction.type_display}
-                    {interaction.is_mirrored && (
-                      <Text style={styles.loggedBy}> (logged by {person.first_name})</Text>
-                    )}
-                  </Text>
-                  <Text style={styles.interactionDate}>{formatDate(interaction.date)}</Text>
-                </View>
-                {interaction.notes && (
-                  <Text style={styles.interactionNotes}>{interaction.notes}</Text>
-                )}
-              </View>
-            ))
+          {person.profile_picture_url ? (
+            <Image source={{ uri: person.profile_picture_url }} style={styles.avatarImage} contentFit="cover" />
           ) : (
-            <Text style={styles.emptyText}>No interactions logged yet</Text>
+            <Text style={styles.avatarText}>
+              {person.first_name?.[0]}{person.last_name?.[0]}
+            </Text>
           )}
         </View>
 
-        {/* Notes */}
-        {person.notes ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Notes</Text>
-            <Text style={styles.notesText}>{person.notes}</Text>
-          </View>
-        ) : null}
+        {/* Name Title */}
+        <Text style={styles.nameTitle}>{person.first_name} {person.last_name}</Text>
 
-        {/* Tags */}
-        {contact.tags?.length ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Tags</Text>
-            <View style={styles.tagContainer}>
-              {contact.tags.map((tag) => (
-                <View key={tag} style={[styles.tag, { backgroundColor: tagColor(tag) }] }>
-                  <Text style={styles.tagTextWhite}>{tag}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        ) : null}
-
-        {/* Actions (Edit/Delete) */}
-        <View style={styles.actions}>
-          <CustomButton
-            title="Edit Contact"
-            onPress={() => router.push(`/contacts/${id}/edit`)}
-            style={{ flex: 1 }}
-          />
-          <CustomButton
-            title="Delete"
-            variant="outline"
-            onPress={() => router.push(`/contacts/${id}/delete`)}
-            style={{ flex: 1, marginLeft: wp(3) }}
-          />
+        {/* Tab Selector */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity style={[styles.tabButton, tab === 'info' && styles.tabButtonActive]} onPress={()=>setTab('info')}>
+            <Text style={[styles.tabText, tab === 'info' && styles.tabTextActive]}>Info</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.tabButton, tab === 'interactions' && styles.tabButtonActive]} onPress={()=>setTab('interactions')}>
+            <Text style={[styles.tabText, tab === 'interactions' && styles.tabTextActive]}>Interactions</Text>
+          </TouchableOpacity>
         </View>
+
+        {tab === 'info' && (
+          <>
+            {/* Tags */}
+            {contact.tags?.length ? (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Tags</Text>
+                <View style={styles.tagContainer}>
+                  {contact.tags.map((tag) => (
+                    <View key={tag} style={[styles.tag, { backgroundColor: tagColor(tag) }] }>
+                      <Text style={styles.tagTextWhite}>{tag}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
+            {/* Basic Info */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Basic Info</Text>
+              <InfoRow label="Name" value={`${person.first_name} ${person.last_name}`} />
+              <InfoRow label="Email" value={person.email || '—'} />
+              <InfoRow label="Phone" value={person.phone || '—'} />
+              <InfoRow label="Birthday" value={formatDate(person.birthday)} />
+              <InfoRow
+                label="Last Contact"
+                value={contact.last_contact_date ? formatDate(contact.last_contact_date) : 'No interactions logged'}
+              />
+            </View>
+
+            {/* Notes */}
+            {person.notes ? (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Notes</Text>
+                <Text style={styles.notesText}>{person.notes}</Text>
+              </View>
+            ) : null}
+          </>
+        )}
+
+        {tab === 'interactions' && (
+          <>
+            {/* Interactions Header with Log Button */}
+            <View style={[styles.section, styles.interactionsHeader]}>
+              <View style={styles.interactionsHeaderRow}>
+                <Text style={styles.sectionTitle}>Recent Interactions</Text>
+                <CustomButton
+                  title="Log Interaction"
+                  variant="outline"
+                  onPress={handleLogInteraction}
+                  style={styles.quickActionButton}
+                  icon={<Ionicons name="add-circle-outline" size={wp(5)} color={theme.colors.primary} style={styles.buttonIcon} />}
+                />
+              </View>
+            </View>
+
+            {/* Interactions List */}
+            <View style={styles.section}>
+              {interactions.length > 0 ? (
+                interactions.map((interaction) => (
+                  <View key={interaction.id} style={styles.interactionCard}>
+                    <View style={styles.interactionHeader}>
+                      <Text style={styles.interactionType}>
+                        {interaction.type_display}
+                        {interaction.is_mirrored && (
+                          <Text style={styles.loggedBy}> (logged by {person.first_name})</Text>
+                        )}
+                      </Text>
+                      <Text style={styles.interactionDate}>{formatDate(interaction.date)}</Text>
+                    </View>
+                    {interaction.notes && (
+                      <Text style={styles.interactionNotes}>{interaction.notes}</Text>
+                    )}
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.emptyText}>No interactions logged yet</Text>
+              )}
+            </View>
+          </>
+        )}
+
+        {/* Delete Button */}
+        <CustomButton
+          title="Delete Contact"
+          variant="text"
+          onPress={() => router.push(`/contacts/${id}/delete`) }
+          style={styles.deleteButton}
+          textStyle={{ color: theme.colors.danger }}
+        />
+
+        <View style={{ height: wp(10) }} />
       </ScrollView>
     </ScreenWrapper>
   );
@@ -193,6 +224,11 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: wp(12),
   },
   avatarText: {
     color: '#fff',
@@ -287,10 +323,56 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginTop: wp(4),
   },
+  deleteButton: {
+    alignSelf: 'center',
+    marginTop: wp(6),
+    minWidth: wp(50),
+  },
+  interactionsHeader: {
+    marginTop: wp(2),
+  },
+  interactionsHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   loggedBy: {
     fontSize: wp(3),
     color: theme.colors.textLight,
     fontStyle: 'italic',
+  },
+  nameTitle: {
+    fontSize: wp(6),
+    fontWeight: '700',
+    color: theme.colors.text,
+    textAlign: 'center',
+    marginTop: wp(3),
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    width: '100%',
+    marginTop: wp(4),
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: wp(4),
+    overflow: 'hidden',
+  },
+  tabButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: wp(2),
+  },
+  tabButtonActive: {
+    backgroundColor: theme.colors.primary,
+  },
+  tabText: {
+    fontSize: wp(4),
+    color: theme.colors.text,
+  },
+  tabTextActive: {
+    color: '#fff',
+    fontWeight: '600',
   },
 });
 

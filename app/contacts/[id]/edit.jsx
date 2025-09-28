@@ -1,9 +1,12 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { useQueryClient } from '@tanstack/react-query';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useState } from 'react';
-import { Alert, FlatList, Modal, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useLayoutEffect, useState } from 'react';
+import { Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Toast from 'react-native-root-toast';
-import CustomButton from '../../../components/CustomButton';
 import CustomInput from '../../../components/CustomInput';
 import LoadingState from '../../../components/LoadingState';
 import MonthDayYearPicker from '../../../components/MonthDayYearPicker';
@@ -18,6 +21,12 @@ const EditContactScreen = () => {
   const { id } = useLocalSearchParams();
   const { data: contact, isLoading } = useConnection(id);
   const person = contact?.target || {};
+  const navigation = useNavigation();
+
+  // Hide the native header so we can render a custom one like the profile edit screen
+  useLayoutEffect(() => {
+    navigation.setOptions({ headerShown: false });
+  }, [navigation]);
   const queryClient = useQueryClient();
   const [isSaving, setIsSaving] = useState(false);
   
@@ -31,7 +40,14 @@ const EditContactScreen = () => {
     no_contact_threshold: null,
     notes: '',
     tags: [],
+    profile_picture: null,
   });
+
+  // Contact rows table similar to profile screen
+  const [contactRows, setContactRows] = useState([
+    { type: 'Phone', value: '' },
+    { type: 'Email', value: '' },
+  ]);
   
   // MonthDayYearPicker handles date selection
 
@@ -48,39 +64,111 @@ const EditContactScreen = () => {
         no_contact_threshold: contact.no_contact_threshold,
         notes: person.notes || '',
         tags: contact.tags || [],
+        profile_picture: person.profile_picture_url || person.profile_picture || null,
       });
+
+      // Populate contact rows
+      setContactRows([
+        { type: 'Phone', value: person.phone || '' },
+        { type: 'Email', value: person.email || '' },
+        ...(Array.isArray(person.extra_contacts) ? person.extra_contacts : []),
+      ]);
     }
   }, [contact]);
 
   const isAppUser = Boolean(contact?.target?.is_app_user);
 
+  // Image picker for manual contacts
+  const handleImagePick = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (!result.canceled) {
+        setFormData(prev => ({ ...prev, profile_picture: result.assets[0].uri }));
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // Prepare the payload
-      const payload = {
-        ...formData,
-        tags: formData.tags,
-        // Format date for API
-        birthday: formData.birthday
-          ? (formData.birthday instanceof Date
-              ? formatDateLocal(formData.birthday)
-              : formData.birthday)
-          : null,
-      };
+      // Build payload from formData and contactRows similar to profile edit logic
+      const payload = { ...formData };
 
-      // For app users, only send editable fields
+      // Remove potential stale keys—we will rebuild from contactRows
+      delete payload.phone;
+      delete payload.email;
+      delete payload.extra_contacts;
+
+      contactRows.forEach(({ type, value }) => {
+        const key = type.trim().toLowerCase();
+        if (!value.trim()) return;
+        if (key === 'phone') payload.phone = value.trim();
+        else if (key === 'email') payload.email = value.trim();
+        else {
+          if (!payload.extra_contacts) payload.extra_contacts = [];
+          payload.extra_contacts.push({ type: type.trim(), value: value.trim() });
+        }
+      });
+
+      // Format date for API
+      payload.birthday = formData.birthday
+        ? formData.birthday instanceof Date
+          ? formatDateLocal(formData.birthday)
+          : formData.birthday
+        : null;
+
+      const hasLocalImage = formData.profile_picture && formData.profile_picture.startsWith('file://');
+
+      let requestBody = null;
+      let headers = {};
+
+      if (hasLocalImage) {
+        const fd = new FormData();
+        Object.entries(payload).forEach(([key, value]) => {
+          if (value === undefined || value === null) return;
+          if (key === 'profile_picture') return;
+          if (key === 'tags' && Array.isArray(value)) {
+            value.forEach(t => fd.append('tags', t));
+            return;
+          }
+          if (typeof value === 'object') {
+            fd.append(key, JSON.stringify(value));
+          } else {
+            fd.append(key, value.toString());
+          }
+        });
+        fd.append('profile_picture', {
+          uri: formData.profile_picture,
+          name: 'profile.jpg',
+          type: 'image/jpeg',
+        });
+        requestBody = fd;
+        headers['Content-Type'] = 'multipart/form-data';
+      } else {
+        if (!formData.profile_picture) delete payload.profile_picture;
+        requestBody = JSON.stringify(payload);
+        headers['Content-Type'] = 'application/json';
+      }
+
       if (isAppUser) {
         const { first_name, last_name, email, ...editableFields } = payload;
         await apiFetch(`${ENDPOINTS.CONNECTIONS}${id}/`, {
           method: 'PATCH',
-          body: JSON.stringify(editableFields),
+          body: hasLocalImage ? requestBody : JSON.stringify(editableFields),
+          headers,
         });
       } else {
-        // For manual contacts, send all fields
         await apiFetch(`${ENDPOINTS.CONNECTIONS}${id}/`, {
           method: 'PATCH',
-          body: JSON.stringify(payload),
+          body: requestBody,
+          headers,
         });
       }
 
@@ -143,9 +231,16 @@ const EditContactScreen = () => {
 
   return (
     <ScreenWrapper>
-      {/* Header */}
+      {/* Custom Header – mirrors profile edit header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Edit Contact</Text>
+        <Pressable style={styles.backButton} onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={wp(5)} color={theme.colors.primary} />
+          <Text style={styles.backButtonLabel}>Cancel</Text>
+        </Pressable>
+        <Text style={styles.headerTitle}>Edit Contact</Text>
+        <Pressable style={styles.saveButtonHeader} onPress={handleSave} disabled={isSaving}>
+          <Text style={styles.saveButtonHeaderText}>{isSaving ? 'Saving…' : 'Save'}</Text>
+        </Pressable>
       </View>
 
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
@@ -166,46 +261,89 @@ const EditContactScreen = () => {
             </View>
           </View>
         ) : (
-          // Manual Contact - All fields editable
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Basic Information</Text>
-            <CustomInput
-              label="First Name"
-              value={formData.first_name}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, first_name: text }))}
-              placeholder="Enter first name"
-            />
-            <CustomInput
-              label="Last Name"
-              value={formData.last_name}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, last_name: text }))}
-              placeholder="Enter last name"
-            />
-            <CustomInput
-              label="Email"
-              value={formData.email}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, email: text }))}
-              placeholder="Enter email"
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-          </View>
+          <>
+            {/* Manual Contact - All fields editable */}
+            <Pressable onPress={handleImagePick} style={styles.imageContainer}>
+              {formData.profile_picture ? (
+                <Image source={{ uri: formData.profile_picture }} style={styles.profileImage} contentFit="cover" />
+              ) : (
+                <View style={styles.placeholderImage}>
+                  <Text style={styles.placeholderText}>{formData.first_name?.[0]?.toUpperCase() || '?'}</Text>
+                </View>
+              )}
+              <Text style={styles.changePhotoText}>Change Photo</Text>
+            </Pressable>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Basic Information</Text>
+              {/* First + Last name in same row */}
+              <View style={styles.rowInputs}>
+                <View style={{ flex: 1, marginRight: wp(2) }}>
+                  <CustomInput
+                    label="First Name"
+                    value={formData.first_name}
+                    onChangeText={(text) => setFormData(prev => ({ ...prev, first_name: text }))}
+                    placeholder="First name"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <CustomInput
+                    label="Last Name"
+                    value={formData.last_name}
+                    onChangeText={(text) => setFormData(prev => ({ ...prev, last_name: text }))}
+                    placeholder="Last name"
+                  />
+                </View>
+              </View>
+            </View>
+
+            {/* Contact Information Section */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Contact Information</Text>
+              {contactRows.map((row, idx) => (
+                <View key={idx} style={styles.contactRow}>
+                  <TextInput
+                    style={[styles.contactTypeInput, idx < 2 && styles.readOnlyInput]}
+                    value={row.type}
+                    onChangeText={(text) =>
+                      setContactRows((prev) => prev.map((r, i) => (i === idx ? { ...r, type: text } : r)))
+                    }
+                    editable={idx >= 2}
+                    placeholder="Type"
+                    placeholderTextColor={theme.colors.textLight + '90'}
+                  />
+                  <TextInput
+                    style={styles.contactValueInput}
+                    value={row.value}
+                    onChangeText={(text) =>
+                      setContactRows((prev) => prev.map((r, i) => (i === idx ? { ...r, value: text } : r)))
+                    }
+                    placeholder="Enter info"
+                    keyboardType={
+                      row.type.toLowerCase() === 'phone'
+                        ? 'phone-pad'
+                        : row.type.toLowerCase() === 'email'
+                        ? 'email-address'
+                        : 'default'
+                    }
+                    placeholderTextColor={theme.colors.textLight + '90'}
+                  />
+                </View>
+              ))}
+              <Pressable
+                style={styles.addContactBtn}
+                onPress={() => setContactRows((prev) => [...prev, { type: '', value: '' }])}
+              >
+                <Text style={styles.addContactBtnText}>＋ Add another contact method</Text>
+              </Pressable>
+            </View>
+          </>
         )}
 
         <View style={styles.divider} />
 
-        {/* Common Editable Fields */}
+        {/* No Contact Alert Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Contact Details</Text>
-          <CustomInput
-            label="Phone"
-            value={formData.phone}
-            onChangeText={(text) => setFormData(prev => ({ ...prev, phone: text }))}
-            placeholder="Enter phone number"
-            keyboardType="phone-pad"
-          />
-
-          {/* No Contact Threshold */}
+          <Text style={styles.sectionTitle}>No Contact Alert</Text>
           <View style={styles.thresholdContainer}>
             <View style={styles.thresholdHeader}>
               <Text style={styles.label}>No Contact Alert</Text>
@@ -244,19 +382,21 @@ const EditContactScreen = () => {
                 : `You'll be notified if you haven't contacted ${person.first_name} in ${formData.no_contact_threshold} days`}
             </Text>
           </View>
+        </View>
           
           {/* Birthday */}
-          <MonthDayYearPicker
-            label="Birthday"
-            date={(() => {
-              if (!formData.birthday) return new Date();
-              return typeof formData.birthday === 'string'
-                ? parseDateLocal(formData.birthday)
-                : new Date(formData.birthday);
-            })()}
-            onChange={(d)=>setFormData(prev=>({...prev,birthday:d}))}
-          />
-        </View>
+          <View style={styles.section}>
+            <MonthDayYearPicker
+              label="Birthday"
+              date={(() => {
+                if (!formData.birthday) return new Date();
+                return typeof formData.birthday === 'string'
+                  ? parseDateLocal(formData.birthday)
+                  : new Date(formData.birthday);
+              })()}
+              onChange={(d)=>setFormData(prev=>({...prev,birthday:d}))}
+            />
+          </View>
 
         {/* Tags Section */}
         <View style={styles.section}>
@@ -322,23 +462,6 @@ const EditContactScreen = () => {
             style={styles.notesInput}
           />
         </View>
-
-        {/* Action Buttons */}
-        <View style={styles.actions}>
-          <CustomButton
-            title="Cancel"
-            variant="outline"
-            onPress={() => router.back()}
-            style={styles.button}
-            disabled={isSaving}
-          />
-          <CustomButton
-            title={isSaving ? "Saving..." : "Save"}
-            onPress={handleSave}
-            style={styles.button}
-            disabled={isSaving}
-          />
-        </View>
       </ScrollView>
     </ScreenWrapper>
   );
@@ -346,21 +469,49 @@ const EditContactScreen = () => {
 
 const styles = StyleSheet.create({
   header: {
-    padding: wp(5),
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: wp(5),
+    paddingVertical: wp(3),
   },
-  title: {
-    fontSize: wp(5),
+  headerTitle: {
+    fontSize: wp(4.5),
     fontWeight: '600',
     color: theme.colors.text,
-    textAlign: 'center',
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: wp(15),
+  },
+  backButtonText: {
+    fontSize: wp(7),
+    color: theme.colors.primary,
+    marginRight: wp(1),
+    marginTop: -wp(1),
+  },
+  backButtonLabel: {
+    fontSize: wp(4),
+    color: theme.colors.primary,
+  },
+  saveButtonHeader: {
+    paddingHorizontal: wp(3),
+    paddingVertical: wp(1),
+  },
+  saveButtonHeaderText: {
+    color: theme.colors.primary,
+    fontSize: wp(4),
+    fontWeight: '600',
   },
   container: {
     flex: 1,
   },
   contentContainer: {
     padding: wp(5),
+    gap: wp(4),
+    paddingBottom: wp(60),
+    backgroundColor: theme.colors.background,
   },
   section: {
     marginBottom: wp(6),
@@ -579,6 +730,75 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.border,
     marginVertical: wp(4),
   },
+
+  /* New styles for contact rows */
+  rowInputs: {
+    flexDirection: 'row',
+    gap: wp(2),
+    marginBottom: wp(3),
+  },
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.backgroundSecondary,
+    borderRadius: wp(3),
+    padding: wp(4),
+    marginBottom: wp(2),
+  },
+  contactTypeInput: {
+    flex: 1,
+    fontSize: wp(4),
+    color: theme.colors.text,
+    paddingVertical: 0,
+  },
+  contactValueInput: {
+    flex: 1,
+    fontSize: wp(4),
+    color: theme.colors.text,
+    paddingVertical: 0,
+  },
+  readOnlyInput: {
+    color: theme.colors.textLight + '90',
+  },
+  addContactBtn: {
+    marginTop: wp(3),
+    alignItems: 'center',
+  },
+  addContactBtnText: {
+    color: theme.colors.primary,
+    fontSize: wp(4),
+    fontWeight: '600',
+  },
+  imageContainer: {
+    alignItems: 'center',
+    marginBottom: wp(5),
+  },
+  profileImage: {
+    width: wp(30),
+    height: wp(30),
+    borderRadius: wp(15),
+  },
+  placeholderImage: {
+    width: wp(30),
+    height: wp(30),
+    borderRadius: wp(15),
+    backgroundColor: theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  placeholderText: {
+    color: '#fff',
+    fontSize: wp(12),
+    fontWeight: 'bold',
+  },
+  changePhotoText: {
+    marginTop: wp(2),
+    color: theme.colors.primary,
+    fontSize: wp(3.5),
+  },
 });
+
+// Hide default header for Expo Router (v2)
+export const options = { headerShown: false };
 
 export default EditContactScreen; 

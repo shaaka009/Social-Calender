@@ -39,6 +39,7 @@ from .authentication import CsrfExemptSessionAuthentication
 
 from .forms import UserRegistrationForm
 
+
 # Create your views here.
 
 # Legacy contact references removed during refactor

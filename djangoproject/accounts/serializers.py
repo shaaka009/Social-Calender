@@ -2,6 +2,7 @@ from datetime import date
 
 from django.contrib.auth.models import User
 from rest_framework import serializers
+from django.core.files.uploadedfile import UploadedFile
 
 from .models import (
     Person,
@@ -92,6 +93,8 @@ class TagSerializer(serializers.ModelSerializer):
 class ConnectionSerializer(serializers.ModelSerializer):
     # Fields for app user connection
     target_person_id = serializers.IntegerField(write_only=True, required=False)
+    extra_contacts = serializers.ListField(child=serializers.DictField(), required=False)
+    profile_picture = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     
     # Fields for manual contact creation
     first_name = serializers.CharField(write_only=True, required=False)
@@ -119,6 +122,17 @@ class ConnectionSerializer(serializers.ModelSerializer):
         }
 
     def validate(self, attrs):
+        # Normalize blank numeric fields
+        if attrs.get('no_contact_threshold') in ['', None]:
+            attrs['no_contact_threshold'] = None
+        # Normalize blank date fields
+        if attrs.get('birthday') == '':
+            attrs['birthday'] = None
+
+        # If profile_picture is just a URL string, drop it (no new upload)
+        if 'profile_picture' in attrs and isinstance(attrs['profile_picture'], str):
+            attrs.pop('profile_picture')
+
         # For manual contacts, first_name is required
         if 'first_name' in attrs:
             if not attrs['first_name'].strip():
@@ -148,6 +162,7 @@ class ConnectionSerializer(serializers.ModelSerializer):
                 birthday=validated_data.pop('birthday', None),
                 notes=validated_data.pop('notes', ''),
                 extra_contacts=validated_data.pop('extra_contacts', []),
+                profile_picture=validated_data.pop('profile_picture', None),
             )
         else:
             # Handle app user connection
@@ -188,12 +203,17 @@ class ConnectionSerializer(serializers.ModelSerializer):
             "birthday",
             "notes",
             "extra_contacts",
+            "profile_picture",
         ]
 
         # Determine if this is a manual contact (target.person.owner == connection.owner)
         is_manual = getattr(target_person, "owner", None) == instance.owner
 
         if is_manual:
+            # Skip profile_picture if it's an existing URL string (not new upload)
+            if 'profile_picture' in validated_data and isinstance(validated_data['profile_picture'], str):
+                validated_data.pop('profile_picture')
+
             # Apply person field updates and remove them from validated_data so
             # the Connection model isn't affected by unknown attrs.
             for field in person_fields:
@@ -235,6 +255,7 @@ class ConnectionSerializer(serializers.ModelSerializer):
             "last_contact_date",
             "no_contact_threshold",
             "extra_contacts",
+            "profile_picture",
         )
         read_only_fields = ("id", "owner", "is_mutual", "created_at")
 
