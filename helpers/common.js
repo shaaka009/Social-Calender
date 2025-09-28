@@ -25,3 +25,14 @@ export const parseDateLocal = (dateStr) => {
   const [year, month, day] = parts;
   return new Date(year, month - 1, day, 0, 0, 0, 0);
 };
+
+export const formatDateForDisplay = (dateStr) => {
+  if (!dateStr) return '';
+  const date = parseDateLocal(dateStr);
+  if (!date) return '';
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+};

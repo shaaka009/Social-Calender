@@ -110,12 +110,6 @@ const AddContactScreen = () => {
           <Text style={styles.emptyStateText}>
             No users found
           </Text>
-          <CustomButton
-            title="Add as Manual Contact"
-            variant="outline"
-            onPress={() => setShowManualForm(true)}
-            style={{ marginTop: wp(4) }}
-          />
         </View>
       );
     }
@@ -176,12 +170,15 @@ const AddContactScreen = () => {
               {renderSearchResults()}
             </View>
 
-            <CustomButton
-              title="Add Manual Contact Instead"
-              variant="outline"
-              onPress={() => setShowManualForm(true)}
-              style={{ marginTop: wp(4) }}
-            />
+            <View style={styles.manualContactRow}>
+                <CustomButton
+                  title="Add Manual Contact"
+                  variant="text"
+                  onPress={() => setShowManualForm(true)}
+                  style={styles.manualContactButton}
+                  textStyle={styles.manualContactButtonText}
+                />
+            </View>
           </>
         ) : (
           <>
@@ -315,6 +312,23 @@ const AddContactScreen = () => {
 };
 
 const styles = StyleSheet.create({
+  manualContactRow: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    paddingVertical: wp(2),
+    marginBottom: wp(2),
+  },
+
+  manualContactButton: {
+    alignSelf: 'center',
+    width: '150%',
+  },
+  manualContactButtonText: {
+    fontSize: wp(5),  
+    fontWeight: '500',
+  },
+  
   header: {
     flexDirection: 'row',
     alignItems: 'center',
