@@ -360,17 +360,25 @@ class DashboardAPITests(APITestCase):
         self.client.force_authenticate(self.user)
         self.dashboard_url = reverse("dashboard")
 
-    def test_dashboard_returns_next_30_day_events_only(self):
+    def test_dashboard_returns_one_year_range_events(self):
         today = date.today()
-        Event.objects.bulk_create([
-            Event(user=self.user, date=today + timedelta(days=5), type=Event.GENERAL, title="Inside 30", person=self.person),
-            Event(user=self.user, date=today + timedelta(days=40), type=Event.GENERAL, title="Outside 30", person=self.person),
+        events = Event.objects.bulk_create([
+            Event(user=self.user, date=today - timedelta(days=364), type=Event.GENERAL, title="Inside Past Year"),
+            Event(user=self.user, date=today + timedelta(days=364), type=Event.GENERAL, title="Inside Future Year"),
+            Event(user=self.user, date=today - timedelta(days=366), type=Event.GENERAL, title="Outside Past Year"),
+            Event(user=self.user, date=today + timedelta(days=366), type=Event.GENERAL, title="Outside Future Year"),
         ])
+        
+        # Add people to events after bulk creation
+        for event in events:
+            event.people.add(self.person)
         resp = self.client.get(self.dashboard_url)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         returned_titles = {e["title"] for e in resp.data["events"]}
-        self.assertIn("Inside 30", returned_titles)
-        self.assertNotIn("Outside 30", returned_titles)
+        self.assertIn("Inside Past Year", returned_titles)
+        self.assertIn("Inside Future Year", returned_titles)
+        self.assertNotIn("Outside Past Year", returned_titles)
+        self.assertNotIn("Outside Future Year", returned_titles)
 
     def test_dashboard_notifications_order(self):
         Notification.objects.create(

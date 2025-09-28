@@ -34,14 +34,22 @@ export const apiFetch = async (url, options = {}) => {
       headers,
     });
 
+    // For DELETE requests that return 204 No Content, return null
+    if (response.status === 204) {
+      return null;
+    }
+
     let data = null;
     const text = await response.text();
     
-    try {
-      data = JSON.parse(text);
-    } catch (error) {
-      console.error('Failed to parse JSON response:', error);
-      throw new Error('Invalid JSON response from server');
+    // Only try to parse as JSON if there's actual content
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch (error) {
+        console.error('Failed to parse JSON response:', error);
+        throw new Error('Invalid JSON response from server');
+      }
     }
 
     if (!response.ok) {

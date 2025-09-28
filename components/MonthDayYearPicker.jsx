@@ -24,6 +24,8 @@ export default function MonthDayYearPicker({
   date = new Date(),
   onChange,
   containerStyle,
+  yearOptional = false,
+  showYear = true,
 }) {
   const [month, setMonth] = useState(date.getMonth());
   const [dayStr, setDayStr] = useState(String(date.getDate()));
@@ -49,7 +51,11 @@ export default function MonthDayYearPicker({
 
   const propagate = (m, d, y) => {
     const safeDay = Math.min(d, daysInMonth(m, y));
-    const newDate = new Date(y, m, safeDay);
+    const newDate = new Date(y || new Date().getFullYear(), m, safeDay);
+    // If year is optional and empty, set year to null in a custom field
+    if (yearOptional && !y) {
+      newDate.noYear = true;
+    }
     onChange?.(newDate);
   };
 
@@ -69,6 +75,13 @@ export default function MonthDayYearPicker({
   };
 
   const handleYearChange = (text) => {
+    // Handle empty year if optional
+    if (yearOptional && !text.trim()) {
+      setYearStr('');
+      propagate(month, Number(dayStr) || 1, null);
+      return;
+    }
+
     // Keep raw string for user typing
     const cleaned = text.replace(/[^0-9]/g, '');
     setYearStr(cleaned);
@@ -104,15 +117,17 @@ export default function MonthDayYearPicker({
           onChangeText={handleDayChange}
         />
 
-        <TextInput
-          style={[styles.inputBase, styles.yearInput]}
-          value={yearStr}
-          placeholder="Year"
-          placeholderTextColor={theme.colors.textLight + '90'}
-          keyboardType="number-pad"
-          maxLength={4}
-          onChangeText={handleYearChange}
-        />
+        {showYear && (
+          <TextInput
+            style={[styles.inputBase, styles.yearInput]}
+            value={yearStr}
+            placeholder={yearOptional ? "Year (optional)" : "Year"}
+            placeholderTextColor={theme.colors.textLight + '90'}
+            keyboardType="number-pad"
+            maxLength={4}
+            onChangeText={handleYearChange}
+          />
+        )}
       </View>
 
       {/* Month wheel modal */}

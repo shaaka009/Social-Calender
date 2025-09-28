@@ -153,7 +153,7 @@ const Contacts = () => {
             >
               <Ionicons 
                 name="notifications-outline" 
-                size={wp(6)} 
+                size={wp(7)} 
                 color={theme.colors.text}
               />
               {pendingCount > 0 && (
@@ -163,10 +163,14 @@ const Contacts = () => {
               )}
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.actionButton, styles.addButton]}
+              style={styles.actionButton}
               onPress={() => router.push('/contacts/new')}
             >
-              <Text style={styles.actionButtonText}>+ Add</Text>
+              <Ionicons 
+              name="add" 
+              size={wp(8)} 
+              color={theme.colors.text} 
+              />
             </TouchableOpacity>
           </View>
         </View>
@@ -210,16 +214,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: wp(5),
   },
   title: {
-    fontSize: wp(6),
-    fontWeight: 'bold',
+    fontSize: wp(9),
+    fontWeight: '600',
     color: theme.colors.text,
   },
   titleActions: {
     flexDirection: 'row',
-    gap: wp(3),
+    gap: wp(0),
   },
   actionButton: {
-    paddingHorizontal: wp(4),
+    paddingHorizontal: wp(3),
     paddingVertical: wp(2),
     borderRadius: wp(2),
     flexDirection: 'row',

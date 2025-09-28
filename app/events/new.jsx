@@ -1,7 +1,8 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Toast from 'react-native-root-toast';
 import CustomButton from '../../components/CustomButton';
 import CustomInput from '../../components/CustomInput';
@@ -10,6 +11,7 @@ import ScreenWrapper from '../../components/ScreenWrapper';
 import { theme } from '../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../helpers/api';
 import { wp } from '../../helpers/common';
+import { useCreateTag, useTags } from '../../helpers/useTags';
 
 const EVENT_TYPES = [
   { value: 'birthday', label: 'Birthday' },
@@ -26,9 +28,18 @@ const AddEventScreen = () => {
     title: '',
     date: new Date(),
     type: 'general',
-    person_id: null,
+    people_ids: [],
+    tag_ids: [],
     notes: '',
   });
+
+  const COLOR_OPTIONS = ['#ff8c00', '#ff4d4f', '#40a9ff', '#52c41a', '#faad14', '#722ed1', '#13c2c2'];
+
+  // Get tags for selection
+  const { data: tags = [] } = useTags();
+  const createTagMutation = useCreateTag();
+  const [modalVisible, setModalVisible] = useState(false);
+  const [newTag, setNewTag] = useState({ name: '', color: COLOR_OPTIONS[0] });
 
   // Get contacts for selection
   const { data: contacts = [] } = useQuery({
@@ -55,9 +66,10 @@ const AddEventScreen = () => {
         method: 'POST',
         body: JSON.stringify({
           ...form,
-          // Format as YYYY-MM-DD in the *local* timezone rather than relying on
-          // `toISOString()` (UTC) which can shift the day forward/backwards.
-          date: `${form.date.getFullYear()}-${String(form.date.getMonth() + 1).padStart(2, '0')}-${String(form.date.getDate()).padStart(2, '0')}`,
+          // For birthday events with no year specified, use a special format
+          date: form.type === 'birthday' && form.date.noYear
+            ? `0000-${String(form.date.getMonth() + 1).padStart(2, '0')}-${String(form.date.getDate()).padStart(2, '0')}`
+            : `${form.date.getFullYear()}-${String(form.date.getMonth() + 1).padStart(2, '0')}-${String(form.date.getDate()).padStart(2, '0')}`,
         }),
       });
 
@@ -123,12 +135,15 @@ const AddEventScreen = () => {
             label="Date"
             date={form.date}
             onChange={(d)=>setForm(prev=>({...prev,date:d}))}
+            yearOptional={form.type === 'birthday'}
+            showYear={true}
           />
         </View>
 
         {/* Associated Contact */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Associated Contact (Optional)</Text>
+          <Text style={styles.sectionTitle}>Associated Contacts (Optional)</Text>
+          <Text style={styles.sectionSubtitle}>Select one or more contacts for this event</Text>
           <CustomInput
             label="Search Contacts"
             value={searchQuery}
@@ -141,16 +156,109 @@ const AddEventScreen = () => {
                 <CustomButton
                   key={conn.id}
                   title={`${conn.target.first_name} ${conn.target.last_name}`}
-                  variant={form.person_id === conn.target.id ? 'primary' : 'outline'}
+                  variant={form.people_ids.includes(conn.target.id) ? 'primary' : 'outline'}
                   onPress={() => setForm(prev => ({ 
                     ...prev, 
-                    person_id: prev.person_id === conn.target.id ? null : conn.target.id 
+                    people_ids: prev.people_ids.includes(conn.target.id)
+                      ? prev.people_ids.filter(id => id !== conn.target.id)
+                      : [...prev.people_ids, conn.target.id]
                   }))}
                   style={styles.contactButton}
                 />
               ))}
             </View>
           )}
+        </View>
+
+        {/* Tags */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Tags</Text>
+          <Text style={styles.sectionSubtitle}>Add tags to help organize your events</Text>
+          
+          <View style={styles.tagsRow}>
+            <Pressable style={styles.plusButton} onPress={() => setModalVisible(true)}>
+              <Ionicons name="add" size={wp(6)} color="#fff" />
+            </Pressable>
+
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tagsContainer}
+            >
+              {tags.map(tag => (
+                <Pressable
+                  key={tag.id}
+                  onPress={() => setForm(prev => ({
+                    ...prev,
+                    tag_ids: prev.tag_ids.includes(tag.id)
+                      ? prev.tag_ids.filter(id => id !== tag.id)
+                      : [...prev.tag_ids, tag.id]
+                  }))}
+                  style={[styles.tagButton, {
+                    backgroundColor: form.tag_ids.includes(tag.id) ? tag.color : 'transparent',
+                    borderColor: tag.color,
+                  }]}
+                >
+                  <Text style={[styles.tagText, { 
+                    color: form.tag_ids.includes(tag.id) ? '#fff' : theme.colors.textLight 
+                  }]}>{tag.name}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* Create Tag Modal */}
+          <Modal
+            visible={modalVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setModalVisible(false)}
+          >
+            <View style={styles.modalBackdrop}>
+              <View style={styles.modalContent}>
+                <Text style={styles.modalTitle}>Create Tag</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Tag name"
+                  value={newTag.name}
+                  onChangeText={(text) => setNewTag((prev) => ({ ...prev, name: text }))}
+                />
+                <View style={styles.colorsRow}>
+                  {COLOR_OPTIONS.map((c) => (
+                    <Pressable
+                      key={c}
+                      style={[styles.colorDot, { backgroundColor: c }, newTag.color === c && styles.colorDotSelected]}
+                      onPress={() => setNewTag((prev) => ({ ...prev, color: c }))}
+                    />
+                  ))}
+                </View>
+                <View style={styles.modalActions}>
+                  <Pressable style={styles.modalBtn} onPress={() => setModalVisible(false)}>
+                    <Text style={styles.cancelText}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.modalBtn}
+                    onPress={() => {
+                      if (!newTag.name.trim()) return;
+                      createTagMutation.mutate(newTag, {
+                        onSuccess: (newTagData) => {
+                          setModalVisible(false);
+                          setNewTag({ name: '', color: COLOR_OPTIONS[0] });
+                          // Add the new tag to the selected tags
+                          setForm(prev => ({
+                            ...prev,
+                            tag_ids: [...prev.tag_ids, newTagData.id]
+                          }));
+                        },
+                      });
+                    }}
+                  >
+                    <Text style={styles.saveText}>Save</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          </Modal>
         </View>
 
         {/* Notes */}
@@ -214,6 +322,11 @@ const styles = StyleSheet.create({
     fontSize: wp(4.5),
     fontWeight: '600',
     color: theme.colors.text,
+    marginBottom: wp(1),
+  },
+  sectionSubtitle: {
+    fontSize: wp(3.5),
+    color: theme.colors.textLight,
     marginBottom: wp(3),
   },
   label: {
@@ -266,6 +379,96 @@ const styles = StyleSheet.create({
   },
   button: {
     flex: 1,
+  },
+  /* Tags */
+  tagsContainer: {
+    flexDirection: 'row',
+    gap: wp(2),
+    paddingHorizontal: wp(2),
+    paddingVertical: wp(1),
+  },
+  tagsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tagButton: {
+    paddingHorizontal: wp(3),
+    paddingVertical: wp(1.5),
+    borderRadius: wp(4),
+    borderWidth: 1,
+    minHeight: wp(8),
+    justifyContent: 'center',
+  },
+  tagText: {
+    fontSize: wp(3.5),
+  },
+  plusButton: {
+    backgroundColor: theme.colors.primary,
+    width: wp(8),
+    height: wp(8),
+    borderRadius: wp(4),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  /* Modal */
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: theme.colors.background,
+    borderRadius: wp(3),
+    padding: wp(5),
+    width: '80%',
+  },
+  modalTitle: {
+    fontSize: wp(5),
+    fontWeight: '600',
+    marginBottom: wp(3),
+    color: theme.colors.text,
+  },
+  modalInput: {
+    backgroundColor: theme.colors.backgroundSecondary,
+    borderRadius: wp(2),
+    padding: wp(3),
+    marginBottom: wp(3),
+    color: theme.colors.text,
+  },
+  colorsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: wp(2),
+    marginBottom: wp(4),
+  },
+  colorDot: {
+    width: wp(7),
+    height: wp(7),
+    borderRadius: wp(3.5),
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  colorDotSelected: {
+    borderColor: theme.colors.text,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: wp(3),
+  },
+  modalBtn: {
+    paddingHorizontal: wp(3),
+    paddingVertical: wp(1),
+  },
+  cancelText: {
+    color: theme.colors.text,
+    fontSize: wp(4),
+  },
+  saveText: {
+    color: theme.colors.primary,
+    fontSize: wp(4),
+    fontWeight: '600',
   },
 });
 

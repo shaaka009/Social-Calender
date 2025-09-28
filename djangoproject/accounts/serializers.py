@@ -2,6 +2,7 @@ from datetime import date
 
 from django.contrib.auth.models import User
 from rest_framework import serializers
+from django.core.files.uploadedfile import UploadedFile
 
 from .models import (
     Person,
@@ -34,6 +35,7 @@ class PersonSerializer(serializers.ModelSerializer):
             "email",
             "phone",
             "birthday",
+            "extra_contacts",
             "is_app_user",
             "profile_picture_url",
         )
@@ -91,12 +93,17 @@ class TagSerializer(serializers.ModelSerializer):
 class ConnectionSerializer(serializers.ModelSerializer):
     # Fields for app user connection
     target_person_id = serializers.IntegerField(write_only=True, required=False)
+    extra_contacts = serializers.ListField(child=serializers.DictField(), required=False)
+    profile_picture = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     
     # Fields for manual contact creation
     first_name = serializers.CharField(write_only=True, required=False)
     last_name = serializers.CharField(write_only=True, required=False, allow_blank=True)
     email = serializers.EmailField(write_only=True, required=False, allow_blank=True)
     phone = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    extra_contacts = serializers.ListField(
+        child=serializers.DictField(), write_only=True, required=False
+    )
     birthday = serializers.DateField(write_only=True, required=False, allow_null=True)
     notes = serializers.CharField(write_only=True, required=False, allow_blank=True)
     tags = serializers.ListField(write_only=True, required=False, child=serializers.CharField())
@@ -115,6 +122,17 @@ class ConnectionSerializer(serializers.ModelSerializer):
         }
 
     def validate(self, attrs):
+        # Normalize blank numeric fields
+        if attrs.get('no_contact_threshold') in ['', None]:
+            attrs['no_contact_threshold'] = None
+        # Normalize blank date fields
+        if attrs.get('birthday') == '':
+            attrs['birthday'] = None
+
+        # If profile_picture is just a URL string, drop it (no new upload)
+        if 'profile_picture' in attrs and isinstance(attrs['profile_picture'], str):
+            attrs.pop('profile_picture')
+
         # For manual contacts, first_name is required
         if 'first_name' in attrs:
             if not attrs['first_name'].strip():
@@ -143,6 +161,8 @@ class ConnectionSerializer(serializers.ModelSerializer):
                 phone=validated_data.pop('phone', ''),
                 birthday=validated_data.pop('birthday', None),
                 notes=validated_data.pop('notes', ''),
+                extra_contacts=validated_data.pop('extra_contacts', []),
+                profile_picture=validated_data.pop('profile_picture', None),
             )
         else:
             # Handle app user connection
@@ -182,12 +202,18 @@ class ConnectionSerializer(serializers.ModelSerializer):
             "phone",
             "birthday",
             "notes",
+            "extra_contacts",
+            "profile_picture",
         ]
 
         # Determine if this is a manual contact (target.person.owner == connection.owner)
         is_manual = getattr(target_person, "owner", None) == instance.owner
 
         if is_manual:
+            # Skip profile_picture if it's an existing URL string (not new upload)
+            if 'profile_picture' in validated_data and isinstance(validated_data['profile_picture'], str):
+                validated_data.pop('profile_picture')
+
             # Apply person field updates and remove them from validated_data so
             # the Connection model isn't affected by unknown attrs.
             for field in person_fields:
@@ -228,6 +254,8 @@ class ConnectionSerializer(serializers.ModelSerializer):
             "created_at",
             "last_contact_date",
             "no_contact_threshold",
+            "extra_contacts",
+            "profile_picture",
         )
         read_only_fields = ("id", "owner", "is_mutual", "created_at")
 
@@ -286,20 +314,43 @@ class InteractionSerializer(serializers.ModelSerializer):
 # Dashboard bits (existing)
 # -------------------------------------------------------------------
 class EventSerializer(serializers.ModelSerializer):
-    person = PersonSerializer(read_only=True)
-    person_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    people = PersonSerializer(many=True, read_only=True)
+    people_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        write_only=True,
+        required=False,
+        allow_empty=True,
+    )
     tags = TagSerializer(many=True, read_only=True)
     tag_ids = serializers.ListField(
         child=serializers.IntegerField(),
         write_only=True,
         required=False,
-        allow_null=True,
+        allow_empty=True,
     )
+    title = serializers.CharField()
+    display_title = serializers.SerializerMethodField()
+
+    def get_display_title(self, obj):
+        # For birthday events, check if we have a year and calculate age
+        if obj.type == 'birthday' and obj.date:
+            # Special case: year is 0000 means no birth year provided
+            if obj.date.year == 0:
+                return obj.title
+            else:
+                # Calculate age
+                today = date.today()
+                age = today.year - obj.date.year
+                # Adjust age if birthday hasn't occurred this year
+                if today.month < obj.date.month or (today.month == obj.date.month and today.day < obj.date.day):
+                    age -= 1
+                return f"{obj.title} (turning {age + 1})"
+        return obj.title
     def update(self, instance, validated_data):
-        # Update person if person_id is provided
-        if 'person_id' in validated_data:
-            person_id = validated_data.pop('person_id')
-            instance.person = Person.objects.get(id=person_id) if person_id else None
+        # Update people if people_ids is provided
+        if 'people_ids' in validated_data:
+            people_ids = validated_data.pop('people_ids')
+            instance.people.set(Person.objects.filter(id__in=people_ids))
 
         # Update all other fields
         tag_ids = validated_data.pop('tag_ids', None)
@@ -313,8 +364,11 @@ class EventSerializer(serializers.ModelSerializer):
         return instance
 
     def create(self, validated_data):
+        people_ids = validated_data.pop('people_ids', [])
         tag_ids = validated_data.pop('tag_ids', [])
         event = Event.objects.create(**validated_data)
+        if people_ids:
+            event.people.set(Person.objects.filter(id__in=people_ids))
         if tag_ids:
             event.tags.set(Tag.objects.filter(id__in=tag_ids))
         return event
@@ -326,15 +380,16 @@ class EventSerializer(serializers.ModelSerializer):
             "date",
             "type",
             "title",
+            "display_title",
             "notes",
-            "person",  # nested read-only data
-            "person_id",
+            "people",  # nested read-only data
+            "people_ids",
             "tags",
             "tag_ids",
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "created_at", "updated_at", "tags")
+        read_only_fields = ("id", "created_at", "updated_at", "tags", "people")
 
 
 class NotificationSerializer(serializers.ModelSerializer):
@@ -452,6 +507,7 @@ class UserProfileSerializer(serializers.Serializer):
     email = serializers.EmailField(required=False, allow_blank=True)
     phone = serializers.CharField(required=False, allow_blank=True)
     birthday = serializers.DateField(required=False, allow_null=True)
+    extra_contacts = serializers.ListField(child=serializers.DictField(), required=False)
     profile_picture = serializers.ImageField(required=False, allow_null=True)
 
     def to_representation(self, person):
@@ -468,6 +524,7 @@ class UserProfileSerializer(serializers.Serializer):
             "email": (user.email if user else person.email) or "",
             "phone": person.phone or "",
             "birthday": person.birthday,
+            "extra_contacts": person.extra_contacts,
         }
 
         # Add profile picture URL if it exists
@@ -484,7 +541,7 @@ class UserProfileSerializer(serializers.Serializer):
 
     def update(self, person, validated_data):
         # Update Person fields
-        for attr in ("phone", "birthday", "profile_picture"):
+        for attr in ("phone", "birthday", "profile_picture", "extra_contacts"):
             if attr in validated_data:
                 setattr(person, attr, validated_data[attr])
         person.save()

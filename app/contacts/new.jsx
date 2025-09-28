@@ -1,4 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -31,7 +33,13 @@ const AddContactScreen = () => {
     email: '',
     phone: '',
     birthday: '',
+    profile_picture: null,
   });
+  // Contact methods table rows: {type: string, value: string}
+  const [contactRows, setContactRows] = useState([
+    { type: 'Phone', value: '' },
+    { type: 'Email', value: '' },
+  ]);
   const [selectedTags, setSelectedTags] = useState([]);
   const { data: tags = [] } = useTags();
   const createTagMutation = useCreateTag();
@@ -44,6 +52,22 @@ const AddContactScreen = () => {
   const [errors, ] = useState({});
   const handleChange = (key, value) => {
     setForm(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleImagePick = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (!result.canceled) {
+        handleChange('profile_picture', result.assets[0].uri);
+      }
+    } catch (err) {
+      Alert.alert('Error', 'Failed to pick image');
+    }
   };
 
   const handleAddContact = useCallback(async (userId) => {
@@ -73,7 +97,19 @@ const AddContactScreen = () => {
 
     setLoading(true);
     try {
+      // Build payload from form + contact rows
       const payload = { ...form };
+      // Extract email/phone if present
+      contactRows.forEach(({ type, value }) => {
+        const key = type.trim().toLowerCase();
+        if (!value.trim()) return;
+        if (key === 'phone') payload.phone = value.trim();
+        else if (key === 'email') payload.email = value.trim();
+        else {
+          if (!payload.extra_contacts) payload.extra_contacts = [];
+          payload.extra_contacts.push({ type: type.trim(), value: value.trim() });
+        }
+      });
       if (selectedTags.length) payload.tags = selectedTags;
 
       await apiFetch(ENDPOINTS.CONNECTIONS, {
@@ -110,12 +146,6 @@ const AddContactScreen = () => {
           <Text style={styles.emptyStateText}>
             No users found
           </Text>
-          <CustomButton
-            title="Add as Manual Contact"
-            variant="outline"
-            onPress={() => setShowManualForm(true)}
-            style={{ marginTop: wp(4) }}
-          />
         </View>
       );
     }
@@ -159,10 +189,16 @@ const AddContactScreen = () => {
           <Text style={styles.backButtonLabel}>Back</Text>
         </Pressable>
         <Text style={styles.headerTitle}>Add Contact</Text>
-        <View style={styles.backButton} />
+        {showManualForm ? (
+          <Pressable onPress={handleManualSubmit} disabled={loading} style={styles.saveButtonHeader}>
+            <Text style={styles.saveButtonHeaderText}>{loading ? 'Saving...' : 'Save'}</Text>
+          </Pressable>
+        ) : (
+          <View style={styles.backButton} />
+        )}
       </View>
 
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView contentContainerStyle={showManualForm ? styles.containerManual : styles.container}>
         {!showManualForm ? (
           <>
             <CustomInput
@@ -176,47 +212,88 @@ const AddContactScreen = () => {
               {renderSearchResults()}
             </View>
 
-            <CustomButton
-              title="Add Manual Contact Instead"
-              variant="outline"
-              onPress={() => setShowManualForm(true)}
-              style={{ marginTop: wp(4) }}
-            />
+            <View style={styles.manualContactRow}>
+                <CustomButton
+                  title="Add Manual Contact"
+                  variant="text"
+                  onPress={() => setShowManualForm(true)}
+                  style={styles.manualContactButton}
+                  textStyle={styles.manualContactButtonText}
+                />
+            </View>
           </>
         ) : (
           <>
-            <CustomInput
-              label="First Name*"
-              value={form.first_name}
-              onChangeText={text => handleChange('first_name', text)}
-              error={errors.first_name}
-            />
-            <CustomInput
-              label="Last Name"
-              value={form.last_name}
-              onChangeText={text => handleChange('last_name', text)}
-              error={errors.last_name}
-            />
-            <CustomInput
-              label="Email"
-              value={form.email}
-              onChangeText={text => handleChange('email', text)}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              error={errors.email}
-            />
-            <CustomInput
-              label="Phone"
-              value={form.phone}
-              onChangeText={text => handleChange('phone', text)}
-              keyboardType="phone-pad"
-            />
+            {/* Profile Picture Selector */}
+            <Pressable onPress={handleImagePick} style={styles.imageContainer}>
+              {form.profile_picture ? (
+                <Image source={{ uri: form.profile_picture }} style={styles.profileImage} contentFit="cover" />
+              ) : (
+                <View style={styles.placeholderImage}>
+                  <Text style={styles.placeholderText}>{form.first_name?.[0]?.toUpperCase() || '?'}</Text>
+                </View>
+              )}
+              <Text style={styles.changePhotoText}>Change Photo</Text>
+            </Pressable>
+
+            {/* Name Row */}
+            <View style={styles.rowInputs}>
+              <View style={{ flex: 1, marginRight: wp(2) }}>
+                <CustomInput
+                  label="First Name*"
+                  value={form.first_name}
+                  onChangeText={text => handleChange('first_name', text)}
+                  error={errors.first_name}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <CustomInput
+                  label="Last Name"
+                  value={form.last_name}
+                  onChangeText={text => handleChange('last_name', text)}
+                  error={errors.last_name}
+                />
+              </View>
+            </View>
+
+            {/* Contact Information Table */}
+            <Text style={styles.sectionLabel}>Contact Information</Text>
+
+            {contactRows.map((row, idx) => (
+              <View key={idx} style={styles.contactRow}>
+                <TextInput
+                  style={[styles.contactTypeInput, idx < 2 && styles.readOnlyInput]}
+                  value={row.type}
+                  onChangeText={text => setContactRows(prev => prev.map((r,i)=> i===idx ? { ...r, type: text } : r))}
+                  editable={idx >= 2}
+                  placeholder="Type"
+                  placeholderTextColor={theme.colors.textLight + '90'}
+                />
+                <TextInput
+                  style={styles.contactValueInput}
+                  value={row.value}
+                  onChangeText={text => setContactRows(prev => prev.map((r,i)=> i===idx ? { ...r, value: text } : r))}
+                  placeholder="Enter info"
+                  keyboardType={row.type.toLowerCase() === 'phone' ? 'phone-pad' : row.type.toLowerCase() === 'email' ? 'email-address' : 'default'}
+                  placeholderTextColor={theme.colors.textLight + '90'}
+                />
+              </View>
+            ))}
+
+            {/* Add method row */}
+            <Pressable style={styles.addContactBtn} onPress={() => setContactRows(prev => [...prev, { type: '', value: '' }])}>
+              <Text style={styles.addContactBtnText}>＋ Add another contact method</Text>
+            </Pressable>
+ 
             {/* Birthday Picker */}
             <MonthDayYearPicker
               label="Birthday"
               date={form.birthday ? parseDateLocal(form.birthday) : new Date()}
               onChange={(d)=>handleChange('birthday', formatDateLocal(d))}
             />
+
+            {/* Tags */}
+            <Text style={styles.sectionLabel}>Tags</Text>
             {/* Tags Row */}
             <View style={styles.tagsRow}>
               <Pressable style={styles.plusButton} onPress={() => setModalVisible(true)}>
@@ -295,18 +372,7 @@ const AddContactScreen = () => {
                 </View>
               </View>
             </Modal>
-            <View style={{ height: wp(4) }} />
-            <CustomButton 
-              title="Save Manual Contact" 
-              onPress={handleManualSubmit}
-              disabled={loading}
-            />
-            <CustomButton
-              title="Search for Users Instead"
-              variant="outline"
-              onPress={() => setShowManualForm(false)}
-              style={{ marginTop: wp(4) }}
-            />
+            {/* Save button moved to header */}
           </>
         )}
       </ScrollView>
@@ -315,6 +381,23 @@ const AddContactScreen = () => {
 };
 
 const styles = StyleSheet.create({
+  manualContactRow: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    paddingVertical: wp(2),
+    marginBottom: wp(2),
+  },
+
+  manualContactButton: {
+    alignSelf: 'center',
+    width: '150%',
+  },
+  manualContactButtonText: {
+    fontSize: wp(5),  
+    fontWeight: '500',
+  },
+  
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -350,6 +433,13 @@ const styles = StyleSheet.create({
     padding: wp(5),
     gap: wp(4),
     backgroundColor: theme.colors.background,
+  },
+  containerManual: {
+    flexGrow: 1,
+    padding: wp(5),
+    gap: wp(4),
+    backgroundColor: theme.colors.background,
+    paddingBottom: wp(80),
   },
   searchResults: {
     flex: 1,
@@ -523,6 +613,96 @@ const styles = StyleSheet.create({
     fontSize: wp(4),
   },
   saveText: {
+    color: theme.colors.primary,
+    fontSize: wp(4),
+    fontWeight: '600',
+  },
+  rowInputs: {
+    flexDirection: 'row',
+    gap: wp(2),
+    marginBottom: wp(2),
+  },
+  sectionLabel: {
+    fontSize: wp(4),
+    fontWeight: '600',
+    color: theme.colors.text,
+    marginBottom: wp(2),
+  },
+  addContactBtn: {
+    alignSelf: 'center',
+    marginTop: wp(2),
+    paddingVertical: wp(2),
+    paddingHorizontal: wp(4),
+    backgroundColor: theme.colors.backgroundSecondary,
+    borderRadius: wp(3),
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  addContactBtnText: {
+    color: theme.colors.primary,
+    fontSize: wp(4),
+    fontWeight: '500',
+  },
+  contactRow: {
+    flexDirection: 'row',
+    gap: wp(2),
+    marginBottom: wp(2),
+  },
+  contactTypeInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: wp(3),
+    padding: wp(4),
+    fontSize: wp(4),
+    color: theme.colors.text,
+  },
+  contactValueInput: {
+    flex: 2,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: wp(3),
+    padding: wp(4),
+    fontSize: wp(4),
+    color: theme.colors.text,
+  },
+  readOnlyInput: {
+    backgroundColor: theme.colors.backgroundSecondary,
+  },
+
+  /* Image */
+  imageContainer: {
+    alignItems: 'center',
+    marginBottom: wp(4),
+  },
+  profileImage: {
+    width: wp(30),
+    height: wp(30),
+    borderRadius: wp(15),
+  },
+  placeholderImage: {
+    width: wp(30),
+    height: wp(30),
+    borderRadius: wp(15),
+    backgroundColor: theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  placeholderText: {
+    color: '#fff',
+    fontSize: wp(12),
+    fontWeight: 'bold',
+  },
+  changePhotoText: {
+    marginTop: wp(2),
+    color: theme.colors.primary,
+    fontSize: wp(3.5),
+  },
+  saveButtonHeader: {
+    paddingHorizontal: wp(3),
+    paddingVertical: wp(1),
+  },
+  saveButtonHeaderText: {
     color: theme.colors.primary,
     fontSize: wp(4),
     fontWeight: '600',

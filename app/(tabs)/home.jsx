@@ -49,14 +49,15 @@ const Home = () => {
           }
         >
           <HeaderGreeting user={dashboard?.user} />
-          <NotificationList
-            notifications={dashboard?.notifications || []}
-            onNotificationPress={handleNotificationPress}
-          />
+          
           <CalendarPreview 
             events={dashboard?.events || []}
             isLoading={isLoading}
             error={error}
+          />
+          <NotificationList
+            notifications={dashboard?.notifications || []}
+            onNotificationPress={handleNotificationPress}
           />
         </ScrollView>
       </ScreenWrapper>

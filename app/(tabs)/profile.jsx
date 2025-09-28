@@ -1,167 +1,95 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Image } from "expo-image";
-import * as ImagePicker from "expo-image-picker";
-import React, { useEffect, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import CustomButton from "../../components/CustomButton";
-import CustomInput from "../../components/CustomInput";
+import { useRouter } from "expo-router";
+import React from "react";
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import LoadingState from "../../components/LoadingState";
-import MonthDayYearPicker from '../../components/MonthDayYearPicker';
 import ScreenWrapper from "../../components/ScreenWrapper";
 import { theme } from "../../constants/theme";
-import { formatDateLocal, parseDateLocal, wp } from "../../helpers/common";
-import useProfile, { useUpdateProfileMutation } from "../../helpers/useProfile";
+import { formatDateForDisplay, wp } from "../../helpers/common";
+import useProfile from "../../helpers/useProfile";
 
 const ProfileScreen = () => {
+  const router = useRouter();
   const { data, isLoading, isError } = useProfile();
-  const updateMutation = useUpdateProfileMutation();
-
-  const [form, setForm] = useState({
-    first_name: "",
-    last_name: "",
-    email: "",
-    phone: "",
-    birthday: null,
-    profile_picture: null,
-  });
-
-  // MonthDayYearPicker handles date selection
-
-  useEffect(() => {
-    if (data) {
-      setForm({
-        first_name: data.first_name || "",
-        last_name: data.last_name || "",
-        email: data.email || "",
-        phone: data.phone || "",
-        birthday: data.birthday || null,
-        profile_picture: data.profile_picture || null,
-      });
-    }
-  }, [data]);
-
-  const handleChange = (key, value) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const handleImagePick = async () => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("Permission needed", "Please grant camera roll permissions to change your profile picture.");
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-
-      if (!result.canceled) {
-        const imageUri = result.assets[0].uri;
-        // Create FormData for the image
-        const formData = new FormData();
-        formData.append("profile_picture", {
-          uri: imageUri,
-          type: "image/jpeg",
-          name: "profile.jpg",
-        });
-
-        updateMutation.mutate(formData, {
-          onSuccess: () => {
-            handleChange("profile_picture", imageUri);
-            Alert.alert("Success", "Profile picture updated successfully");
-          },
-          onError: (err) => {
-            Alert.alert("Error", err.message || "Failed to update profile picture");
-          },
-        });
-      }
-    } catch (error) {
-      Alert.alert("Error", "Failed to pick image");
-    }
-  };
-
-  const handleSave = () => {
-    const formData = new FormData();
-    Object.keys(form).forEach(key => {
-      if (key !== "profile_picture" && form[key]) {
-          formData.append(key, form[key]);
-      }
-    });
-
-    updateMutation.mutate(formData, {
-      onSuccess: () => {
-        Alert.alert("Success", "Profile updated successfully");
-      },
-      onError: (err) => {
-        Alert.alert("Error", err.message || "Failed to update profile");
-      },
-    });
-  };
 
   if (isLoading) return <LoadingState message="Loading profile..." />;
   if (isError) return <LoadingState message="Failed to load profile" />;
 
   return (
-    <ScreenWrapper bg={theme.colors.background}>
+    <ScreenWrapper>
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>Your Profile</Text>
+        <View style={styles.titleContainer}>
+          <Text style={styles.title}>Profile</Text>
+          <View style={styles.titleActions}>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => router.push("/profile/edit")}
+            >
+              <Ionicons 
+                name="pencil" 
+                size={wp(6)} 
+                color={theme.colors.text}
+              />
+            </TouchableOpacity>
+          </View>
+        </View>
 
-        <Pressable onPress={handleImagePick} style={styles.imageContainer}>
-          {form.profile_picture ? (
+        <View style={styles.imageContainer}>
+          {data.profile_picture ? (
             <Image
-              source={{ uri: form.profile_picture }}
+              source={{ uri: data.profile_picture }}
               style={styles.profileImage}
               contentFit="cover"
             />
           ) : (
             <View style={styles.placeholderImage}>
               <Text style={styles.placeholderText}>
-                {form.first_name?.[0]?.toUpperCase() || "?"}
+                {data.first_name?.[0]?.toUpperCase() || "?"}
               </Text>
             </View>
           )}
-          <Text style={styles.changePhotoText}>Change Photo</Text>
-        </Pressable>
-
-        <CustomInput
-          label="First Name"
-          value={form.first_name}
-          onChangeText={(v) => handleChange("first_name", v)}
-        />
-        <CustomInput
-          label="Last Name"
-          value={form.last_name}
-          onChangeText={(v) => handleChange("last_name", v)}
-        />
-        <CustomInput
-          label="Email"
-          value={form.email}
-          keyboardType="email-address"
-          onChangeText={(v) => handleChange("email", v)}
-        />
-        <CustomInput
-          label="Phone"
-          value={form.phone}
-          keyboardType="phone-pad"
-          onChangeText={(v) => handleChange("phone", v)}
-        />
-        {/* Birthday */}
-        <View style={styles.section}>
-          <MonthDayYearPicker
-            label="Birthday"
-            date={form.birthday ? parseDateLocal(form.birthday) : new Date()}
-            onChange={(d)=>setForm(prev=>({...prev,birthday:formatDateLocal(d)}))}
-          />
         </View>
 
-        <CustomButton
-          title={updateMutation.isLoading ? "Saving..." : "Save"}
-          onPress={handleSave}
-          disabled={updateMutation.isLoading}
-        />
+        <View style={styles.infoSection}>
+          <View style={styles.infoRow}>
+            <Text style={styles.label}>Name</Text>
+            <Text style={styles.value}>
+              {data.first_name && data.last_name 
+                ? `${data.first_name} ${data.last_name}`
+                : data.first_name || data.last_name || "-"}
+            </Text>
+          </View>
+
+          <View style={styles.infoRow}>
+            <Text style={styles.label}>Email</Text>
+            <Text style={styles.value}>{data.email || "-"}</Text>
+          </View>
+
+          <View style={styles.infoRow}>
+            <Text style={styles.label}>Phone</Text>
+            <Text style={styles.value}>{data.phone || "-"}</Text>
+          </View>
+
+          {/* Extra contact methods */}
+          {data.extra_contacts?.length > 0 && (
+            <View style={styles.infoRow}>
+              <Text style={styles.label}>Other Contacts</Text>
+              <View style={{ gap: wp(2) }}>
+                {data.extra_contacts.map((c, idx) => (
+                  <Text key={idx} style={styles.value}>{c.type}: {c.value}</Text>
+                ))}
+              </View>
+            </View>
+          )}
+
+          <View style={styles.infoRow}>
+            <Text style={styles.label}>Birthday</Text>
+            <Text style={styles.value}>
+              {data.birthday ? formatDateForDisplay(data.birthday) : "-"}
+            </Text>
+          </View>
+        </View>
       </ScrollView>
     </ScreenWrapper>
   );
@@ -169,18 +97,37 @@ const ProfileScreen = () => {
 
 const styles = StyleSheet.create({
   container: {
-    padding: wp(5),
-    gap: wp(5),
+    flex: 1,
+    paddingVertical: wp(5),
+  },
+  titleContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: wp(4),
+    paddingHorizontal: wp(5),
   },
   title: {
-    fontSize: wp(6),
-    fontWeight: "600",
+    fontSize: wp(9),
+    fontWeight: '600',
     color: theme.colors.text,
-    marginBottom: wp(2),
+  },
+  titleActions: {
+    flexDirection: 'row',
+    gap: wp(0),
+  },
+  actionButton: {
+    paddingHorizontal: wp(3),
+    paddingVertical: wp(2),
+    borderRadius: wp(2),
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
   },
   imageContainer: {
     alignItems: "center",
-    marginBottom: wp(5),
+    marginBottom: wp(8),
+    paddingHorizontal: wp(5),
   },
   profileImage: {
     width: wp(30),
@@ -200,39 +147,26 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontWeight: "600",
   },
-  changePhotoText: {
-    marginTop: wp(2),
-    color: theme.colors.primary,
-    fontSize: wp(4),
+  infoSection: {
+    backgroundColor: theme.colors.card,
+    borderRadius: wp(3),
+    padding: wp(4),
+    gap: wp(4),
+    marginHorizontal: wp(5),
   },
-  section: {
-    marginBottom: wp(4),
+  infoRow: {
+    flexDirection: "column",
+    gap: wp(1),
   },
   label: {
-    fontSize: wp(4),
+    fontSize: wp(3.5),
+    color: theme.colors.textSecondary,
     fontWeight: "500",
+  },
+  value: {
+    fontSize: wp(4.5),
     color: theme.colors.text,
-    marginBottom: wp(2),
-  },
-  dateButton: {
-    justifyContent: 'flex-start',
-  },
-  datePickerContainer: {
-    backgroundColor: theme.colors.background,
-    borderRadius: wp(2),
-    marginTop: wp(2),
-    padding: wp(3),
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  datePickerButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: wp(3),
-    gap: wp(2),
-  },
-  datePickerButton: {
-    flex: 1,
+    fontWeight: "500",
   },
 });
 
