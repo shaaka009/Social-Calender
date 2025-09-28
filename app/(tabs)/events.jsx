@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
+import SegmentedControl from '@react-native-segmented-control/segmented-control';
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import CustomButton from '../../components/CustomButton';
 import LoadingState from '../../components/LoadingState';
 import ScreenWrapper from '../../components/ScreenWrapper';
@@ -13,20 +14,18 @@ import { useCreateTag, useTags } from '../../helpers/useTags';
 
 const EventCard = ({ event }) => {
   const isToday = new Date(event.date).toDateString() === new Date().toDateString();
-  const isPast = new Date(event.date) < new Date(new Date().setHours(0, 0, 0, 0));
 
   return (
     <Pressable 
       style={({ pressed }) => [
         styles.eventCard,
         isToday && styles.eventCardToday,
-        isPast && styles.eventCardPast,
         pressed && styles.eventCardPressed,
       ]}
       onPress={() => router.push(`/events/${event.id}`)}
     >
       <View style={styles.eventHeader}>
-        <Text style={styles.eventTitle}>{event.title}</Text>
+        <Text style={styles.eventTitle}>{event.display_title || event.title}</Text>
         <Text style={styles.eventType}>
           {event.type === 'birthday' ? '🎂' : '📅'}
         </Text>
@@ -55,6 +54,12 @@ const Events = () => {
   });
 
   /* --------------------------------------------------
+   * Event type selection (upcoming/past)
+   * -------------------------------------------------- */
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const eventTypes = ['Upcoming', 'Past'];
+
+  /* --------------------------------------------------
    * Tag filtering (event types)
    * -------------------------------------------------- */
   const [selectedTags, setSelectedTags] = useState([]);
@@ -76,19 +81,172 @@ const Events = () => {
    * Derived list
    * -------------------------------------------------- */
   const visibleEvents = useMemo(() => {
-    if (selectedTags.length === 0) return events;
-    // We need event.person.tags or similar; backend may not supply. Fallback: filter none.
-    return events.filter(e => false);
-  }, [events, selectedTags]);
+    const today = new Date(new Date().setHours(0, 0, 0, 0));
+    
+    // First filter by upcoming/past with special handling for birthdays
+    const timeFilteredEvents = events.filter(event => {
+      const eventDate = new Date(event.date);
+      
+      // For birthday events, compare only month and day
+      if (event.type === 'birthday') {
+        // Get month and day for comparison (1-based month)
+        const todayMonth = today.getMonth() + 1;
+        const todayDay = today.getDate();
+        const eventMonth = eventDate.getMonth() + 1;
+        const eventDay = eventDate.getDate();
+        
+        // Calculate month-day combinations for comparison (e.g., "12-25" for December 25)
+        const todayValue = todayMonth * 100 + todayDay;  // e.g., 1225 for December 25
+        const eventValue = eventMonth * 100 + eventDay;  // e.g., 0115 for January 15
+        
+        // Calculate 6 months forward and backward
+        let sixMonthsForward = todayMonth + 6;
+        let sixMonthsBackward = todayMonth - 6;
+        
+        // Adjust for year wrap-around
+        if (sixMonthsForward > 12) sixMonthsForward = sixMonthsForward - 12;
+        if (sixMonthsBackward <= 0) sixMonthsBackward = sixMonthsBackward + 12;
+        
+        if (selectedIndex === 0) {
+          // Upcoming: Show if date is within next 6 months
+          if (sixMonthsForward > todayMonth) {
+            // No year wrap-around case
+            return (eventValue >= todayValue && eventMonth <= sixMonthsForward);
+          } else {
+            // Year wrap-around case (e.g., today is October, show events until March)
+            return (eventValue >= todayValue || eventMonth <= sixMonthsForward);
+          }
+        } else {
+          // Past: Show if date is within last 6 months
+          if (sixMonthsBackward < todayMonth) {
+            // No year wrap-around case
+            return (eventValue < todayValue && eventMonth >= sixMonthsBackward);
+          } else {
+            // Year wrap-around case (e.g., today is March, show events since October)
+            return (eventValue < todayValue || eventMonth >= sixMonthsBackward);
+          }
+        }
+      }
+      
+      // For non-birthday events, use standard today cutoff
+      return selectedIndex === 0 
+        ? eventDate >= today  // Upcoming events
+        : eventDate < today;  // Past events
+    });
+
+    // Filter by tags if any are selected
+    const tagFilteredEvents = selectedTags.length === 0 
+      ? timeFilteredEvents 
+      : timeFilteredEvents.filter(event => 
+          event.tags?.some(tag => selectedTags.includes(tag.name))
+        );
+
+    // Sort events based on their dates
+    return tagFilteredEvents.sort((a, b) => {
+      const today = new Date();
+      const currentYear = today.getFullYear();
+      const currentMonth = today.getMonth(); // 0-11
+      
+      // Create comparison dates, handling year boundaries
+      const getComparisonDate = (event) => {
+        const eventDate = new Date(event.date);
+        const eventMonth = eventDate.getMonth(); // 0-11
+        
+        // Determine if we should use current year or next/previous year
+        let yearToUse = currentYear;
+        
+        if (selectedIndex === 0) { // Upcoming events
+          // If event month is earlier than current month, it must be next year
+          if (eventMonth < currentMonth) {
+            yearToUse = currentYear + 1;
+          }
+        } else { // Past events
+          // If event month is later than current month, it must be previous year
+          if (eventMonth > currentMonth) {
+            yearToUse = currentYear - 1;
+          }
+        }
+        
+        if (event.type === 'birthday') {
+          return new Date(
+            yearToUse,
+            eventMonth,
+            eventDate.getDate()
+          );
+        }
+        
+        // For non-birthday events, use actual date but adjust year if needed
+        if (selectedIndex === 0 && eventMonth < currentMonth) {
+          return new Date(
+            currentYear + 1,
+            eventMonth,
+            eventDate.getDate()
+          );
+        } else if (selectedIndex === 1 && eventMonth > currentMonth) {
+          return new Date(
+            currentYear - 1,
+            eventMonth,
+            eventDate.getDate()
+          );
+        }
+        return eventDate;
+      };
+
+      const dateA = getComparisonDate(a);
+      const dateB = getComparisonDate(b);
+
+      // For upcoming events, sort in ascending order (nearest future date first)
+      // For past events, sort in descending order (most recent past date first)
+      return selectedIndex === 0
+        ? dateA.getTime() - dateB.getTime()  // Upcoming: ascending
+        : dateB.getTime() - dateA.getTime(); // Past: descending
+    });
+  }, [events, selectedTags, selectedIndex]);
 
   return (
     <ScreenWrapper>
-      {/* Header */}
-      <View style={styles.header}>
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.titleContainer}>
         <Text style={styles.title}>Events</Text>
-        <CustomButton
-          title="Add Event"
-          onPress={() => router.push('/events/new')}
+        <View style={styles.titleActions}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => {/* TODO: Add notifications handler */}}
+          >
+            <Ionicons 
+              name="notifications-outline" 
+              size={wp(7)} 
+              color={theme.colors.text}
+            />
+            {/* TODO: Add notification count logic */}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => router.push('/events/new')}
+          >
+            <Ionicons 
+              name="add" 
+              size={wp(8)} 
+              color={theme.colors.text} 
+            />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Event type selector */}
+      <View style={styles.segmentContainer}>
+        <SegmentedControl
+          values={eventTypes}
+          selectedIndex={selectedIndex}
+          onChange={(event) => {
+            setSelectedIndex(event.nativeEvent.selectedSegmentIndex);
+          }}
+          style={[styles.segmentedControl, { borderRadius: 20 }]}
+          fontStyle={{ color: theme.colors.text }}
+          activeFontStyle={{ color: '#fff' }}
+          backgroundColor={theme.colors.backgroundSecondary}
+          tintColor={theme.colors.primary}
         />
       </View>
 
@@ -191,26 +349,66 @@ const Events = () => {
           </View>
         )}
       </LoadingState>
+      </View>
     </ScreenWrapper>
   );
 };
 
 const styles = StyleSheet.create({
-  header: {
+  titleContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: wp(5),
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    marginBottom: wp(4),
+    paddingHorizontal: wp(5),
   },
   title: {
-    fontSize: wp(5),
+    fontSize: wp(9),
     fontWeight: '600',
     color: theme.colors.text,
   },
+  titleActions: {
+    flexDirection: 'row',
+    gap: wp(0),
+  },
+  actionButton: {
+    paddingHorizontal: wp(3),
+    paddingVertical: wp(2),
+    borderRadius: wp(2),
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  badge: {
+    backgroundColor: theme.colors.error,
+    borderRadius: wp(4),
+    minWidth: wp(4),
+    height: wp(4),
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'absolute',
+    top: -wp(1),
+    right: -wp(1),
+    paddingHorizontal: wp(1),
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: wp(3),
+    fontWeight: '600',
+  },
+  segmentContainer: {
+    paddingVertical: wp(2),
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  segmentedControl: {
+    height: wp(10),
+    marginHorizontal: wp(5),
+    width: wp(90), // 100 - 2*5 for the margins
+  },
   container: {
     flex: 1,
+    paddingVertical: wp(5),
   },
   listContent: {
     paddingBottom: wp(10),
@@ -271,9 +469,6 @@ const styles = StyleSheet.create({
   },
   eventCardToday: {
     backgroundColor: theme.colors.primary + '15',
-  },
-  eventCardPast: {
-    opacity: 0.7,
   },
   eventCardPressed: {
     opacity: 0.7,
