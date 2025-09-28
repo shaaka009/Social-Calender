@@ -22,11 +22,25 @@ const EventPreview = ({ event, onPress }) => (
     </View>
     <View style={styles.eventInfo}>
       <Text style={styles.eventTitle} numberOfLines={1}>{event.title}</Text>
-      {event.person && (
-        <Text style={styles.eventPerson} numberOfLines={1}>
-          {event.person.first_name} {event.person.last_name}
-        </Text>
-      )}
+      <View style={styles.eventDetails}>
+        {event.person && (
+          <Text style={styles.eventPerson} numberOfLines={1}>
+            {event.person.first_name} {event.person.last_name}
+          </Text>
+        )}
+        {event.tags && event.tags.length > 0 && (
+          <View style={styles.tagContainer}>
+            {event.tags.map(tag => (
+              <View 
+                key={tag.id} 
+                style={[styles.tag, { backgroundColor: tag.color + '40' }]}
+              >
+                <Text style={[styles.tagText, { color: tag.color }]}>{tag.name}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
     </View>
   </Pressable>
 );
@@ -61,10 +75,20 @@ const CalendarPreview = ({ events = [], isLoading = false, error = null }) => {
       const isSelected = dateStr === selectedDate;
 
       acc[dateStr] = {
-        dots: eventsOnThisDate.map(e => ({
-          color: e.type === 'birthday' ? theme.colors.rose : theme.colors.primary,
-          key: e.id.toString(),
-        })),
+        dots: eventsOnThisDate.flatMap(e => {
+          // If event has tags, create a dot for each tag
+          if (e.tags && e.tags.length > 0) {
+            return e.tags.map(tag => ({
+              color: tag.color,
+              key: `${e.id}-${tag.id}`,
+            }));
+          }
+          // If no tags, fall back to default color scheme
+          return [{
+            color: e.type === 'birthday' ? theme.colors.rose : theme.colors.primary,
+            key: e.id.toString(),
+          }];
+        }),
         marked: true,
         selected: isSelected || isToday,
         selectedColor: isSelected ? theme.colors.primary : theme.colors.primary + '40',
@@ -315,6 +339,24 @@ const styles = StyleSheet.create({
   eventPerson: {
     fontSize: wp(3.5),
     color: theme.colors.textLight,
+  },
+  eventDetails: {
+    flexDirection: 'column',
+    gap: wp(1),
+  },
+  tagContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: wp(1),
+  },
+  tag: {
+    paddingHorizontal: wp(2),
+    paddingVertical: wp(0.5),
+    borderRadius: wp(2),
+  },
+  tagText: {
+    fontSize: wp(3),
+    fontWeight: '500',
   },
 });
 
