@@ -34,6 +34,8 @@ class PersonSerializer(serializers.ModelSerializer):
             "last_name",
             "email",
             "phone",
+            "organization",
+            "location",
             "birthday",
             "extra_contacts",
             "is_app_user",
@@ -107,6 +109,7 @@ class ConnectionSerializer(serializers.ModelSerializer):
     birthday = serializers.DateField(write_only=True, required=False, allow_null=True)
     notes = serializers.CharField(write_only=True, required=False, allow_blank=True)
     tags = serializers.ListField(write_only=True, required=False, child=serializers.CharField())
+    nickname = serializers.CharField(required=False, allow_blank=True)
 
     # Read-only fields
     target = PersonSerializer(read_only=True)
@@ -148,6 +151,9 @@ class ConnectionSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         owner_person: Person = self.context["request"].user.account.person
 
+        # Extract organization override early if present (for connection-specific label)
+        conn_org_override = validated_data.pop("organization", "")
+
         # Handle manual contact creation
         if 'first_name' in validated_data:
             # Extract tags list (if provided) BEFORE creating Person
@@ -176,8 +182,17 @@ class ConnectionSerializer(serializers.ModelSerializer):
             defaults={
                 **validated_data,
                 "status": Connection.PENDING if target_person.is_app_user else Connection.ACCEPTED,
+                "organization": conn_org_override,
+                "nickname": validated_data.pop("nickname", ""),
             },
         )
+        # If connection existed and we provided a new organization override, update it
+        if conn_org_override and conn.organization != conn_org_override:
+            conn.organization = conn_org_override
+            conn.save(update_fields=["organization"])
+        if conn_org_override and conn.nickname != conn_org_override:
+            conn.nickname = conn_org_override
+            conn.save(update_fields=["nickname"])
 
         # Handle tag assignments (only if the request included any)
         if 'tag_names' in locals() and tag_names:
@@ -221,6 +236,12 @@ class ConnectionSerializer(serializers.ModelSerializer):
                     setattr(target_person, field, validated_data.pop(field))
             target_person.save()
 
+        # Organization and nickname override – always editable by the connection owner
+        if "organization" in validated_data:
+            instance.organization = validated_data.pop("organization")
+        if "nickname" in validated_data:
+            instance.nickname = validated_data.pop("nickname")
+
         # Handle tag updates (owner scoped)
         if "tags" in validated_data:
             tag_names = validated_data.pop("tags")
@@ -233,6 +254,9 @@ class ConnectionSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         data = super().to_representation(instance)
         data["tags"] = [tag.name for tag in instance.tags.all()]
+        # Surface effective labels
+        data["effective_organization"] = instance.organization or getattr(instance.target, "organization", "")
+        data["nickname"] = instance.nickname or ""
         return data
 
     class Meta:
@@ -246,6 +270,8 @@ class ConnectionSerializer(serializers.ModelSerializer):
             "phone",
             "birthday",
             "notes",
+            "nickname",
+            "organization",
             "tags",
             "target",
             "owner",
@@ -507,6 +533,8 @@ class UserProfileSerializer(serializers.Serializer):
     email = serializers.EmailField(required=False, allow_blank=True)
     phone = serializers.CharField(required=False, allow_blank=True)
     birthday = serializers.DateField(required=False, allow_null=True)
+    organization = serializers.CharField(required=False, allow_blank=True)
+    location = serializers.CharField(required=False, allow_blank=True)
     extra_contacts = serializers.ListField(child=serializers.DictField(), required=False)
     profile_picture = serializers.ImageField(required=False, allow_null=True)
 
@@ -523,6 +551,8 @@ class UserProfileSerializer(serializers.Serializer):
             "last_name": (user.last_name if user and user.last_name else person.last_name) or "",
             "email": (user.email if user else person.email) or "",
             "phone": person.phone or "",
+            "organization": person.organization or "",
+            "location": person.location or "",
             "birthday": person.birthday,
             "extra_contacts": person.extra_contacts,
         }
@@ -541,7 +571,7 @@ class UserProfileSerializer(serializers.Serializer):
 
     def update(self, person, validated_data):
         # Update Person fields
-        for attr in ("phone", "birthday", "profile_picture", "extra_contacts"):
+        for attr in ("phone", "birthday", "profile_picture", "extra_contacts", "organization", "location"):
             if attr in validated_data:
                 setattr(person, attr, validated_data[attr])
         person.save()

@@ -1,3 +1,4 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -28,19 +29,37 @@ const ContactCard = ({ contact, onPress }) => {
       </View>
       
       <View style={styles.details}>
-        <Text style={styles.name}>
-          {person.first_name} {person.last_name}
-        </Text>
+        <View style={styles.nameOrg}>
+          <Text style={styles.name}>
+            {contact.nickname || `${person.first_name} ${person.last_name}`.trim()}
+          </Text>
+
+          {/* Organization */}
+          {(contact.effective_organization || person.organization) && (
+            <Text style={styles.orgText}>
+              {contact.effective_organization || person.organization}
+            </Text>
+          )}
+        </View>
         
         {daysSinceContact !== null && (
-          <Text style={[
-            styles.infoText,
-            daysSinceContact > 30 && styles.warningText
-          ]}>
-            {daysSinceContact === 0 ? "Contacted today" :
-             daysSinceContact === 1 ? "Contacted yesterday" :
-             `${daysSinceContact} days since last contact`}
-          </Text>
+          <View style={styles.statusRow}>
+            {(() => {
+              const size = 12;
+              if (daysSinceContact < 30) {
+                return <MaterialCommunityIcons name="circle" size={size} color={theme.colors.success} style={styles.statusIcon} />;
+              }
+              if (daysSinceContact < 182) { // ~6 months
+                return <MaterialCommunityIcons name="triangle" size={size} color={theme.colors.warning} style={styles.statusIcon} />;
+              }
+              return <MaterialCommunityIcons name="square" size={size} color={theme.colors.rose} style={styles.statusIcon} />;
+            })()}
+            <Text style={styles.infoText}>
+              {daysSinceContact === 0 ? "Contacted today" :
+               daysSinceContact === 1 ? "Contacted yesterday" :
+               `${daysSinceContact} days since last contact`}
+            </Text>
+          </View>
         )}
       </View>
     </TouchableOpacity>
@@ -79,15 +98,33 @@ const styles = StyleSheet.create({
   details: {
     flex: 1,
   },
+  nameOrg: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(2),
+  },
   name: {
     fontSize: wp(4),
     fontWeight: '600',
     color: theme.colors.text,
     marginBottom: wp(0.5),
   },
+  orgText: {
+    fontSize: wp(3.2),
+    color: theme.colors.textLight,
+    marginTop: wp(0.2),
+  },
   infoText: {
     fontSize: wp(3.2),
     color: theme.colors.textLight,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(0.5),
+  },
+  statusIcon: {
+    marginRight: wp(1),
   },
   warningText: {
     color: theme.colors.warning,

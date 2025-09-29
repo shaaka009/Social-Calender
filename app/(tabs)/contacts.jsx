@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -15,6 +16,7 @@ const Contacts = () => {
   const [selectedTags, setSelectedTags] = useState([]);
   const COLOR_OPTIONS = ['#ff8c00', '#ff4d4f', '#40a9ff', '#52c41a', '#faad14', '#722ed1', '#13c2c2'];
   const [modalVisible, setModalVisible] = useState(false);
+  const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [newTag, setNewTag] = useState({ name: '', color: COLOR_OPTIONS[0] });
 
   const { data: contacts = [] } = useContacts();
@@ -68,38 +70,55 @@ const Contacts = () => {
           <Ionicons name="add" size={wp(6)} color="#fff" />
         </TouchableOpacity>
 
-        <FlatList
-          data={allTags}
-          horizontal
-          keyExtractor={(item) => item.name}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tagsContainer}
-          renderItem={({ item: tag }) => (
-            <TouchableOpacity
-              style={[
-                styles.tagButton,
-                {
-                  backgroundColor: selectedTags.includes(tag.name)
-                    ? tag.color || theme.colors.primary
-                    : 'transparent',
-                  borderWidth: 1,
-                  borderColor: tag.color || theme.colors.primary,
-                },
-              ]}
-              onPress={() => toggleTag(tag.name)}
-            >
-              <Text
+        {/* Wrap FlatList to allow it to shrink/grow without pushing filter button off-screen */}
+        <View style={styles.tagsList}>
+          <FlatList
+            data={allTags}
+            horizontal
+            keyExtractor={(item) => item.name}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tagsContainer}
+            renderItem={({ item: tag }) => (
+              <TouchableOpacity
                 style={[
-                  styles.tagText,
+                  styles.tagButton,
                   {
-                    color: selectedTags.includes(tag.name) ? '#fff' : theme.colors.textLight,
+                    backgroundColor: selectedTags.includes(tag.name)
+                      ? tag.color || theme.colors.primary
+                      : 'transparent',
+                    borderWidth: 1,
+                    borderColor: tag.color || theme.colors.primary,
                   },
-                ]}>
-                {tag.name}
-              </Text>
-            </TouchableOpacity>
-          )}
-        />
+                ]}
+                onPress={() => toggleTag(tag.name)}
+              >
+                <Text
+                  style={[
+                    styles.tagText,
+                    {
+                      color: selectedTags.includes(tag.name) ? '#fff' : theme.colors.textLight,
+                    },
+                  ]}>
+                  {tag.name}
+                </Text>
+              </TouchableOpacity>
+            )}
+          />
+          {/* right-edge fade */}
+          <LinearGradient
+            colors={["rgba(255, 255, 255, 0)", "rgba(255, 255, 255, 1)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.tagsFade}
+            pointerEvents="none"
+          />
+        </View>
+
+        {/* spacing between tags and filter */}
+        <View style={{ width: wp(2) }} />
+        <TouchableOpacity style={styles.filterButton} onPress={() => setFilterModalVisible(true)}>
+          <Ionicons name="filter" size={wp(6)} color={theme.colors.text} />
+        </TouchableOpacity>
       </View>
 
       {/* Modal */}
@@ -133,6 +152,25 @@ const Contacts = () => {
               </TouchableOpacity>
               <TouchableOpacity style={styles.modalBtn} onPress={handleSaveTag}>
                 <Text style={styles.saveText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      {/* Filter Modal */}
+      <Modal
+        visible={filterModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFilterModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Filter Contacts</Text>
+            <Text style={{ color: theme.colors.text, marginBottom: wp(3) }}>Filter options coming soon...</Text>
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalBtn} onPress={() => setFilterModalVisible(false)}>
+                <Text style={styles.cancelText}>Close</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -276,6 +314,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: wp(2),
   },
+  tagsList: {
+    flexShrink: 1,
+    flexGrow: 1,
+    overflow: 'hidden',
+  },
+  tagsFade: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: wp(12), // wider fade for smoother look
+  },
   plusButton: {
     backgroundColor: theme.colors.primary,
     width: wp(8),
@@ -383,6 +433,11 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontSize: wp(4),
     fontWeight: '600',
+  },
+  // EDIT: new styles for divider and filter button
+  filterButton: {
+    paddingHorizontal: wp(2),
+    paddingVertical: wp(2),
   },
 });
 

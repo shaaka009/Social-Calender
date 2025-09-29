@@ -36,6 +36,8 @@ const EditContactScreen = () => {
     last_name: '',
     email: '',
     phone: '',
+    nickname: '',
+    organization: '',
     birthday: null,
     no_contact_threshold: null,
     notes: '',
@@ -59,6 +61,8 @@ const EditContactScreen = () => {
         last_name: person.last_name || '',
         email: person.email || '',
         phone: person.phone || '',
+        nickname: contact.nickname || '',
+        organization: contact.effective_organization || person.organization || '',
         // Use parseDateLocal to construct the date in local timezone to avoid off-by-one errors
         birthday: person.birthday ? parseDateLocal(person.birthday) : null,
         no_contact_threshold: contact.no_contact_threshold,
@@ -116,6 +120,9 @@ const EditContactScreen = () => {
           payload.extra_contacts.push({ type: type.trim(), value: value.trim() });
         }
       });
+      // Remove organization if blank to avoid wiping unintentionally
+      if (!payload.organization?.trim()) delete payload.organization;
+      if (!payload.nickname?.trim()) delete payload.nickname;
 
       // Format date for API
       payload.birthday = formData.birthday
@@ -158,7 +165,7 @@ const EditContactScreen = () => {
       }
 
       if (isAppUser) {
-        const { first_name, last_name, email, ...editableFields } = payload;
+        const { first_name, last_name, email, phone, birthday, notes, tags, ...editableFields } = payload;
         await apiFetch(`${ENDPOINTS.CONNECTIONS}${id}/`, {
           method: 'PATCH',
           body: hasLocalImage ? requestBody : JSON.stringify(editableFields),
@@ -259,6 +266,18 @@ const EditContactScreen = () => {
               <Text style={styles.label}>Email</Text>
               <Text style={styles.value}>{person.email}</Text>
             </View>
+            <CustomInput
+              label="Organization"
+              value={formData.organization}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, organization: text }))}
+              placeholder="Organization"
+            />
+            <CustomInput
+              label="Nickname"
+              value={formData.nickname}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, nickname: text }))}
+              placeholder="Nickname"
+            />
           </View>
         ) : (
           <>
@@ -294,6 +313,20 @@ const EditContactScreen = () => {
                   />
                 </View>
               </View>
+              {/* Nickname */}
+              <CustomInput
+                label="Nickname"
+                value={formData.nickname}
+                onChangeText={(text) => setFormData(prev => ({ ...prev, nickname: text }))}
+                placeholder="Nickname"
+              />
+              {/* Organization */}
+              <CustomInput
+                label="Organization"
+                value={formData.organization}
+                onChangeText={(text) => setFormData(prev => ({ ...prev, organization: text }))}
+                placeholder="Organization"
+              />
             </View>
 
             {/* Contact Information Section */}
@@ -515,6 +548,7 @@ const styles = StyleSheet.create({
   },
   section: {
     marginBottom: wp(6),
+    gap: wp(2),
   },
   sectionTitle: {
     fontSize: wp(4.5),
