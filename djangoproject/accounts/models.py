@@ -84,8 +84,11 @@ class Person(models.Model):
     # auth_user record.  For manual contacts (no account), they behave as before.
     first_name = models.CharField(max_length=100, blank=True, null=True)
     last_name = models.CharField(max_length=100, blank=True, null=True)
+    organization = models.CharField(max_length=255, blank=True, help_text="Organization/company name shared with contacts.")
     email = models.EmailField(blank=True, null=True)
     phone = models.CharField(max_length=30, blank=True)
+    # Home city / region the Person decides to share (not editable by other users)
+    location = models.CharField(max_length=255, blank=True, help_text="City/region set by the user; read-only for contacts.")
     birthday = models.DateField(null=True, blank=True)
     notes = models.TextField(blank=True)
     # Flexible additional contact methods (e.g. social links)
@@ -199,6 +202,9 @@ class Connection(models.Model):
         help_text="The person this entry points to.",
     )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=PENDING)
+    # Per-connection nickname and organisation labels – fully controlled by the owner
+    nickname = models.CharField(max_length=100, blank=True, help_text="Personal nickname for this contact (owner-specific)")
+    organization = models.CharField(max_length=255, blank=True, help_text="Organization label shown in this owner\'s contact list.")
     last_contact_date = models.DateField(null=True, blank=True, help_text="Date of the most recent interaction")
     no_contact_threshold = models.IntegerField(
         null=True,
