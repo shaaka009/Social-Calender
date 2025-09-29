@@ -79,7 +79,7 @@ const ContactProfileScreen = () => {
         </View>
 
         {/* Name Title */}
-        <Text style={styles.nameTitle}>{person.first_name} {person.last_name}</Text>
+        <Text style={styles.nameTitle}>{contact.nickname || `${person.first_name} ${person.last_name}`.trim()}</Text>
 
         {/* Tab Selector */}
         <View style={styles.tabContainer}>
@@ -110,7 +110,13 @@ const ContactProfileScreen = () => {
             {/* Basic Info */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Basic Info</Text>
-              <InfoRow label="Name" value={`${person.first_name} ${person.last_name}`} />
+              <InfoRow label="Name" value={contact.nickname ? `${person.first_name} ${person.last_name} (${contact.nickname})` : `${person.first_name} ${person.last_name}`.trim()} />
+              {(contact.effective_organization || person.organization) && (
+                <InfoRow label="Organization" value={contact.effective_organization || person.organization} />
+              )}
+              {person.location && (
+                <InfoRow label="Location" value={person.location} />
+              )}
               <InfoRow label="Email" value={person.email || '—'} />
               <InfoRow label="Phone" value={person.phone || '—'} />
               <InfoRow label="Birthday" value={formatDate(person.birthday)} />
