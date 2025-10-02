@@ -139,8 +139,10 @@ const Events = () => {
     // Filter by tags if any are selected
     const tagFilteredEvents = selectedTags.length === 0 
       ? timeFilteredEvents 
-      : timeFilteredEvents.filter(event => 
-          event.tags?.some(tag => selectedTags.includes(tag.name))
+      : timeFilteredEvents.filter(event =>
+          selectedTags.every(tagName =>
+            event.tags?.some(tag => tag.name === tagName)
+          )
         );
 
     // Sort events based on their dates
@@ -477,6 +479,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: wp(2),
     marginBottom: wp(2),
+    paddingRight: wp(3.5),
   },
   tagsList: {
     flexShrink: 1,

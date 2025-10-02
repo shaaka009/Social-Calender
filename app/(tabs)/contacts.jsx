@@ -40,8 +40,9 @@ const Contacts = () => {
         .toLowerCase()
         .includes(searchQuery.toLowerCase());
 
+    const contactTagList = (contact.tags || contact.target?.tags || []);
     const matchesTags = selectedTags.length === 0 ||
-      selectedTags.some(tag => (contact.tags || contact.target?.tags || []).includes(tag));
+      selectedTags.every(tag => contactTagList.includes(tag));
 
     // Only show accepted connections
     const isAccepted = contact.status === 'accepted';
@@ -308,6 +309,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: wp(2),
     marginBottom: wp(2),
+    paddingRight: wp(3.5),
   },
   tagsList: {
     flexShrink: 1,
@@ -331,25 +333,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: wp(5),
-  },
-  newTagRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: wp(2),
-  },
-  newTagInput: {
-    flex: 1,
-    backgroundColor: theme.colors.backgroundSecondary,
-    borderRadius: wp(2),
-    padding: wp(3),
-    marginRight: wp(2),
-    color: theme.colors.text,
-  },
-  addTagButton: {
-    backgroundColor: theme.colors.primary,
-    padding: wp(2),
-    borderRadius: wp(2),
-  },
+  }, 
   tagButton: {
     paddingHorizontal: wp(3),
     paddingVertical: wp(1.5),
