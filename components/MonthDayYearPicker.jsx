@@ -206,7 +206,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   pickerItem: {
-    fontSize: wp(5),
+    fontSize: Math.round(wp(5)), // RNCPicker expects integer fontSize to avoid precision warnings
   },
   confirmBtn: {
     paddingVertical: wp(3),
