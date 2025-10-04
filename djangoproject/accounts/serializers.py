@@ -355,20 +355,22 @@ class EventSerializer(serializers.ModelSerializer):
         allow_empty=True,
     )
     title = serializers.CharField()
+    start_date = serializers.DateField()
+    end_date = serializers.DateField(allow_null=True, required=False)
     display_title = serializers.SerializerMethodField()
 
     def get_display_title(self, obj):
         # For birthday events, check if we have a year and calculate age
-        if obj.type == 'birthday' and obj.date:
-            # Special case: year is 0000 means no birth year provided
-            if obj.date.year == 0:
+        if obj.type == 'birthday' and hasattr(obj, 'start_date') and obj.start_date:
+            # NOTE: birthday logic uses start_date now
+            if not hasattr(obj, "start_date"):
                 return obj.title
             else:
                 # Calculate age
                 today = date.today()
-                age = today.year - obj.date.year
+                age = today.year - obj.start_date.year
                 # Adjust age if birthday hasn't occurred this year
-                if today.month < obj.date.month or (today.month == obj.date.month and today.day < obj.date.day):
+                if today.month < obj.start_date.month or (today.month == obj.start_date.month and today.day < obj.start_date.day):
                     age -= 1
                 return f"{obj.title} (turning {age + 1})"
         return obj.title
@@ -403,7 +405,8 @@ class EventSerializer(serializers.ModelSerializer):
         model = Event
         fields = (
             "id",
-            "date",
+            "start_date",
+            "end_date",
             "type",
             "title",
             "display_title",
@@ -416,6 +419,13 @@ class EventSerializer(serializers.ModelSerializer):
             "updated_at",
         )
         read_only_fields = ("id", "created_at", "updated_at", "tags", "people")
+
+    def validate(self, attrs):
+        start = attrs.get("start_date") or getattr(self.instance, "start_date", None)
+        end = attrs.get("end_date", None)
+        if end and end < start:
+            raise serializers.ValidationError({"end_date": "End date cannot be before start_date"})
+        return super().validate(attrs)
 
 
 class NotificationSerializer(serializers.ModelSerializer):
@@ -444,10 +454,10 @@ class NotificationSerializer(serializers.ModelSerializer):
         if obj.type == Notification.UPCOMING_EVENT:
             # Prefer the event relation, fallback to stored date field
             event_date = None
-            if obj.event and obj.event.date:
-                event_date = obj.event.date
+            if obj.event and hasattr(obj.event, 'start_date'):
+                event_date = obj.event.start_date
             elif obj.date:
-                event_date = obj.date
+                event_date = obj.date  # legacy fallback
             if event_date:
                 return (event_date - date.today()).days
         return None

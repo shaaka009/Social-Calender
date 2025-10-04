@@ -10,14 +10,33 @@ User = get_user_model()
 class Event(models.Model):
     BIRTHDAY = "birthday"
     GENERAL = "general"
+    WORK_MEETING = "work_meeting"
+    DEADLINE = "deadline"
+    PARTY = "party"
+    LUNCH = "lunch"
+    DINNER = "dinner"
+    BREAKFAST = "breakfast"
+    VACATION = "vacation"
 
     EVENT_TYPE_CHOICES = [
         (BIRTHDAY, "Birthday"),
         (GENERAL, "General"),
+        (WORK_MEETING, "Work Meeting"),
+        (DEADLINE, "Deadline"),
+        (PARTY, "Party"),
+        (LUNCH, "Lunch"),
+        (DINNER, "Dinner"),
+        (BREAKFAST, "Breakfast"),
+        (VACATION, "Vacation"),
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="events")
-    date = models.DateField()
+    start_date = models.DateField(null=True, blank=True, help_text="Start date for the event")
+    end_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Optional end date (inclusive). Leave blank for single-day events.",
+    )
     type = models.CharField(max_length=32, choices=EVENT_TYPE_CHOICES, default=GENERAL)
     title = models.CharField(max_length=255)
     notes = models.TextField(blank=True)
@@ -39,11 +58,18 @@ class Event(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.end_date and self.end_date < self.start_date:
+            raise ValidationError({"end_date": "End date cannot be before start date."})
+
     class Meta:
-        ordering = ["date"]
+        ordering = ["start_date"]
 
     def __str__(self):
-        return f"{self.title} on {self.date}"
+        if self.end_date and self.end_date != self.start_date:
+            return f"{self.title} ({self.start_date}–{self.end_date})"
+        return f"{self.title} on {self.start_date}"
 
 
 class Notification(models.Model):
