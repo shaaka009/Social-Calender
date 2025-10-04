@@ -6,7 +6,7 @@ import React, { useRef, useState } from 'react';
 import { Alert, Animated, Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Toast from 'react-native-root-toast';
 import CustomInput from '../../components/CustomInput';
-import MonthDayYearPicker from '../../components/MonthDayYearPicker';
+import DateRangePicker from '../../components/DateRangePicker';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import { EVENT_TYPES } from '../../constants/eventTypes';
 import { theme } from '../../constants/theme';
@@ -23,7 +23,8 @@ const AddEventScreen = () => {
   // Form state
   const [form, setForm] = useState({
     title: '',
-    date: new Date(),
+    start_date: new Date(),
+    end_date: null,
     type: 'general',
     people_ids: [],
     tag_ids: [],
@@ -82,14 +83,19 @@ const AddEventScreen = () => {
 
     setIsLoading(true);
     try {
+      const format = (d)=>{
+        if (!d) return null;
+        if (form.type==='birthday' && d.noYear){
+          return `0000-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        }
+        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      };
       await apiFetch(ENDPOINTS.EVENTS, {
         method: 'POST',
         body: JSON.stringify({
           ...form,
-          // For birthday events with no year specified, use a special format
-          date: form.type === 'birthday' && form.date.noYear
-            ? `0000-${String(form.date.getMonth() + 1).padStart(2, '0')}-${String(form.date.getDate()).padStart(2, '0')}`
-            : `${form.date.getFullYear()}-${String(form.date.getMonth() + 1).padStart(2, '0')}-${String(form.date.getDate()).padStart(2, '0')}`,
+          start_date: format(form.start_date),
+          end_date: form.end_date ? format(form.end_date) : null,
         }),
       });
 
@@ -163,12 +169,11 @@ const AddEventScreen = () => {
           </Pressable>
 
           {/* Date Picker */}
-          <MonthDayYearPicker
-            label="Date"
-            date={form.date}
-            onChange={(d)=>setForm(prev=>({...prev,date:d}))}
-            yearOptional={form.type === 'birthday'}
-            showYear={true}
+          <DateRangePicker
+            label="Date(s)"
+            startDate={form.start_date}
+            endDate={form.end_date}
+            onChange={({start_date,end_date})=>setForm(prev=>({...prev,start_date,end_date}))}
           />
         </View>
 

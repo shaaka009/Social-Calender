@@ -13,8 +13,20 @@ import { ENDPOINTS, apiFetch } from '../../helpers/api';
 import { wp } from '../../helpers/common';
 import { useCreateTag, useTags } from '../../helpers/useTags';
 
+// Helper utils for new date fields
+const getStart = (e) => new Date(e.start_date || e.date);
+const getEnd = (e) => e.end_date ? new Date(e.end_date) : getStart(e);
+const sameDay = (d1,d2)=> d1.toDateString() === d2.toDateString();
+const formatRange = (e)=>{
+  const s = getStart(e);
+  const en = getEnd(e);
+  return sameDay(s,en)
+    ? s.toLocaleDateString()
+    : `${s.toLocaleDateString()} – ${en.toLocaleDateString()}`;
+};
+
 const EventCard = ({ event }) => {
-  const isToday = new Date(event.date).toDateString() === new Date().toDateString();
+  const isToday = getStart(event).toDateString() === new Date().toDateString();
 
   return (
     <Pressable 
@@ -32,7 +44,7 @@ const EventCard = ({ event }) => {
         </Text>
       </View>
       <Text style={styles.eventDate}>
-        {new Date(`${event.date}T00:00:00`).toLocaleDateString()}
+        {formatRange(event)}
       </Text>
       {event.person && (
         <Text style={styles.eventPerson}>
@@ -87,7 +99,7 @@ const Events = () => {
     
     // First filter by upcoming/past with special handling for birthdays
     const timeFilteredEvents = events.filter(event => {
-      const eventDate = new Date(event.date);
+      const eventDate = getStart(event);
       
       // For birthday events, compare only month and day
       if (event.type === 'birthday') {
@@ -153,7 +165,7 @@ const Events = () => {
       
       // Create comparison dates, handling year boundaries
       const getComparisonDate = (event) => {
-        const eventDate = new Date(event.date);
+        const eventDate = getStart(event);
         const eventMonth = eventDate.getMonth(); // 0-11
         
         // Determine if we should use current year or next/previous year
