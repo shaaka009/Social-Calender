@@ -249,8 +249,9 @@ class DashboardAPIView(APIView):
         # Get events within 1 year range
         events = Event.objects.filter(
             user=request.user,
-            date__range=[start_date, end_date]
-        ).order_by('date')
+            start_date__lte=end_date,
+            end_date__gte=start_date if Event._meta.get_field('end_date').null else start_date,
+        ).order_by('start_date')
 
         # Get notifications
         from .management.commands.generate_no_contact_notifications import Command as NotificationCommand
@@ -410,10 +411,21 @@ class EventViewSet(viewsets.ModelViewSet):
     authentication_classes = [CsrfExemptSessionAuthentication]
 
     def get_queryset(self):
-        return Event.objects.filter(user=self.request.user).order_by('date')
+        return Event.objects.filter(user=self.request.user).order_by('start_date')
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        """Custom create to log validation errors for debugging."""
+        serializer = self.get_serializer(data=request.data)
+        if not serializer.is_valid():
+            print("[EventViewSet] Validation errors:", serializer.errors)
+            print("[EventViewSet] Incoming data:", request.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 
 # -------------------------------------------------
