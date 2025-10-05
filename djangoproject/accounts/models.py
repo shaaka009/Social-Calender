@@ -17,6 +17,7 @@ class Event(models.Model):
     DINNER = "dinner"
     BREAKFAST = "breakfast"
     VACATION = "vacation"
+    OTHER = "other"
 
     EVENT_TYPE_CHOICES = [
         (BIRTHDAY, "Birthday"),
@@ -28,6 +29,7 @@ class Event(models.Model):
         (DINNER, "Dinner"),
         (BREAKFAST, "Breakfast"),
         (VACATION, "Vacation"),
+        (OTHER, "Other"),
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="events")

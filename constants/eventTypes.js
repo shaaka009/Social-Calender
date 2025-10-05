@@ -8,4 +8,5 @@ export const EVENT_TYPES = [
   { value: 'dinner', label: 'Dinner', emoji: '🍽️' },
   { value: 'breakfast', label: 'Breakfast', emoji: '🍳' },
   { value: 'vacation', label: 'Vacation', emoji: '🏖️' },
+  { value: 'other', label: 'Other', emoji: '📌' },
 ];

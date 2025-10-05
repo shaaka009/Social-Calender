@@ -8,7 +8,7 @@ import ScreenWrapper from '../../../components/ScreenWrapper';
 import { EVENT_TYPES } from '../../../constants/eventTypes';
 import { theme } from '../../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../../helpers/api';
-import { wp } from '../../../helpers/common';
+import { parseDateLocal, wp } from '../../../helpers/common';
 import useContacts from '../../../helpers/useContacts';
 
 const EventDetailsScreen = () => {
@@ -34,13 +34,24 @@ const EventDetailsScreen = () => {
     return <LoadingState />;
   }
 
-  // Helper to format date without the UTC offset shifting the day.
-  // We append "T00:00:00" so the Date constructor treats the string as
-  // local-midnight, avoiding the off-by-one error that happens when it
-  // interprets bare YYYY-MM-DD as UTC.
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '—';
-    return new Date(`${dateStr}T00:00:00`).toLocaleDateString();
+  // Format start/end dates into a nice string respecting birthday (no year) logic
+  const formatDate = (ev) => {
+    if (!ev.start_date) return '—';
+    const start = parseDateLocal(ev.start_date);
+    const end = ev.end_date ? parseDateLocal(ev.end_date) : null;
+
+    const optsFull = { year: 'numeric', month: 'short', day: 'numeric' };
+    const optsNoYear = { month: 'short', day: 'numeric' };
+
+    // Birthday with no year (encoded as 0000-…)
+    const isNoYear = start.getFullYear() === 0;
+
+    const format = (d) => d.toLocaleDateString(undefined, isNoYear ? optsNoYear : optsFull);
+
+    if (end && end.getTime() !== start.getTime()) {
+      return `${format(start)} – ${format(end)}`;
+    }
+    return format(start);
   };
 
   return (
@@ -79,7 +90,7 @@ const EventDetailsScreen = () => {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Event Information</Text>
           <InfoRow label="Title" value={event.title} />
-          <InfoRow label="Date" value={formatDate(event.date)} />
+          <InfoRow label="Date(s)" value={formatDate(event)} />
           {event.person && (
             <InfoRow 
               label="Associated Contact" 
