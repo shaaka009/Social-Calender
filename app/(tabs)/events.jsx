@@ -13,9 +13,15 @@ import { ENDPOINTS, apiFetch } from '../../helpers/api';
 import { wp } from '../../helpers/common';
 import { useCreateTag, useTags } from '../../helpers/useTags';
 
-// Helper utils for new date fields
-const getStart = (e) => new Date(e.start_date || e.date);
-const getEnd = (e) => e.end_date ? new Date(e.end_date) : getStart(e);
+// Helper utils for new date fields parsed in local timezone to avoid off-by-one issues
+const parseLocalDate = (isoStr) => {
+  if (!isoStr) return new Date();
+  const [y, m, d] = isoStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+
+const getStart = (e) => parseLocalDate(e.start_date || e.date);
+const getEnd = (e) => e.end_date ? parseLocalDate(e.end_date) : getStart(e);
 const sameDay = (d1,d2)=> d1.toDateString() === d2.toDateString();
 const formatRange = (e)=>{
   const s = getStart(e);
