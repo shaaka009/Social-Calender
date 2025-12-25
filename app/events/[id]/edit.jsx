@@ -1,22 +1,83 @@
-import { Picker } from '@react-native-picker/picker';
+import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Dimensions, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Toast from 'react-native-root-toast';
 import CustomButton from '../../../components/CustomButton';
 import CustomInput from '../../../components/CustomInput';
+import DateRangePicker from '../../../components/DateRangePicker';
 import LoadingState from '../../../components/LoadingState';
-import MonthDayYearPicker from '../../../components/MonthDayYearPicker';
 import ScreenWrapper from '../../../components/ScreenWrapper';
+import { EVENT_TYPES } from '../../../constants/eventTypes';
 import { theme } from '../../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../../helpers/api';
-import { formatDateLocal, parseDateLocal, wp } from '../../../helpers/common';
+import { parseDateLocal, wp } from '../../../helpers/common';
+import { useCreateTag, useTags } from '../../../helpers/useTags';
 
 const EditEventScreen = () => {
   const { id } = useLocalSearchParams();
   const queryClient = useQueryClient();
   const [isSaving, setIsSaving] = useState(false);
+
+  // Form state (declare BEFORE using in displayedContacts)
+  const [formData, setFormData] = useState({
+    title: '',
+    start_date: new Date(),
+    end_date: null,
+    type: 'general',
+    people_ids: [],
+    tag_ids: [],
+    notes: '',
+  });
+
+  // Contacts & tags data
+  const { data: contacts = [] } = useQuery({
+    queryKey: ['connections'],
+    queryFn: () => apiFetch(ENDPOINTS.CONNECTIONS),
+  });
+  const { data: tags = [] } = useTags();
+  const createTagMutation = useCreateTag();
+
+  // UI states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showContacts, setShowContacts] = useState(false);
+  const filteredContacts = contacts.filter(conn => {
+    const searchLower = searchQuery.toLowerCase();
+    const name = `${conn.target.first_name} ${conn.target.last_name}`.toLowerCase();
+    return !searchQuery || name.includes(searchLower);
+  });
+
+  // Contacts to display in grid: if user is actively searching (showContacts) use filtered list,
+  // otherwise show currently selected contacts so they are visible on initial load.
+  const displayedContacts = showContacts ? filteredContacts : contacts.filter(c=>formData.people_ids.includes(c.target.id));
+
+  const COLOR_OPTIONS = ['#ff8c00', '#ff4d4f', '#40a9ff', '#52c41a', '#faad14', '#722ed1', '#13c2c2'];
+  const [modalVisible, setModalVisible] = useState(false);
+  const [newTag, setNewTag] = useState({ name: '', color: COLOR_OPTIONS[0] });
+
+  // Bottom sheet for event type selection (same as AddEvent)
+  const [typeSheetVisible, setTypeSheetVisible] = useState(false);
+  const SCREEN_HEIGHT = Dimensions.get('window').height;
+  const sheetAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+
+  const openTypeSheet = () => {
+    sheetAnim.setValue(SCREEN_HEIGHT);
+    setTypeSheetVisible(true);
+    Animated.timing(sheetAnim, {
+      toValue: 0,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const closeTypeSheet = () => {
+    Animated.timing(sheetAnim, {
+      toValue: SCREEN_HEIGHT,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => setTypeSheetVisible(false));
+  };
 
   // Fetch event data
   const { data: event, isLoading } = useQuery({
@@ -24,23 +85,16 @@ const EditEventScreen = () => {
     queryFn: () => apiFetch(`${ENDPOINTS.EVENTS}${id}/`),
   });
 
-  // Form state
-  const [formData, setFormData] = useState({
-    title: '',
-    date: new Date(),
-    type: 'general',
-    person_id: null,
-    notes: '',
-  });
-
   // Update form when event data is loaded
   useEffect(() => {
     if (event) {
       setFormData({
         title: event.title,
-        date: parseDateLocal(event.date),
+        start_date: parseDateLocal(event.start_date),
+        end_date: event.end_date ? parseDateLocal(event.end_date) : null,
         type: event.type,
-        person_id: event.person?.id || null,
+        people_ids: event.people?.map(p=>p.id) || [],
+        tag_ids: event.tags?.map(t=>t.id) || [],
         notes: event.notes || '',
       });
     }
@@ -59,13 +113,22 @@ const EditEventScreen = () => {
     setIsSaving(true);
     try {
       // Prepare data for API
-      // Format date as YYYY-MM-DD in local timezone
+      const format = (d) => {
+        if (!d) return null;
+        if (formData.type === 'birthday' && d.noYear) {
+          return `0000-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      };
+
       const apiData = {
         title: formData.title.trim(),
-        date: formatDateLocal(formData.date),
+        start_date: format(formData.start_date),
+        end_date: formData.end_date ? format(formData.end_date) : null,
         type: formData.type,
         notes: formData.notes.trim(),
-        person_id: formData.person_id,
+        people_ids: formData.people_ids,
+        tag_ids: formData.tag_ids,
       };
 
       await apiFetch(`${ENDPOINTS.EVENTS}${id}/`, {
@@ -134,23 +197,156 @@ const EditEventScreen = () => {
 
           {/* Event Type */}
           <Text style={styles.label}>Event Type</Text>
-          <View style={styles.pickerContainer}>
-            <Picker
-              selectedValue={formData.type}
-              onValueChange={(value) => setFormData(prev => ({ ...prev, type: value }))}
-              style={styles.picker}
-            >
-              <Picker.Item label="Birthday" value="birthday" />
-              <Picker.Item label="General Event" value="general" />
-            </Picker>
-          </View>
+          <Pressable
+            style={styles.selector}
+            onPress={openTypeSheet}
+          >
+            <Text style={styles.selectorText}>{EVENT_TYPES.find(t=>t.value===formData.type)?.label}</Text>
+            <Ionicons name="chevron-down" size={wp(5)} color={theme.colors.textLight} />
+          </Pressable>
 
           {/* Date Picker */}
-          <MonthDayYearPicker
-            label="Date"
-            date={formData.date}
-            onChange={(d)=>setFormData(prev=>({...prev,date:d}))}
+          <DateRangePicker
+            label="Date(s)"
+            startDate={formData.start_date}
+            endDate={formData.end_date}
+            onChange={({start_date,end_date})=>setFormData(prev=>({...prev,start_date,end_date}))}
           />
+        </View>
+
+        {/* Associated Contact */}
+        <View style={styles.section}>
+          <Text style={styles.label}>Associated Contacts</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search contacts"
+            placeholderTextColor={theme.colors.textLight}
+            value={searchQuery}
+            onChangeText={text=>{setSearchQuery(text); setShowContacts(true);}}
+            onFocus={()=>setShowContacts(true)}
+          />
+
+          {(showContacts || formData.people_ids.length>0) && (
+            <View style={styles.gridContainer}>
+              {displayedContacts.map(conn=>{
+                const selected = formData.people_ids.includes(conn.target.id);
+                const person = conn.target;
+                return (
+                  <TouchableOpacity
+                    key={conn.id}
+                    style={styles.gridItem}
+                    onPress={()=>setFormData(prev=>({
+                      ...prev,
+                      people_ids: selected ? prev.people_ids.filter(id=>id!==conn.target.id) : [...prev.people_ids, conn.target.id]
+                    }))}
+                  >
+                    <View style={styles.avatarWrapper}>
+                      {person.profile_picture_url ? (
+                        <Image source={{uri: person.profile_picture_url}} style={styles.gridAvatar} />
+                      ) : (
+                        <View style={[styles.gridAvatar, styles.gridAvatarPlaceholder]}>
+                          <Text style={styles.gridAvatarText}>{person.first_name?.[0]}{person.last_name?.[0]}</Text>
+                        </View>
+                      )}
+                      {selected && (
+                        <Ionicons name="checkmark-circle" size={wp(6)} color={theme.colors.primary} style={styles.checkIcon}/>
+                      )}
+                    </View>
+                    <Text style={styles.gridName} numberOfLines={1}>{person.first_name}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+        </View>
+
+        {/* Tags */}
+        <View style={styles.section}>
+          <Text style={styles.label}>Tags</Text>
+          <View style={styles.tagsRow}>
+            <Pressable style={styles.plusButton} onPress={() => setModalVisible(true)}>
+              <Ionicons name="add" size={wp(6)} color="#fff" />
+            </Pressable>
+
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tagsContainer}
+            >
+              {tags.map(tag => (
+                <Pressable
+                  key={tag.id}
+                  onPress={() => setFormData(prev => ({
+                    ...prev,
+                    tag_ids: prev.tag_ids.includes(tag.id)
+                      ? prev.tag_ids.filter(id => id !== tag.id)
+                      : [...prev.tag_ids, tag.id]
+                  }))}
+                  style={[styles.tagButton, {
+                    backgroundColor: formData.tag_ids.includes(tag.id) ? tag.color : 'transparent',
+                    borderColor: tag.color,
+                  }]}
+                >
+                  <Text style={[styles.tagText, { 
+                    color: formData.tag_ids.includes(tag.id) ? '#fff' : theme.colors.textLight 
+                  }]}>{tag.name}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* Create Tag Modal */}
+          <Modal
+            visible={modalVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setModalVisible(false)}
+          >
+            <View style={styles.modalBackdrop}>
+              <View style={styles.modalContent}>
+                <Text style={styles.modalTitle}>Create Tag</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Tag name"
+                  value={newTag.name}
+                  onChangeText={(text) => setNewTag((prev) => ({ ...prev, name: text }))}
+                />
+                <View style={styles.colorsRow}>
+                  {COLOR_OPTIONS.map((c) => (
+                    <Pressable
+                      key={c}
+                      style={[styles.colorDot, { backgroundColor: c }, newTag.color === c && styles.colorDotSelected]}
+                      onPress={() => setNewTag((prev) => ({ ...prev, color: c }))}
+                    />
+                  ))}
+                </View>
+                <View style={styles.modalActions}>
+                  <Pressable style={styles.modalBtn} onPress={() => setModalVisible(false)}>
+                    <Text style={styles.cancelText}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.modalBtn}
+                    onPress={() => {
+                      if (!newTag.name.trim()) return;
+                      createTagMutation.mutate(newTag, {
+                        onSuccess: (newTagData) => {
+                          setModalVisible(false);
+                          setNewTag({ name: '', color: COLOR_OPTIONS[0] });
+                          // Add the new tag to the selected tags
+                          setFormData(prev => ({
+                            ...prev,
+                            tag_ids: [...prev.tag_ids, newTagData.id]
+                          }));
+                        },
+                      });
+                    }}
+                  >
+                    <Text style={styles.saveText}>Save</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          </Modal>
         </View>
 
         {/* Notes */}
@@ -166,6 +362,31 @@ const EditEventScreen = () => {
           />
         </View>
       </ScrollView>
+
+      {/* Bottom Sheet for Event Types */}
+      <Modal
+        visible={typeSheetVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={closeTypeSheet}
+      >
+        <Pressable style={styles.sheetBackdrop} onPress={closeTypeSheet} />
+        <Animated.View style={[styles.sheetContainer, { transform: [{ translateY: sheetAnim }] }] }>
+          <View style={styles.sheetHandle} />
+          {EVENT_TYPES.map((type)=>(
+            <TouchableOpacity
+              key={type.value}
+              style={styles.sheetOption}
+              onPress={()=>{
+                setFormData(prev=>({...prev,type:type.value}));
+                closeTypeSheet();
+              }}
+            >
+              <Text style={[styles.sheetOptionText, formData.type===type.value && styles.sheetOptionTextSelected]}>{`${type.emoji}  ${type.label}`}</Text>
+            </TouchableOpacity>
+          ))}
+        </Animated.View>
+      </Modal>
     </ScreenWrapper>
   );
 };
@@ -202,13 +423,19 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     marginBottom: wp(2),
   },
-  pickerContainer: {
+  selector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: wp(3),
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: wp(2),
     backgroundColor: theme.colors.backgroundSecondary,
+    marginBottom: wp(3),
   },
-  picker: {
+  selectorText: {
+    fontSize: wp(4),
     color: theme.colors.text,
   },
   dateButton: {
@@ -229,9 +456,183 @@ const styles = StyleSheet.create({
     flex: 1,
     marginHorizontal: wp(2),
   },
+  searchInput: {
+    backgroundColor: theme.colors.backgroundSecondary,
+    borderRadius: wp(2),
+    padding: wp(3),
+    fontSize: wp(4),
+    color: theme.colors.text,
+    marginBottom: wp(3),
+  },
+  gridContainer:{
+    flexDirection:'row',
+    flexWrap:'wrap',
+    gap: wp(4),
+    marginTop: wp(3),
+  },
+  gridItem:{
+    width: '30%',
+    alignItems:'center',
+    marginBottom: wp(4),
+  },
+  avatarWrapper:{
+    position:'relative',
+  },
+  checkIcon:{
+    position:'absolute',
+    right:-wp(1),
+    bottom:-wp(1),
+    backgroundColor:'#fff',
+    borderRadius: wp(3),
+  },
+  gridAvatar:{
+    width: wp(16),
+    height: wp(16),
+    borderRadius: wp(8),
+  },
+  gridAvatarPlaceholder:{
+    backgroundColor: theme.colors.primary,
+    justifyContent:'center',
+    alignItems:'center',
+  },
+  gridAvatarText:{
+    color:'#fff',
+    fontSize: wp(6),
+    fontWeight:'600',
+  },
+  gridName:{
+    marginTop: wp(1),
+    fontSize: wp(3.2),
+    color: theme.colors.text,
+  },
+  /* Tags */
+  tagsContainer: {
+    flexDirection: 'row',
+    gap: wp(2),
+    paddingHorizontal: wp(2),
+    paddingVertical: wp(1),
+  },
+  tagsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tagButton: {
+    paddingHorizontal: wp(3),
+    paddingVertical: wp(1.5),
+    borderRadius: wp(4),
+    borderWidth: 1,
+    minHeight: wp(8),
+    justifyContent: 'center',
+  },
+  tagText: {
+    fontSize: wp(3.5),
+  },
+  plusButton: {
+    backgroundColor: theme.colors.primary,
+    width: wp(8),
+    height: wp(8),
+    borderRadius: wp(4),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  /* Modal */
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: theme.colors.background,
+    borderRadius: wp(3),
+    padding: wp(5),
+    width: '80%',
+  },
+  modalTitle: {
+    fontSize: wp(5),
+    fontWeight: '600',
+    marginBottom: wp(3),
+    color: theme.colors.text,
+  },
+  modalInput: {
+    backgroundColor: theme.colors.backgroundSecondary,
+    borderRadius: wp(2),
+    padding: wp(3),
+    marginBottom: wp(3),
+    color: theme.colors.text,
+  },
+  colorsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: wp(2),
+    marginBottom: wp(4),
+  },
+  colorDot: {
+    width: wp(7),
+    height: wp(7),
+    borderRadius: wp(3.5),
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  colorDotSelected: {
+    borderColor: theme.colors.text,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: wp(3),
+  },
+  modalBtn: {
+    paddingHorizontal: wp(3),
+    paddingVertical: wp(1),
+  },
+  cancelText: {
+    color: theme.colors.text,
+    fontSize: wp(4),
+  },
+  saveText: {
+    color: theme.colors.primary,
+    fontSize: wp(4),
+    fontWeight: '600',
+  },
   notesInput: {
     height: wp(40),
     textAlignVertical: 'top',
+  },
+  /* Bottom sheet styles */
+  sheetBackdrop: {
+    flex:1,
+    backgroundColor:'rgba(0,0,0,0.4)',
+  },
+  sheetContainer: {
+    backgroundColor: theme.colors.background,
+    paddingTop: wp(2),
+    paddingBottom: wp(6),
+    paddingHorizontal: wp(5),
+    borderTopLeftRadius: wp(4),
+    borderTopRightRadius: wp(4),
+    position: 'absolute',
+    bottom:0,
+    width:'100%',
+  },
+  sheetHandle:{
+    width: wp(12),
+    height: wp(1),
+    backgroundColor: theme.colors.border,
+    borderRadius: wp(0.5),
+    alignSelf:'center',
+    marginBottom: wp(3),
+  },
+  sheetOption:{
+    paddingVertical: wp(3),
+  },
+  sheetOptionText:{
+    fontSize: wp(4.5),
+    color: theme.colors.text,
+  },
+  sheetOptionTextSelected:{
+    fontWeight:'600',
+    color: theme.colors.primary,
   },
 });
 

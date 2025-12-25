@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import SegmentedControl from '@react-native-segmented-control/segmented-control';
 import { useQuery } from '@tanstack/react-query';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
 import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -12,8 +13,26 @@ import { ENDPOINTS, apiFetch } from '../../helpers/api';
 import { wp } from '../../helpers/common';
 import { useCreateTag, useTags } from '../../helpers/useTags';
 
+// Helper utils for new date fields parsed in local timezone to avoid off-by-one issues
+const parseLocalDate = (isoStr) => {
+  if (!isoStr) return new Date();
+  const [y, m, d] = isoStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+
+const getStart = (e) => parseLocalDate(e.start_date || e.date);
+const getEnd = (e) => e.end_date ? parseLocalDate(e.end_date) : getStart(e);
+const sameDay = (d1,d2)=> d1.toDateString() === d2.toDateString();
+const formatRange = (e)=>{
+  const s = getStart(e);
+  const en = getEnd(e);
+  return sameDay(s,en)
+    ? s.toLocaleDateString()
+    : `${s.toLocaleDateString()} – ${en.toLocaleDateString()}`;
+};
+
 const EventCard = ({ event }) => {
-  const isToday = new Date(event.date).toDateString() === new Date().toDateString();
+  const isToday = getStart(event).toDateString() === new Date().toDateString();
 
   return (
     <Pressable 
@@ -31,7 +50,7 @@ const EventCard = ({ event }) => {
         </Text>
       </View>
       <Text style={styles.eventDate}>
-        {new Date(`${event.date}T00:00:00`).toLocaleDateString()}
+        {formatRange(event)}
       </Text>
       {event.person && (
         <Text style={styles.eventPerson}>
@@ -63,6 +82,7 @@ const Events = () => {
    * Tag filtering (event types)
    * -------------------------------------------------- */
   const [selectedTags, setSelectedTags] = useState([]);
+  const [filterModalVisible, setFilterModalVisible] = useState(false);
 
   const { data: tags = [] } = useTags();
   const createTagMutation = useCreateTag();
@@ -85,7 +105,7 @@ const Events = () => {
     
     // First filter by upcoming/past with special handling for birthdays
     const timeFilteredEvents = events.filter(event => {
-      const eventDate = new Date(event.date);
+      const eventDate = getStart(event);
       
       // For birthday events, compare only month and day
       if (event.type === 'birthday') {
@@ -137,8 +157,10 @@ const Events = () => {
     // Filter by tags if any are selected
     const tagFilteredEvents = selectedTags.length === 0 
       ? timeFilteredEvents 
-      : timeFilteredEvents.filter(event => 
-          event.tags?.some(tag => selectedTags.includes(tag.name))
+      : timeFilteredEvents.filter(event =>
+          selectedTags.every(tagName =>
+            event.tags?.some(tag => tag.name === tagName)
+          )
         );
 
     // Sort events based on their dates
@@ -149,7 +171,7 @@ const Events = () => {
       
       // Create comparison dates, handling year boundaries
       const getComparisonDate = (event) => {
-        const eventDate = new Date(event.date);
+        const eventDate = getStart(event);
         const eventMonth = eventDate.getMonth(); // 0-11
         
         // Determine if we should use current year or next/previous year
@@ -256,75 +278,112 @@ const Events = () => {
           <Ionicons name="add" size={wp(6)} color="#fff" />
         </Pressable>
 
-        <FlatList
-          data={tags}
-          horizontal
-          keyExtractor={(item) => item.name}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tagsContainer}
-          renderItem={({ item: tag }) => {
-            const isSelected = selectedTags.includes(tag.name);
-            return (
-              <Pressable
-                onPress={() => toggleTag(tag.name)}
-                style={[styles.tagButton, {
-                  backgroundColor: isSelected ? tag.color || theme.colors.primary : 'transparent',
-                  borderColor: tag.color || theme.colors.primary,
-                }]}
-              >
-                <Text style={[styles.tagText, { color: isSelected ? '#fff' : theme.colors.textLight }]}> {tag.name} </Text>
-              </Pressable>
-            );
-          }}
-        />
-
-        {/* Create Tag Modal */}
-        <Modal
-          visible={modalVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setModalVisible(false)}
-        >
-          <View style={styles.modalBackdrop}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Create Tag</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="Tag name"
-                value={newTag.name}
-                onChangeText={(text) => setNewTag((prev) => ({ ...prev, name: text }))}
-              />
-              <View style={styles.colorsRow}>
-                {COLOR_OPTIONS.map((c) => (
-                  <Pressable
-                    key={c}
-                    style={[styles.colorDot, { backgroundColor: c }, newTag.color === c && styles.colorDotSelected]}
-                    onPress={() => setNewTag((prev) => ({ ...prev, color: c }))}
-                  />
-                ))}
-              </View>
-              <View style={styles.modalActions}>
-                <Pressable style={styles.modalBtn} onPress={() => setModalVisible(false)}>
-                  <Text style={styles.cancelText}>Cancel</Text>
-                </Pressable>
+        {/* Wrap FlatList to allow fade overlay */}
+        <View style={styles.tagsList}>
+          <FlatList
+            data={tags}
+            horizontal
+            keyExtractor={(item) => item.name}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tagsContainer}
+            renderItem={({ item: tag }) => {
+              const isSelected = selectedTags.includes(tag.name);
+              return (
                 <Pressable
-                  style={styles.modalBtn}
-                  onPress={() => {
-                    if (!newTag.name.trim()) return;
-                    createTagMutation.mutate(newTag, {
-                      onSuccess: () => {
-                        setModalVisible(false);
-                        setNewTag({ name: '', color: COLOR_OPTIONS[0] });
-                      },
-                    });
-                  }}
+                  onPress={() => toggleTag(tag.name)}
+                  style={[styles.tagButton, {
+                    backgroundColor: isSelected ? tag.color || theme.colors.primary : 'transparent',
+                    borderColor: tag.color || theme.colors.primary,
+                  }]}
                 >
-                  <Text style={styles.saveText}>Save</Text>
+                  <Text style={[styles.tagText, { color: isSelected ? '#fff' : theme.colors.textLight }]}> {tag.name} </Text>
                 </Pressable>
-              </View>
+              );
+            }}
+          />
+          {/* right-edge fade */}
+          <LinearGradient
+            colors={["rgba(255, 255, 255, 0)", "rgba(255, 255, 255, 1)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.tagsFade}
+            pointerEvents="none"
+          />
+        </View>
+
+        {/* spacing between tags and filter */}
+        <View style={{ width: wp(2) }} />
+        <TouchableOpacity style={styles.filterButton} onPress={() => setFilterModalVisible(true)}>
+          <Ionicons name="filter" size={wp(6)} color={theme.colors.text} />
+        </TouchableOpacity>
+       
+      {/* Create Tag Modal */}
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Create Tag</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Tag name"
+              value={newTag.name}
+              onChangeText={(text) => setNewTag((prev) => ({ ...prev, name: text }))}
+            />
+            <View style={styles.colorsRow}>
+              {COLOR_OPTIONS.map((c) => (
+                <Pressable
+                  key={c}
+                  style={[styles.colorDot, { backgroundColor: c }, newTag.color === c && styles.colorDotSelected]}
+                  onPress={() => setNewTag((prev) => ({ ...prev, color: c }))}
+                />
+              ))}
+            </View>
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalBtn} onPress={() => setModalVisible(false)}>
+                <Text style={styles.cancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={styles.modalBtn}
+                onPress={() => {
+                  if (!newTag.name.trim()) return;
+                  createTagMutation.mutate(newTag, {
+                    onSuccess: () => {
+                      setModalVisible(false);
+                      setNewTag({ name: '', color: COLOR_OPTIONS[0] });
+                    },
+                  });
+                }}
+              >
+                <Text style={styles.saveText}>Save</Text>
+              </Pressable>
             </View>
           </View>
-        </Modal>
+        </View>
+      </Modal>
+
+      {/* Filter Modal */}
+      <Modal
+        visible={filterModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFilterModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Filter Events</Text>
+            <Text style={{ color: theme.colors.text, marginBottom: wp(3) }}>Filter options coming soon...</Text>
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalBtn} onPress={() => setFilterModalVisible(false)}>
+                <Text style={styles.cancelText}>Close</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
       </View>
 
       <LoadingState isLoading={isLoading}>
@@ -438,6 +497,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: wp(2),
     marginBottom: wp(2),
+    paddingRight: wp(3.5),
+  },
+  tagsList: {
+    flexShrink: 1,
+    flexGrow: 1,
+    overflow: 'hidden',
+  },
+  tagsFade: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: wp(12),
+  },
+  filterButton: {
+    paddingHorizontal: wp(2),
+    paddingVertical: wp(2),
   },
   tagButton: {
     paddingHorizontal: wp(3),

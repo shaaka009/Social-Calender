@@ -56,7 +56,7 @@ const CalendarPreview = ({ events = [], isLoading = false, error = null }) => {
   // NOTE: `event.date` is already a server-provided ISO string (YYYY-MM-DD) so
   // we can rely on it directly instead of converting it to a Date object first.
   const eventsByDate = events.reduce((acc, event) => {
-    const dateStr = event.date;
+    const dateStr = event.start_date || event.date;
     if (!acc[dateStr]) {
       acc[dateStr] = [];
     }
@@ -68,9 +68,9 @@ const CalendarPreview = ({ events = [], isLoading = false, error = null }) => {
   // Keep the incoming ISO date intact – this prevents off-by-one errors that
   // were happening because of timezone conversions.
   const markedDates = events.reduce((acc, event) => {
-    const dateStr = event.date;
+    const dateStr = event.start_date || event.date;
     if (!acc[dateStr]) {
-      const eventsOnThisDate = events.filter(e => e.date === dateStr);
+      const eventsOnThisDate = events.filter(e => (e.start_date || e.date) === dateStr);
       const isToday = dateStr === new Date().toISOString().split('T')[0];
       const isSelected = dateStr === selectedDate;
 

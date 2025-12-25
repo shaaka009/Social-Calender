@@ -27,6 +27,7 @@ const EditProfileScreen = () => {
     last_name: "",
     birthday: null,
     profile_picture: null,
+    location: "",
   });
 
   // Contact rows table
@@ -42,6 +43,7 @@ const EditProfileScreen = () => {
         last_name: data.last_name || "",
         birthday: data.birthday || null,
         profile_picture: data.profile_picture || null,
+        location: data.location || "",
       });
 
       setContactRows([
@@ -156,7 +158,7 @@ const EditProfileScreen = () => {
         </View>
 
         {/* Contact Information */}
-        <Text style={styles.sectionLabel}>Contact Information</Text>
+        <Text style={styles.sectionTitle}>Contact Information</Text>
         {contactRows.map((row, idx) => (
           <View key={idx} style={styles.contactRow}>
             <TextInput
@@ -200,6 +202,14 @@ const EditProfileScreen = () => {
             label="Birthday"
             date={form.birthday ? parseDateLocal(form.birthday) : new Date()}
             onChange={(d)=>setForm(prev=>({...prev,birthday:formatDateLocal(d)}))}
+          />
+        </View>
+
+        <View style={styles.section}>
+          <CustomInput
+            label="Location (City, Region)"
+            value={form.location}
+            onChangeText={(v)=>handleChange("location", v)}
           />
         </View>
 
@@ -304,47 +314,42 @@ const styles = StyleSheet.create({
     gap: wp(2),
     marginBottom: wp(2),
   },
-  sectionLabel: {
-    fontSize: wp(4),
+  sectionTitle: {
+    fontSize: wp(4.5),
     fontWeight: "600",
     color: theme.colors.text,
-    marginBottom: wp(2),
+    marginBottom: wp(3),
   },
   contactRow: {
     flexDirection: "row",
-    gap: wp(2),
+    alignItems: "center",
+    backgroundColor: theme.colors.backgroundSecondary,
+    borderRadius: wp(3),
+    padding: wp(4),
     marginBottom: wp(2),
   },
   contactTypeInput: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: wp(3),
-    padding: wp(4),
     fontSize: wp(4),
     color: theme.colors.text,
+    paddingVertical: 0,
   },
   contactValueInput: {
     flex: 2,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: wp(3),
-    padding: wp(4),
     fontSize: wp(4),
     color: theme.colors.text,
+    paddingVertical: 0,
   },
   readOnlyInput: {
-    backgroundColor: theme.colors.backgroundSecondary,
+    color: theme.colors.textLight + "90",
   },
   addContactBtn: {
     alignSelf: "center",
     marginTop: wp(2),
     paddingVertical: wp(2),
     paddingHorizontal: wp(4),
-    backgroundColor: theme.colors.backgroundSecondary,
-    borderRadius: wp(3),
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
+    borderColor: theme.colors.background,
   },
   addContactBtnText: {
     color: theme.colors.primary,
@@ -353,8 +358,8 @@ const styles = StyleSheet.create({
   },
 });
 
-// Hide default header for Expo Router (v2) by exporting options at module level
-export const options = {
+// Attach header options directly to the component so the module only exports the component (improves fast-refresh)
+EditProfileScreen.options = {
   headerShown: false,
 };
 
