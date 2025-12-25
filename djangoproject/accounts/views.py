@@ -253,9 +253,41 @@ class DashboardAPIView(APIView):
             end_date__gte=start_date if Event._meta.get_field('end_date').null else start_date,
         ).order_by('start_date')
 
-        # Get notifications
+        # Generate/update notifications
         from .management.commands.generate_no_contact_notifications import Command as NotificationCommand
         NotificationCommand().handle()
+        
+        # Clean up old event notifications (events that ended more than 1 day ago)
+        from .models import Notification
+        old_event_notifications = Notification.objects.filter(
+            user=request.user,
+            type=Notification.UPCOMING_EVENT,
+            event__start_date__lt=today - timedelta(days=1)
+        )
+        old_event_notifications.delete()
+        
+        # Create notifications for upcoming events (7 days out)
+        upcoming_events = Event.objects.filter(
+            user=request.user,
+            start_date__gte=today,
+            start_date__lte=today + timedelta(days=7)
+        )
+        
+        for event in upcoming_events:
+            # Check if notification already exists for this event
+            if not Notification.objects.filter(
+                user=request.user,
+                type=Notification.UPCOMING_EVENT,
+                event=event
+            ).exists():
+                days_until = (event.start_date - today).days
+                Notification.objects.create(
+                    user=request.user,
+                    type=Notification.UPCOMING_EVENT,
+                    message=f"{event.title} is in {days_until} days",
+                    event=event,
+                    date=event.start_date
+                )
         
         notifications = request.user.notifications.order_by('-created_at')[:10]
 

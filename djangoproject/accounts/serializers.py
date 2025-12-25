@@ -512,6 +512,7 @@ class NotificationSerializer(serializers.ModelSerializer):
             "daysSince",
             "connection_id",
             "daysUntil",
+            "created_at",
         )
 
 
