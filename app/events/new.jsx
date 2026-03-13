@@ -349,7 +349,10 @@ const AddEventScreen = () => {
                 closeTypeSheet();
               }}
             >
-              <Text style={[styles.sheetOptionText, form.type===type.value && styles.sheetOptionTextSelected]}>{`${type.emoji}  ${type.label}`}</Text>
+              <View style={styles.sheetOptionContent}>
+                <Ionicons name={type.icon} size={wp(5)} color={form.type === type.value ? theme.colors.primary : theme.colors.text} />
+                <Text style={[styles.sheetOptionText, form.type===type.value && styles.sheetOptionTextSelected]}>{type.label}</Text>
+              </View>
             </TouchableOpacity>
           ))}
         </Animated.View>
@@ -607,6 +610,11 @@ const styles = StyleSheet.create({
   },
   sheetOption:{
     paddingVertical: wp(3),
+  },
+  sheetOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(3),
   },
   sheetOptionText:{
     fontSize: wp(4.5),

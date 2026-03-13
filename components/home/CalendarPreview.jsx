@@ -1,22 +1,26 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Calendar } from 'react-native-calendars';
+import { EVENT_TYPES } from '../../constants/eventTypes';
 import { theme } from '../../constants/theme';
 import { wp } from '../../helpers/common';
 
 const EventPreview = ({ event, onPress }) => (
   <Pressable style={styles.eventPreview} onPress={onPress}>
     <View style={styles.eventIcon}>
-      <Text style={styles.eventIconText}>
-        {event.type === 'birthday' ? '🎂' : '📅'}
-      </Text>
+      <Ionicons 
+        name={EVENT_TYPES.find(t => t.value === event.type)?.icon || 'calendar-outline'}
+        size={wp(7)} 
+        color={theme.colors.primary}
+      />
       {event.person && (
         <View style={[
           styles.eventBadge,
           { backgroundColor: event.type === 'birthday' ? theme.colors.rose : theme.colors.primary }
         ]}>
-          <Text style={styles.eventBadgeText}>👤</Text>
+          <Ionicons name="person" size={wp(2.5)} color="#fff" />
         </View>
       )}
     </View>
@@ -185,7 +189,7 @@ const CalendarPreview = ({ events = [], isLoading = false, error = null }) => {
                 onPress={closeEventModal}
                 style={styles.modalCloseButton}
               >
-                <Text style={styles.modalCloseText}>✕</Text>
+                <Ionicons name="close" size={wp(6)} color={theme.colors.textLight} />
               </Pressable>
             </View>
             <ScrollView style={styles.eventList}>
@@ -283,10 +287,6 @@ const styles = StyleSheet.create({
   modalCloseButton: {
     padding: wp(2),
   },
-  modalCloseText: {
-    fontSize: wp(5),
-    color: theme.colors.textLight,
-  },
   eventList: {
     padding: wp(4),
   },
@@ -308,24 +308,17 @@ const styles = StyleSheet.create({
     marginRight: wp(3),
     position: 'relative',
   },
-  eventIconText: {
-    fontSize: wp(6),
-  },
   eventBadge: {
     position: 'absolute',
     bottom: -wp(1),
     right: -wp(1),
-    width: wp(4),
-    height: wp(4),
-    borderRadius: wp(2),
+    width: wp(5),
+    height: wp(5),
+    borderRadius: wp(2.5),
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: theme.colors.background,
-  },
-  eventBadgeText: {
-    fontSize: wp(2.5),
-    color: theme.colors.background,
   },
   eventInfo: {
     flex: 1,

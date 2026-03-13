@@ -8,6 +8,7 @@ import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, TouchableOpaci
 import CustomButton from '../../components/CustomButton';
 import LoadingState from '../../components/LoadingState';
 import ScreenWrapper from '../../components/ScreenWrapper';
+import { EVENT_TYPES } from '../../constants/eventTypes';
 import { theme } from '../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../helpers/api';
 import { wp } from '../../helpers/common';
@@ -45,9 +46,12 @@ const EventCard = ({ event }) => {
     >
       <View style={styles.eventHeader}>
         <Text style={styles.eventTitle}>{event.display_title || event.title}</Text>
-        <Text style={styles.eventType}>
-          {event.type === 'birthday' ? '🎂' : '📅'}
-        </Text>
+        <Ionicons 
+          name={EVENT_TYPES.find(t => t.value === event.type)?.icon || 'calendar-outline'} 
+          size={wp(5.5)} 
+          color={theme.colors.primary}
+          style={styles.eventTypeIcon}
+        />
       </View>
       <Text style={styles.eventDate}>
         {formatRange(event)}
@@ -234,14 +238,13 @@ const Events = () => {
         <View style={styles.titleActions}>
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => {/* TODO: Add notifications handler */}}
+            onPress={() => router.push('/home')}
           >
             <Ionicons 
               name="notifications-outline" 
               size={wp(7)} 
               color={theme.colors.text}
             />
-            {/* TODO: Add notification count logic */}
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionButton}
@@ -280,35 +283,45 @@ const Events = () => {
 
         {/* Wrap FlatList to allow fade overlay */}
         <View style={styles.tagsList}>
-          <FlatList
-            data={tags}
-            horizontal
-            keyExtractor={(item) => item.name}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tagsContainer}
-            renderItem={({ item: tag }) => {
-              const isSelected = selectedTags.includes(tag.name);
-              return (
-                <Pressable
-                  onPress={() => toggleTag(tag.name)}
-                  style={[styles.tagButton, {
-                    backgroundColor: isSelected ? tag.color || theme.colors.primary : 'transparent',
-                    borderColor: tag.color || theme.colors.primary,
-                  }]}
-                >
-                  <Text style={[styles.tagText, { color: isSelected ? '#fff' : theme.colors.textLight }]}> {tag.name} </Text>
-                </Pressable>
-              );
-            }}
-          />
+          {tags.length === 0 ? (
+            <View style={styles.tagsContainer}>
+              <View style={styles.ghostTag} pointerEvents="none">
+                <Text style={styles.ghostTagText}>Create tags to organize events</Text>
+              </View>
+            </View>
+          ) : (
+            <FlatList
+              data={tags}
+              horizontal
+              keyExtractor={(item) => item.name}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tagsContainer}
+              renderItem={({ item: tag }) => {
+                const isSelected = selectedTags.includes(tag.name);
+                return (
+                  <Pressable
+                    onPress={() => toggleTag(tag.name)}
+                    style={[styles.tagButton, {
+                      backgroundColor: isSelected ? tag.color || theme.colors.primary : 'transparent',
+                      borderColor: tag.color || theme.colors.primary,
+                    }]}
+                  >
+                    <Text style={[styles.tagText, { color: isSelected ? '#fff' : theme.colors.textLight }]}> {tag.name} </Text>
+                  </Pressable>
+                );
+              }}
+            />
+          )}
           {/* right-edge fade */}
-          <LinearGradient
-            colors={["rgba(255, 255, 255, 0)", "rgba(255, 255, 255, 1)"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.tagsFade}
-            pointerEvents="none"
-          />
+          {tags.length > 0 && (
+            <LinearGradient
+              colors={["rgba(255, 255, 255, 0)", "rgba(255, 255, 255, 1)"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.tagsFade}
+              pointerEvents="none"
+            />
+          )}
         </View>
 
         {/* spacing between tags and filter */}
@@ -562,8 +575,7 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     flex: 1,
   },
-  eventType: {
-    fontSize: wp(5),
+  eventTypeIcon: {
     marginLeft: wp(2),
   },
   eventDate: {
@@ -670,6 +682,23 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontSize: wp(4),
     fontWeight: '600',
+  },
+  ghostTag: {
+    paddingHorizontal: wp(3),
+    paddingVertical: wp(1.5),
+    borderRadius: wp(4),
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderStyle: 'dashed',
+    minHeight: wp(8),
+    justifyContent: 'center',
+    opacity: 0.5,
+  },
+  ghostTagText: {
+    color: theme.colors.textLight,
+    fontSize: wp(3.5),
+    fontStyle: 'italic',
   },
 });
 

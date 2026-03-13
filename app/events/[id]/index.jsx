@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import React from 'react';
@@ -78,12 +79,19 @@ const EventDetailsScreen = () => {
           styles.badge,
           { backgroundColor: theme.colors.primary + '20' }
         ]}>
-          <Text style={[
-            styles.badgeText,
-            { color: theme.colors.primary }
-          ]}>
-            {EVENT_TYPES.find(t=>t.value===event.type)?.emoji || '📅'} {EVENT_TYPES.find(t=>t.value===event.type)?.label || 'Event'}
-          </Text>
+          <View style={styles.badgeContent}>
+            <Ionicons 
+              name={EVENT_TYPES.find(t=>t.value===event.type)?.icon || 'calendar-outline'} 
+              size={wp(4.5)} 
+              color={theme.colors.primary}
+            />
+            <Text style={[
+              styles.badgeText,
+              { color: theme.colors.primary }
+            ]}>
+              {EVENT_TYPES.find(t=>t.value===event.type)?.label || 'Event'}
+            </Text>
+          </View>
         </View>
 
         {/* Basic Info */}
@@ -196,6 +204,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: wp(4),
     paddingVertical: wp(2),
     borderRadius: wp(4),
+  },
+  badgeContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(2),
   },
   badgeText: {
     fontSize: wp(4),

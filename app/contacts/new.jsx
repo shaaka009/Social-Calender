@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
@@ -19,12 +19,13 @@ const AddContactScreen = () => {
   const [showManualForm, setShowManualForm] = useState(false);
   
   // User search results
-  const { data: searchResults = [], isLoading: isSearching } = useQuery({
+  const { data: searchResults = [], isLoading: isSearching, isFetching } = useQuery({
     queryKey: ['userSearch', searchQuery],
     queryFn: () => searchQuery.trim() 
       ? apiFetch(`${ENDPOINTS.USER_SEARCH}?q=${encodeURIComponent(searchQuery.trim())}`)
       : [],
-    enabled: searchQuery.trim().length > 0
+    enabled: searchQuery.trim().length > 0,
+    placeholderData: keepPreviousData
   });
 
   const [form, setForm] = useState({

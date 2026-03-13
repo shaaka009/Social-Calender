@@ -9,17 +9,17 @@ const QuickActions = () => {
     {
       label: 'Add Contact',
       onPress: () => router.push('/contacts/new'),
-      icon: '👤',
+      icon: 'person-add-outline',
     },
     {
       label: 'Log Interaction',
       onPress: () => router.push('/interactions/new'),
-      icon: '📝',
+      icon: 'chatbubble-outline',
     },
     {
       label: 'Create Event',
       onPress: () => router.push('/events/new'),
-      icon: '📅',
+      icon: 'calendar-outline',
     },
   ];
 

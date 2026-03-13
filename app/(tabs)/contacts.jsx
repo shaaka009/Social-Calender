@@ -72,35 +72,45 @@ const Contacts = () => {
 
       {/* Wrap FlatList to allow fade overlay */}
       <View style={styles.tagsList}>
-        <FlatList
-          data={allTags}
-          horizontal
-          keyExtractor={(item) => item.name}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tagsContainer}
-          renderItem={({ item: tag }) => {
-            const isSelected = selectedTags.includes(tag.name);
-            return (
-              <Pressable
-                onPress={() => toggleTag(tag.name)}
-                style={[styles.tagButton, {
-                  backgroundColor: isSelected ? tag.color || theme.colors.primary : 'transparent',
-                  borderColor: tag.color || theme.colors.primary,
-                }]}
-              >
-                <Text style={[styles.tagText, { color: isSelected ? '#fff' : theme.colors.textLight }]}> {tag.name} </Text>
-              </Pressable>
-            );
-          }}
-        />
+        {allTags.length === 0 ? (
+          <View style={styles.tagsContainer}>
+            <View style={styles.ghostTag} pointerEvents="none">
+              <Text style={styles.ghostTagText}>Create tags to organize contacts</Text>
+            </View>
+          </View>
+        ) : (
+          <FlatList
+            data={allTags}
+            horizontal
+            keyExtractor={(item) => item.name}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tagsContainer}
+            renderItem={({ item: tag }) => {
+              const isSelected = selectedTags.includes(tag.name);
+              return (
+                <Pressable
+                  onPress={() => toggleTag(tag.name)}
+                  style={[styles.tagButton, {
+                    backgroundColor: isSelected ? tag.color || theme.colors.primary : 'transparent',
+                    borderColor: tag.color || theme.colors.primary,
+                  }]}
+                >
+                  <Text style={[styles.tagText, { color: isSelected ? '#fff' : theme.colors.textLight }]}> {tag.name} </Text>
+                </Pressable>
+              );
+            }}
+          />
+        )}
         {/* right-edge fade */}
-        <LinearGradient
-          colors={["rgba(255, 255, 255, 0)", "rgba(255, 255, 255, 1)"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.tagsFade}
-          pointerEvents="none"
-        />
+        {allTags.length > 0 && (
+          <LinearGradient
+            colors={["rgba(255, 255, 255, 0)", "rgba(255, 255, 255, 1)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.tagsFade}
+            pointerEvents="none"
+          />
+        )}
       </View>
 
       {/* spacing between tags and filter */}
@@ -423,6 +433,23 @@ const styles = StyleSheet.create({
   filterButton: {
     paddingHorizontal: wp(2),
     paddingVertical: wp(2),
+  },
+  ghostTag: {
+    paddingHorizontal: wp(3),
+    paddingVertical: wp(1.5),
+    borderRadius: wp(4),
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderStyle: 'dashed',
+    minHeight: wp(8),
+    justifyContent: 'center',
+    opacity: 0.5,
+  },
+  ghostTagText: {
+    color: theme.colors.textLight,
+    fontSize: wp(3.5),
+    fontStyle: 'italic',
   },
 });
 

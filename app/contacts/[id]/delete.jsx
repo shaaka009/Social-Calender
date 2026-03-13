@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
@@ -66,7 +67,7 @@ const DeleteContactScreen = () => {
       <View style={styles.container}>
         {/* Warning Icon */}
         <View style={styles.warningIcon}>
-          <Text style={styles.warningText}>⚠️</Text>
+          <Ionicons name="warning" size={wp(20)} color={theme.colors.error} />
         </View>
 
         {/* Confirmation Message */}
@@ -145,9 +146,7 @@ const styles = StyleSheet.create({
   },
   warningIcon: {
     marginBottom: wp(5),
-  },
-  warningText: {
-    fontSize: wp(15),
+    alignItems: 'center',
   },
   message: {
     fontSize: wp(4.5),

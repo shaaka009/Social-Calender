@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { theme } from '../../constants/theme';
@@ -31,11 +32,11 @@ const NotificationCard = ({ notification, onPress }) => {
   const getIcon = () => {
     switch (notification.type) {
       case 'UPCOMING_EVENT':
-        return '🎉';
+        return 'calendar';
       case 'NO_CONTACT':
-        return '💭';
+        return 'chatbubble-ellipses-outline';
       default:
-        return '📌';
+        return 'notifications';
     }
   };
 
@@ -62,8 +63,12 @@ const NotificationCard = ({ notification, onPress }) => {
         </View>
       );
     } else {
-      // Show emoji icon for non-person notifications
-      return <Text style={styles.icon}>{getIcon()}</Text>;
+      // Show icon for non-person notifications
+      return (
+        <View style={styles.iconContainer}>
+          <Ionicons name={getIcon()} size={wp(6)} color={theme.colors.primary} />
+        </View>
+      );
     }
   };
 
@@ -138,8 +143,13 @@ const styles = StyleSheet.create({
     borderRadius: wp(3),
     alignItems: 'flex-start',
   },
-  icon: {
-    fontSize: wp(6),
+  iconContainer: {
+    width: wp(10),
+    height: wp(10),
+    borderRadius: wp(5),
+    backgroundColor: theme.colors.primary + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginRight: wp(3),
   },
   avatarContainer: {
