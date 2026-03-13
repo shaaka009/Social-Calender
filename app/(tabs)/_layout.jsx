@@ -1,5 +1,5 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from "expo-router";
-import { Text } from 'react-native';
 import { theme } from '../../constants/theme';
 
 export default function TabsLayout() {
@@ -10,8 +10,8 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: theme.colors.background,
           borderTopColor: theme.colors.border,
-          height: 80,
-          paddingBottom: 20,
+          height: 90,
+          paddingBottom: 30,
           paddingTop: 12,
         },
         tabBarActiveTintColor: theme.colors.primary,
@@ -32,7 +32,7 @@ export default function TabsLayout() {
         options={{
           title: "Contacts",
           tabBarIcon: ({ color, size }) => (
-            <Text style={{ fontSize: size }}>👥</Text>
+            <Ionicons name="people-outline" size={size} color={color} />
           ),
         }}
       />
@@ -41,7 +41,7 @@ export default function TabsLayout() {
         options={{
           title: "Home",
           tabBarIcon: ({ color, size }) => (
-            <Text style={{ fontSize: size }}>🏠</Text>
+            <Ionicons name="home-outline" size={size} color={color} />
           ),
         }}
       />
@@ -50,7 +50,7 @@ export default function TabsLayout() {
         options={{
           title: "Events",
           tabBarIcon: ({ color, size }) => (
-            <Text style={{ fontSize: size }}>📅</Text>
+            <Ionicons name="calendar-outline" size={size} color={color} />
           ),
         }}
       />
@@ -58,7 +58,7 @@ export default function TabsLayout() {
         name="profile"
         options={{
           title: "Profile",
-          tabBarIcon: ({ size }) => <Text style={{ fontSize: size }}>👤</Text>,
+          tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" size={size} color={color} />,
         }}
       />
     </Tabs>

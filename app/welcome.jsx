@@ -2,26 +2,17 @@ import { Image } from "expo-image";
 import { router } from "expo-router";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import CustomButton from "../components/CustomButton";
-import LoadingState from "../components/LoadingState";
 import ScreenWrapper from "../components/ScreenWrapper";
 import { theme } from "../constants/theme";
 import { wp } from "../helpers/common";
-import useLoading from "../helpers/useLoading";
 
 const Welcome = () => {
-  const { isLoading, withLoading } = useLoading();
-
   const handleNavigation = (page) => {
-    withLoading(async () => {
-      // Simulate some async work
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      router.push(page);
-    });
+    router.push(page);
   };
 
   return (
-    <LoadingState isLoading={isLoading} subtle={true}>
-      <ScreenWrapper bg="white">
+    <ScreenWrapper bg="white">
         <View style={styles.container}>
           <View style={styles.content}>
             
@@ -45,10 +36,10 @@ const Welcome = () => {
           <View style={styles.bottomContainer}>
             <CustomButton
               title="Sign Up"
-              onPress={() => handleNavigation("signup")}
+              onPress={() => handleNavigation("/(auth)/signup")}
               style={styles.button}
             />
-            <TouchableOpacity onPress={() => handleNavigation("signin")}>
+            <TouchableOpacity onPress={() => handleNavigation("/(auth)/signin")}>
               <Text style={styles.linkText}>
                 Already have an account? Sign In
               </Text>
@@ -56,7 +47,6 @@ const Welcome = () => {
           </View>
         </View>
       </ScreenWrapper>
-    </LoadingState>
   );
 };
 

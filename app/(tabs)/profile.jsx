@@ -3,11 +3,13 @@ import { Image } from "expo-image";
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import React from "react";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 import LoadingState from "../../components/LoadingState";
 import ScreenWrapper from "../../components/ScreenWrapper";
 import { theme } from "../../constants/theme";
+import { ENDPOINTS, apiFetch } from "../../helpers/api";
+import { clearTokens } from "../../helpers/auth";
 import { formatDateForDisplay, wp } from "../../helpers/common";
 import useProfile from "../../helpers/useProfile";
 
@@ -15,6 +17,24 @@ const ProfileScreen = () => {
   const router = useRouter();
   const { data, isLoading, isError } = useProfile();
   const [region, setRegion] = React.useState(null);
+
+  const handleSignOut = () => {
+    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Sign Out",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await apiFetch(ENDPOINTS.SIGN_OUT, { method: "POST" }).catch(() => {});
+          } finally {
+            await clearTokens();
+            router.replace("/welcome");
+          }
+        },
+      },
+    ]);
+  };
 
   // Geocode the user's location string to coordinates
   React.useEffect(() => {
@@ -140,6 +160,43 @@ const ProfileScreen = () => {
           </View>
         )}
 
+        {/* Sign Out */}
+        <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
+          <Ionicons name="log-out-outline" size={wp(5)} color={theme.colors.error} />
+          <Text style={styles.signOutText}>Sign Out</Text>
+        </TouchableOpacity>
+
+        {/* Delete Account */}
+        <TouchableOpacity
+          style={styles.deleteAccountButton}
+          onPress={() => {
+            Alert.alert(
+              "Delete Account",
+              "This will permanently delete your account and all data. This cannot be undone.",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Delete My Account",
+                  style: "destructive",
+                  onPress: async () => {
+                    try {
+                      await apiFetch(ENDPOINTS.DELETE_ACCOUNT, { method: "DELETE" });
+                    } catch {
+                      // even if server fails, clear local state
+                    } finally {
+                      await clearTokens();
+                      router.replace("/welcome");
+                    }
+                  },
+                },
+              ],
+            );
+          }}
+        >
+          <Ionicons name="trash-outline" size={wp(5)} color={theme.colors.error} />
+          <Text style={styles.deleteAccountText}>Delete Account</Text>
+        </TouchableOpacity>
+
         {/* Extra bottom padding lets user scroll enough to center the map */}
         <View style={{ height: wp(10) }} />
       </ScrollView>
@@ -234,6 +291,39 @@ const styles = StyleSheet.create({
     textAlign: "center",
     padding: wp(4),
     color: theme.colors.textSecondary,
+  },
+  signOutButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: wp(2),
+    marginTop: wp(6),
+    marginHorizontal: wp(5),
+    paddingVertical: wp(4),
+    borderRadius: wp(3),
+    backgroundColor: theme.colors.card,
+  },
+  signOutText: {
+    fontSize: wp(4),
+    fontWeight: "600",
+    color: theme.colors.error,
+  },
+  deleteAccountButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: wp(2),
+    marginTop: wp(3),
+    marginHorizontal: wp(5),
+    paddingVertical: wp(4),
+    borderRadius: wp(3),
+    borderWidth: 1,
+    borderColor: theme.colors.error,
+  },
+  deleteAccountText: {
+    fontSize: wp(4),
+    fontWeight: "600",
+    color: theme.colors.error,
   },
   locationText: {
     paddingVertical: wp(3),

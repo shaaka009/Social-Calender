@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import { useEffect } from "react";
 import { Image, StyleSheet, View } from "react-native";
 import ScreenWrapper from "../components/ScreenWrapper";
+import { isAuthenticated } from "../helpers/auth";
 import { theme } from "../constants/theme";
 import { hp, wp } from "../helpers/common";
 
@@ -9,12 +10,11 @@ const Index = () => {
   const router = useRouter();
 
   useEffect(() => {
-    // Auto-navigate to home after 2 seconds
-    const timer = setTimeout(() => {
-      router.replace("/welcome");
+    const timer = setTimeout(async () => {
+      const loggedIn = await isAuthenticated();
+      router.replace(loggedIn ? "/home" : "/welcome");
     }, 2000);
 
-    // Cleanup timer on component unmount
     return () => clearTimeout(timer);
   }, [router]);
 
@@ -57,19 +57,6 @@ const styles = StyleSheet.create({
   logo: {
     width: wp(20),
     height: wp(20),
-  },
-  title: {
-    fontSize: wp(8),
-    color: 'white',
-    fontWeight: theme.fonts.extraBold,
-    textAlign: 'center',
-    marginBottom: hp(1),
-  },
-  subtitle: {
-    fontSize: wp(4),
-    color: 'rgba(255, 255, 255, 0.9)',
-    textAlign: 'center',
-    fontWeight: theme.fonts.medium,
   },
 });
 
