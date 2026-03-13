@@ -15,7 +15,6 @@ from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
 from django.urls import reverse
-from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase, APIClient
 
@@ -363,10 +362,10 @@ class DashboardAPITests(APITestCase):
     def test_dashboard_returns_one_year_range_events(self):
         today = date.today()
         events = Event.objects.bulk_create([
-            Event(user=self.user, date=today - timedelta(days=364), type=Event.GENERAL, title="Inside Past Year"),
-            Event(user=self.user, date=today + timedelta(days=364), type=Event.GENERAL, title="Inside Future Year"),
-            Event(user=self.user, date=today - timedelta(days=366), type=Event.GENERAL, title="Outside Past Year"),
-            Event(user=self.user, date=today + timedelta(days=366), type=Event.GENERAL, title="Outside Future Year"),
+            Event(user=self.user, start_date=today - timedelta(days=364), type=Event.GENERAL, title="Inside Past Year"),
+            Event(user=self.user, start_date=today + timedelta(days=364), type=Event.GENERAL, title="Inside Future Year"),
+            Event(user=self.user, start_date=today - timedelta(days=366), type=Event.GENERAL, title="Outside Past Year"),
+            Event(user=self.user, start_date=today + timedelta(days=366), type=Event.GENERAL, title="Outside Future Year"),
         ])
         
         # Add people to events after bulk creation
@@ -436,10 +435,10 @@ class EventAPITests(APITestCase):
 
     def test_create_event(self):
         payload = {
-            "date": date.today().isoformat(),
+            "start_date": date.today().isoformat(),
             "type": "general",
             "title": "Lunch with Bob",
-            "person_id": self.person.id,
+            "people_ids": [self.person.id],
         }
         resp = self.client.post(self.event_list_url, payload, format="json")
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
@@ -447,14 +446,14 @@ class EventAPITests(APITestCase):
 
     def test_list_events_only_for_current_user(self):
         # Create event for other user
-        Event.objects.create(user=self.other_user, date=date.today(), type="general", title="Other user")
-        Event.objects.create(user=self.user, date=date.today(), type="general", title="Mine")
+        Event.objects.create(user=self.other_user, start_date=date.today(), type="general", title="Other user")
+        Event.objects.create(user=self.user, start_date=date.today(), type="general", title="Mine")
         resp = self.client.get(self.event_list_url)
         titles = {e["title"] for e in resp.data}
         self.assertEqual(titles, {"Mine"})
 
     def test_update_event(self):
-        ev = Event.objects.create(user=self.user, date=date.today(), type="general", title="Old Title")
+        ev = Event.objects.create(user=self.user, start_date=date.today(), type="general", title="Old Title")
         url = reverse("event-detail", args=[ev.id])
         resp = self.client.patch(url, {"title": "New Title"}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
@@ -462,13 +461,13 @@ class EventAPITests(APITestCase):
         self.assertEqual(ev.title, "New Title")
 
     def test_user_cannot_edit_others_event(self):
-        ev = Event.objects.create(user=self.other_user, date=date.today(), type="general", title="Not Yours")
+        ev = Event.objects.create(user=self.other_user, start_date=date.today(), type="general", title="Not Yours")
         url = reverse("event-detail", args=[ev.id])
         resp = self.client.patch(url, {"title": "Hack"}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_delete_event(self):
-        ev = Event.objects.create(user=self.user, date=date.today(), type="general", title="Delete Me")
+        ev = Event.objects.create(user=self.user, start_date=date.today(), type="general", title="Delete Me")
         url = reverse("event-detail", args=[ev.id])
         resp = self.client.delete(url)
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
@@ -486,10 +485,24 @@ class NotificationLogicTests(APITestCase):
         self.client.force_authenticate(self.user)
 
     def test_days_since_uses_connection_last_contact(self):
-        conn = Connection.objects.create(owner=self.person, target=self.person, status=Connection.ACCEPTED, last_contact_date=date.today()-timedelta(days=10))
-        notif = Notification.objects.create(user=self.user, type=Notification.NO_CONTACT, message="placeholder", person=self.person)
+        # Create a different person to avoid self-connection issues
+        other_user, other_person = create_user_with_person("other@example.com")
+        conn = Connection.objects.create(
+            owner=self.person, 
+            target=other_person, 
+            status=Connection.ACCEPTED, 
+            last_contact_date=date.today()-timedelta(days=10),
+            no_contact_threshold=5  # Set threshold so notification won't be auto-removed
+        )
+        notif = Notification.objects.create(
+            user=self.user, 
+            type=Notification.NO_CONTACT, 
+            message="placeholder", 
+            person=other_person
+        )
         dashboard_url = reverse("dashboard")
         resp = self.client.get(dashboard_url)
+        self.assertGreater(len(resp.data["notifications"]), 0, "Expected at least one notification")
         first_notif = resp.data["notifications"][0]
         self.assertEqual(first_notif["daysSince"], 10)
         self.assertIn("10", first_notif["message"])

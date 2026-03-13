@@ -5,7 +5,7 @@ User = get_user_model()
 
 
 # ---------------------------------------------------
-# Event & Notification (legacy, still used by dashboard)
+# Event & Notification
 # ---------------------------------------------------
 class Event(models.Model):
     BIRTHDAY = "birthday"
@@ -93,7 +93,7 @@ class Notification(models.Model):
         blank=True,
         on_delete=models.CASCADE,
         related_name='notifications_related',
-    )  # Replaces contact_id
+    )
     date = models.DateField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)

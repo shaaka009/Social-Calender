@@ -9,7 +9,7 @@ from .models import (
     Account,
     Connection,
     Interaction,
-    Event,  # Existing models left intact for now
+    Event,
     Notification,
     Tag,
 )
@@ -190,9 +190,6 @@ class ConnectionSerializer(serializers.ModelSerializer):
         if conn_org_override and conn.organization != conn_org_override:
             conn.organization = conn_org_override
             conn.save(update_fields=["organization"])
-        if conn_org_override and conn.nickname != conn_org_override:
-            conn.nickname = conn_org_override
-            conn.save(update_fields=["nickname"])
 
         # Handle tag assignments (only if the request included any)
         if 'tag_names' in locals() and tag_names:
@@ -362,17 +359,13 @@ class EventSerializer(serializers.ModelSerializer):
     def get_display_title(self, obj):
         # For birthday events, check if we have a year and calculate age
         if obj.type == 'birthday' and hasattr(obj, 'start_date') and obj.start_date:
-            # NOTE: birthday logic uses start_date now
-            if not hasattr(obj, "start_date"):
-                return obj.title
-            else:
-                # Calculate age
-                today = date.today()
-                age = today.year - obj.start_date.year
-                # Adjust age if birthday hasn't occurred this year
-                if today.month < obj.start_date.month or (today.month == obj.start_date.month and today.day < obj.start_date.day):
-                    age -= 1
-                return f"{obj.title} (turning {age + 1})"
+            # Calculate age
+            today = date.today()
+            age = today.year - obj.start_date.year
+            # Adjust age if birthday hasn't occurred this year
+            if today.month < obj.start_date.month or (today.month == obj.start_date.month and today.day < obj.start_date.day):
+                age -= 1
+            return f"{obj.title} (turning {age + 1})"
         return obj.title
     def update(self, instance, validated_data):
         # Update people if people_ids is provided
