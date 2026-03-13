@@ -12,6 +12,7 @@ import LoadingState from "../../components/LoadingState";
 import ScreenWrapper from "../../components/ScreenWrapper";
 import { theme } from "../../constants/theme";
 import { ENDPOINTS } from "../../helpers/api";
+import { storeTokens } from "../../helpers/auth";
 import { wp } from "../../helpers/common";
 import useLoading from "../../helpers/useLoading";
 
@@ -39,7 +40,6 @@ const SignIn = () => {
             email,
             password,
           }),
-          credentials: "include",
         });
 
         const data = await response.json();
@@ -47,6 +47,9 @@ const SignIn = () => {
         if (!response.ok) {
           throw new Error(data.message || "Login failed");
         }
+
+        // Store JWT tokens
+        await storeTokens(data.tokens);
 
         // Login successful
         router.replace("/home");

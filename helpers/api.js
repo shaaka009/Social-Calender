@@ -1,9 +1,14 @@
-export const API_BASE_URL = 'http://127.0.0.1:8000';
+import { clearTokens, getAccessToken, getRefreshToken, storeTokens } from './auth';
+
+// Use an Expo env var when available; fall back to localhost for development.
+export const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 export const ENDPOINTS = {
   SIGN_IN: `${API_BASE_URL}/api/signin/`,
   SIGN_UP: `${API_BASE_URL}/api/signup/`,
   SIGN_OUT: `${API_BASE_URL}/api/signout/`,
+  TOKEN_REFRESH: `${API_BASE_URL}/api/token/refresh/`,
   PASSWORD_RESET: `${API_BASE_URL}/api/password-reset/`,
   PASSWORD_RESET_CONFIRM: (uid, token) =>
     `${API_BASE_URL}/api/password-reset/${uid}/${token}/`,
@@ -15,34 +20,88 @@ export const ENDPOINTS = {
   EVENTS: `${API_BASE_URL}/api/events/`,
   EVENT_DETAIL: (id) => `${API_BASE_URL}/api/events/${id}/`,
   PROFILE: `${API_BASE_URL}/api/profile/`,
+  DELETE_ACCOUNT: `${API_BASE_URL}/api/account/delete/`,
   TAGS: `${API_BASE_URL}/api/tags/`,
 };
 
-// Lightweight wrapper around fetch that always includes credentials and throws on non-2xx
-export const apiFetch = async (url, options = {}) => {
-  // Add Content-Type: application/json for non-GET requests that have a body (except FormData)
+// -----------------------------------------------------------------
+// Internal: attempt to refresh the access token using the refresh
+// token.  Returns `true` if successful.
+// -----------------------------------------------------------------
+let _refreshPromise = null;
+
+async function _refreshAccessToken() {
+  // Deduplicate concurrent refreshes
+  if (_refreshPromise) return _refreshPromise;
+
+  _refreshPromise = (async () => {
+    const refreshToken = await getRefreshToken();
+    if (!refreshToken) return false;
+
+    try {
+      const res = await fetch(ENDPOINTS.TOKEN_REFRESH, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh: refreshToken }),
+      });
+
+      if (!res.ok) {
+        // Refresh token is also expired / invalid → force logout
+        await clearTokens();
+        return false;
+      }
+
+      const data = await res.json();
+      await storeTokens({
+        access: data.access,
+        refresh: data.refresh ?? refreshToken, // keep old refresh if server didn't rotate
+      });
+      return true;
+    } catch {
+      return false;
+    } finally {
+      _refreshPromise = null;
+    }
+  })();
+
+  return _refreshPromise;
+}
+
+// -----------------------------------------------------------------
+// Public fetch wrapper: attaches JWT, auto-refreshes on 401, throws
+// on non-2xx.
+// -----------------------------------------------------------------
+export const apiFetch = async (url, options = {}, _retried = false) => {
+  const accessToken = await getAccessToken();
+
+  // Build headers
   const isFormData = options.body instanceof FormData;
-  const headers = options.body && !isFormData ? {
-    'Content-Type': 'application/json',
+  const headers = {
+    ...(options.body && !isFormData ? { 'Content-Type': 'application/json' } : {}),
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     ...options.headers,
-  } : options.headers;
+  };
 
   try {
-    const response = await fetch(url, { 
-      credentials: 'include',  // This ensures cookies are sent
+    const response = await fetch(url, {
       ...options,
       headers,
     });
 
-    // For DELETE requests that return 204 No Content, return null
-    if (response.status === 204) {
-      return null;
+    // 401 and we haven't retried yet → try refreshing
+    if (response.status === 401 && !_retried) {
+      const refreshed = await _refreshAccessToken();
+      if (refreshed) {
+        return apiFetch(url, options, true);
+      }
+      // Refresh failed — surface the 401
     }
+
+    // 204 No Content
+    if (response.status === 204) return null;
 
     let data = null;
     const text = await response.text();
-    
-    // Only try to parse as JSON if there's actual content
     if (text) {
       try {
         data = JSON.parse(text);
@@ -62,10 +121,9 @@ export const apiFetch = async (url, options = {}) => {
 
     return data;
   } catch (error) {
-    // Only log actual errors, not debug info
     if (error.status >= 500 || !error.status) {
       console.error(`API Request to ${url} failed:`, error.message);
     }
     throw error;
   }
-}; 
+};

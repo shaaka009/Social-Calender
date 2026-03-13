@@ -12,6 +12,7 @@ import LoadingState from "../../components/LoadingState";
 import ScreenWrapper from "../../components/ScreenWrapper";
 import { theme } from "../../constants/theme";
 import { ENDPOINTS } from "../../helpers/api";
+import { storeTokens } from "../../helpers/auth";
 import { wp } from "../../helpers/common";
 import useLoading from "../../helpers/useLoading";
 
@@ -49,7 +50,6 @@ const SignUp = () => {
             password1: password,
             password2: confirmPassword,
           }),
-          credentials: "include",
         });
 
         const data = await response.json();
@@ -64,7 +64,14 @@ const SignUp = () => {
           return;
         }
 
-        router.replace("/(auth)/signin");
+        // Signup now returns JWT tokens — store them and go to onboarding
+        if (data.tokens) {
+          await storeTokens(data.tokens);
+          router.replace("/onboarding/step1");
+        } else {
+          // Fallback: shouldn't happen, but send to signin
+          router.replace("/(auth)/signin");
+        }
       } catch (err) {
         setError("Network error or server is not responding");
       }
