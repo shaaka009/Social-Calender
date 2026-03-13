@@ -1,6 +1,6 @@
 import json
 
-from django.contrib.auth import authenticate, login, logout, get_user_model
+from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.tokens import default_token_generator
 from django.db import models
 from django.db.models import Q
@@ -19,6 +19,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.generics import RetrieveUpdateAPIView
+from rest_framework_simplejwt.tokens import RefreshToken
 from datetime import date, timedelta
 from django.views.decorators.http import require_http_methods
 
@@ -35,14 +36,24 @@ from .serializers import (
     TagSerializer,
 )
 from .models import Connection, Interaction, Person, Account, Event, Tag
-from .authentication import CsrfExemptSessionAuthentication
 
 from .forms import UserRegistrationForm
 
 
-# Create your views here.
+# -------------------------------------------------
+# JWT helper
+# -------------------------------------------------
 
-# Legacy contact references removed during refactor
+def _tokens_for_user(user):
+    """Return access + refresh token pair for a given user."""
+    refresh = RefreshToken.for_user(user)
+    return {
+        'access': str(refresh.access_token),
+        'refresh': str(refresh),
+    }
+
+
+# Create your views here.
 
 # -------------------------------------------------
 # Utility helpers
@@ -83,8 +94,19 @@ def signup(request):
                 )
                 Account.objects.create(user=user, person=person)
                 
+                tokens = _tokens_for_user(user)
                 return JsonResponse(
-                    {"message": "Account created successfully!", "success": True},
+                    {
+                        "message": "Account created successfully!",
+                        "success": True,
+                        "tokens": tokens,
+                        "user": {
+                            "id": user.id,
+                            "email": user.email,
+                            "first_name": user.first_name,
+                            "last_name": user.last_name,
+                        },
+                    },
                     status=201,
                 )
         else:
@@ -120,11 +142,12 @@ def signin(request):
                 user = None
 
         if user is not None:
-            login(request, user)
+            tokens = _tokens_for_user(user)
             return JsonResponse(
                 {
                     "success": True,
                     "message": "Login successful!",
+                    "tokens": tokens,
                     "user": {
                         "id": user.id,
                         "email": user.email,
@@ -144,25 +167,24 @@ def signin(request):
 
 @csrf_exempt
 def signout(request):
+    """With JWT the client simply discards its tokens.
+    This endpoint exists for symmetry / future token blacklisting."""
     if request.method == "POST":
-        logout(request)
         return JsonResponse({"message": "Logged out successfully!"})
     return JsonResponse({"message": "Method not allowed"}, status=405)
 
-@csrf_exempt
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def get_user(request):
-    if request.user.is_authenticated:
-        return JsonResponse({
-            "success": True,
-            "user": {
-                "id": request.user.id,
-                "email": request.user.email,
-                "first_name": request.user.first_name,
-                "last_name": request.user.last_name,
-            }
-        })
-    else:
-        return JsonResponse({"success": False}, status=401)
+    return Response({
+        "success": True,
+        "user": {
+            "id": request.user.id,
+            "email": request.user.email,
+            "first_name": request.user.first_name,
+            "last_name": request.user.last_name,
+        }
+    })
 
 @csrf_exempt
 def password_reset(request):
@@ -177,11 +199,10 @@ def password_reset(request):
             token = default_token_generator.make_token(user)
             uid = urlsafe_base64_encode(force_bytes(user.pk))
             
-            # Generate reset URL
-            reset_url = f"http://localhost:8081/reset-password/{uid}/{token}"
+            # Build reset URL from the FRONTEND_BASE_URL env var
+            frontend_url = getattr(settings, 'FRONTEND_BASE_URL', 'http://localhost:8081')
+            reset_url = f"{frontend_url}/reset-password/{uid}/{token}"
             
-            # For development, return the link directly
-            # In production, send email instead
             try:
                 subject = 'Password Reset Request'
                 message = render_to_string('password_reset_email.html', {
@@ -192,21 +213,18 @@ def password_reset(request):
             except Exception:
                 pass  # Silently handle email errors in development
             
-            return JsonResponse({
+            response_data = {
                 'message': 'Password reset email sent if account exists',
-                'reset_link': reset_url  # Include the link in the response for development
-            })
+            }
+            # Only expose the link directly in dev mode
+            if settings.DEBUG:
+                response_data['reset_link'] = reset_url
+            return JsonResponse(response_data)
         except get_user_model().DoesNotExist:
             # Return success even if email doesn't exist (for security)
             return JsonResponse({
                 'message': 'Password reset email sent if account exists'
             })
-        except Exception as e:
-            pass  # Silently handle email errors in development
-            return JsonResponse(
-                {'message': 'Error sending email'},
-                status=500
-            )
     
     return JsonResponse({'message': 'Method not allowed'}, status=405)
 
@@ -237,58 +255,102 @@ def password_reset_confirm(request, uid, token):
 # =========================================================================
 
 class DashboardAPIView(APIView):
-    authentication_classes = [CsrfExemptSessionAuthentication]
     permission_classes = [IsAuthenticated]
+
+    # -----------------------------------------------------------------
+    # Lightweight per-user notification refresh.  We keep a simple
+    # in-memory dict so that repeated fast refreshes (pull-to-refresh,
+    # tab switching) don't rescan on every request.  The worst case is
+    # that after a deploy / restart, the first request per user does a
+    # scan — which is fine.
+    # -----------------------------------------------------------------
+    _last_notif_refresh = {}  # {user_id: datetime}
+
+    def _refresh_notifications(self, request):
+        """Update no-contact + upcoming-event notifications for current user only."""
+        from .models import Notification
+        from django.utils import timezone
+        import datetime as _dt
+
+        user = request.user
+        user_person = get_or_create_person_for_user(user)
+        now = timezone.now()
+
+        # Throttle: skip if we refreshed for this user in the last 60 min
+        last = self._last_notif_refresh.get(user.id)
+        if last and (now - last) < _dt.timedelta(hours=1):
+            return
+        self._last_notif_refresh[user.id] = now
+
+        today = date.today()
+
+        # --- No-contact notifications (scoped to THIS user's connections) ---
+        connections = Connection.objects.filter(
+            owner=user_person,
+            status=Connection.ACCEPTED,
+            last_contact_date__isnull=False,
+        ).select_related('target')
+
+        for conn in connections:
+            days_since = (today - conn.last_contact_date).days
+            threshold = conn.no_contact_threshold
+            if threshold is None:
+                Notification.objects.filter(user=user, type=Notification.NO_CONTACT, person=conn.target).delete()
+                continue
+            if days_since >= threshold:
+                existing = Notification.objects.filter(user=user, type=Notification.NO_CONTACT, person=conn.target)
+                if not existing.exists():
+                    Notification.objects.create(
+                        user=user,
+                        type=Notification.NO_CONTACT,
+                        person=conn.target,
+                        message=f"You haven't talked to {conn.target.first_name or 'them'} in {days_since} days – reach out!",
+                        date=conn.last_contact_date,
+                    )
+                elif existing.count() > 1:
+                    keep = existing.order_by('-created_at').first()
+                    existing.exclude(id=keep.id).delete()
+            else:
+                Notification.objects.filter(user=user, type=Notification.NO_CONTACT, person=conn.target).delete()
+
+        # --- Upcoming-event notifications (7 days out) ---
+        Notification.objects.filter(
+            user=user,
+            type=Notification.UPCOMING_EVENT,
+            event__start_date__lt=today - timedelta(days=1),
+        ).delete()
+
+        upcoming_events = Event.objects.filter(
+            user=user,
+            start_date__gte=today,
+            start_date__lte=today + timedelta(days=7),
+        )
+        for event in upcoming_events:
+            if not Notification.objects.filter(user=user, type=Notification.UPCOMING_EVENT, event=event).exists():
+                days_until = (event.start_date - today).days
+                Notification.objects.create(
+                    user=user,
+                    type=Notification.UPCOMING_EVENT,
+                    message=f"{event.title} is in {days_until} days",
+                    event=event,
+                    date=event.start_date,
+                )
 
     def get(self, request):
         user_person = get_or_create_person_for_user(request.user)
         today = date.today()
-        start_date = today - timedelta(days=365)  # 1 year back
-        end_date = today + timedelta(days=365)    # 1 year ahead
+        start_date = today - timedelta(days=365)
+        end_date = today + timedelta(days=365)
 
-        # Get events within 1 year range
         events = Event.objects.filter(
             user=request.user,
+            start_date__gte=start_date,
             start_date__lte=end_date,
-            end_date__gte=start_date if Event._meta.get_field('end_date').null else start_date,
         ).order_by('start_date')
 
-        # Generate/update notifications
-        from .management.commands.generate_no_contact_notifications import Command as NotificationCommand
-        NotificationCommand().handle()
-        
-        # Clean up old event notifications (events that ended more than 1 day ago)
-        from .models import Notification
-        old_event_notifications = Notification.objects.filter(
-            user=request.user,
-            type=Notification.UPCOMING_EVENT,
-            event__start_date__lt=today - timedelta(days=1)
-        )
-        old_event_notifications.delete()
-        
-        # Create notifications for upcoming events (7 days out)
-        upcoming_events = Event.objects.filter(
-            user=request.user,
-            start_date__gte=today,
-            start_date__lte=today + timedelta(days=7)
-        )
-        
-        for event in upcoming_events:
-            # Check if notification already exists for this event
-            if not Notification.objects.filter(
-                user=request.user,
-                type=Notification.UPCOMING_EVENT,
-                event=event
-            ).exists():
-                days_until = (event.start_date - today).days
-                Notification.objects.create(
-                    user=request.user,
-                    type=Notification.UPCOMING_EVENT,
-                    message=f"{event.title} is in {days_until} days",
-                    event=event,
-                    date=event.start_date
-                )
-        
+        # Refresh notifications (scoped + throttled)
+        self._refresh_notifications(request)
+
         notifications = request.user.notifications.order_by('-created_at')[:10]
 
         data = {
@@ -305,7 +367,6 @@ class UserSearchViewSet(viewsets.ReadOnlyModelViewSet):
     """Search for users to add as contacts."""
     serializer_class = UserSearchSerializer
     permission_classes = [IsAuthenticated]
-    authentication_classes = [CsrfExemptSessionAuthentication]
 
     def get_queryset(self):
         query = self.request.query_params.get('q', '').strip()
@@ -329,7 +390,6 @@ class ConnectionViewSet(viewsets.ModelViewSet):
     """Manage connections between people."""
     serializer_class = ConnectionSerializer
     permission_classes = [IsAuthenticated]
-    authentication_classes = [CsrfExemptSessionAuthentication]
 
     def get_queryset(self):
         user_person = get_or_create_person_for_user(self.request.user)
@@ -412,7 +472,6 @@ class InteractionViewSet(viewsets.ModelViewSet):
     """Manage interactions between people."""
     serializer_class = InteractionSerializer
     permission_classes = [IsAuthenticated]
-    authentication_classes = [CsrfExemptSessionAuthentication]
 
     def get_queryset(self):
         user_person = get_or_create_person_for_user(self.request.user)
@@ -440,7 +499,6 @@ class EventViewSet(viewsets.ModelViewSet):
     """Manage events."""
     serializer_class = EventSerializer
     permission_classes = [IsAuthenticated]
-    authentication_classes = [CsrfExemptSessionAuthentication]
 
     def get_queryset(self):
         return Event.objects.filter(user=self.request.user).order_by('start_date')
@@ -449,11 +507,9 @@ class EventViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
     def create(self, request, *args, **kwargs):
-        """Custom create to log validation errors for debugging."""
+        """Custom create to handle validation errors."""
         serializer = self.get_serializer(data=request.data)
         if not serializer.is_valid():
-            print("[EventViewSet] Validation errors:", serializer.errors)
-            print("[EventViewSet] Incoming data:", request.data)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         self.perform_create(serializer)
         headers = self.get_success_headers(serializer.data)
@@ -470,7 +526,6 @@ class TagViewSet(mixins.ListModelMixin,
                  viewsets.GenericViewSet):
     serializer_class = TagSerializer
     permission_classes = [IsAuthenticated]
-    authentication_classes = [CsrfExemptSessionAuthentication]
 
     def get_queryset(self):
         user_person = get_or_create_person_for_user(self.request.user)
@@ -503,7 +558,6 @@ class UserProfileAPIView(APIView):
     """Get and update user profile data."""
     serializer_class = UserProfileSerializer
     permission_classes = [IsAuthenticated]
-    authentication_classes = [CsrfExemptSessionAuthentication]
 
     def get(self, request):
         person = get_or_create_person_for_user(request.user)
@@ -516,3 +570,40 @@ class UserProfileAPIView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+class DeleteAccountAPIView(APIView):
+    """Permanently delete the authenticated user's account and all related data.
+    Required by Apple App Store guidelines for apps that support account creation.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request):
+        user = request.user
+
+        with transaction.atomic():
+            # Get the user's Person record if it exists
+            try:
+                person = user.account.person
+
+                # Delete manual contacts owned by this person
+                Person.objects.filter(owner=person).delete()
+
+                # Delete connections (both directions)
+                Connection.objects.filter(Q(owner=person) | Q(target=person)).delete()
+
+                # Delete interactions involving this person
+                Interaction.objects.filter(Q(actor=person) | Q(target=person)).delete()
+
+                # Delete the Person (cascades to Account, Tags, Notifications, etc.)
+                person.delete()
+            except (Account.DoesNotExist, AttributeError):
+                pass
+
+            # Delete events owned by this user
+            Event.objects.filter(user=user).delete()
+
+            # Delete the auth User itself (cascades remaining FKs)
+            user.delete()
+
+        return Response({"message": "Account deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
