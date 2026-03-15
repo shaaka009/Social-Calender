@@ -66,7 +66,7 @@ const EditContactScreen = () => {
         // Use parseDateLocal to construct the date in local timezone to avoid off-by-one errors
         birthday: person.birthday ? parseDateLocal(person.birthday) : null,
         no_contact_threshold: contact.no_contact_threshold,
-        notes: person.notes || '',
+        notes: contact.notes || person.notes || '',
         tags: contact.tags || [],
         profile_picture: person.profile_picture_url || person.profile_picture || null,
       });
@@ -165,7 +165,8 @@ const EditContactScreen = () => {
       }
 
       if (isAppUser) {
-        const { first_name, last_name, email, phone, birthday, notes, tags, ...editableFields } = payload;
+        // App-user profile fields are read-only, but connection-level fields (e.g. tags) should still be saved.
+        const { first_name, last_name, email, phone, birthday, ...editableFields } = payload;
         await apiFetch(`${ENDPOINTS.CONNECTIONS}${id}/`, {
           method: 'PATCH',
           body: hasLocalImage ? requestBody : JSON.stringify(editableFields),

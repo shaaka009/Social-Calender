@@ -127,10 +127,10 @@ const ContactProfileScreen = () => {
             </View>
 
             {/* Notes */}
-            {person.notes ? (
+            {(contact.notes || person.notes) ? (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Notes</Text>
-                <Text style={styles.notesText}>{person.notes}</Text>
+                <Text style={styles.notesText}>{contact.notes || person.notes}</Text>
               </View>
             ) : null}
           </>

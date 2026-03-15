@@ -34,6 +34,7 @@ const AddContactScreen = () => {
     email: '',
     phone: '',
     birthday: '',
+    notes: '',
     profile_picture: null,
   });
   // Contact methods table rows: {type: string, value: string}
@@ -291,6 +292,15 @@ const AddContactScreen = () => {
               label="Birthday"
               date={form.birthday ? parseDateLocal(form.birthday) : new Date()}
               onChange={(d)=>handleChange('birthday', formatDateLocal(d))}
+            />
+
+            <CustomInput
+              label="Notes"
+              value={form.notes}
+              onChangeText={text => handleChange('notes', text)}
+              placeholder="Add notes about this contact"
+              multiline
+              numberOfLines={4}
             />
 
             {/* Tags */}
