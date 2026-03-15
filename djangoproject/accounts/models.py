@@ -233,6 +233,7 @@ class Connection(models.Model):
     # Per-connection nickname and organisation labels – fully controlled by the owner
     nickname = models.CharField(max_length=100, blank=True, help_text="Personal nickname for this contact (owner-specific)")
     organization = models.CharField(max_length=255, blank=True, help_text="Organization label shown in this owner\'s contact list.")
+    notes = models.TextField(blank=True, help_text="Private notes about this contact, scoped to the connection owner.")
     last_contact_date = models.DateField(null=True, blank=True, help_text="Date of the most recent interaction")
     no_contact_threshold = models.IntegerField(
         null=True,

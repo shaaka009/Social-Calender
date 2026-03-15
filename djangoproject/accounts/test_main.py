@@ -130,8 +130,8 @@ class UserProfileAPITests(APITestCase):
         self.client.force_authenticate(user=None)  # logout
         get_response = self.client.get(self.profile_url)
         patch_response = self.client.patch(self.profile_url, {"first_name": "Test"})
-        self.assertEqual(get_response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertEqual(patch_response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(get_response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(patch_response.status_code, status.HTTP_401_UNAUTHORIZED)
 
 
 class ConnectionAPITests(APITestCase):
@@ -176,6 +176,53 @@ class ConnectionAPITests(APITestCase):
         dup_resp = self.client.post(self.connection_list_url, payload, format="json")
         self.assertEqual(dup_resp.status_code, status.HTTP_201_CREATED)  # view always returns 201
         self.assertEqual(Connection.objects.count(), 1)
+
+    def test_create_manual_contact_persists_connection_notes(self):
+        """Manual-contact create should store owner notes on Connection, not Person."""
+        self.client.force_authenticate(self.alice_user)
+        payload = {
+            "first_name": "Manny",
+            "email": "manny@example.com",
+            "notes": "Met at conference",
+        }
+        response = self.client.post(self.connection_list_url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        conn = Connection.objects.get(owner=self.alice_person, target__first_name="Manny")
+        self.assertEqual(conn.notes, "Met at conference")
+        self.assertEqual(conn.target.notes, "")
+        self.assertEqual(response.data["notes"], "Met at conference")
+
+    def test_update_connection_notes_for_app_user(self):
+        """PATCH on an app-user connection should persist owner-scoped notes."""
+        conn = Connection.objects.create(
+            owner=self.alice_person,
+            target=self.bob_person,
+            status=Connection.ACCEPTED,
+        )
+        self.client.force_authenticate(self.alice_user)
+        detail_url = reverse("connection-detail", args=[conn.id])
+        resp = self.client.patch(detail_url, {"notes": "Follow up next week"}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        conn.refresh_from_db()
+        self.assertEqual(conn.notes, "Follow up next week")
+        self.assertEqual(resp.data["notes"], "Follow up next week")
+
+    def test_connection_notes_representation_falls_back_to_legacy_person_notes(self):
+        """If connection.notes is empty, serializer should fall back to target.notes."""
+        legacy_person = Person.objects.create(first_name="Legacy", notes="Legacy note source")
+        conn = Connection.objects.create(
+            owner=self.alice_person,
+            target=legacy_person,
+            status=Connection.ACCEPTED,
+            notes="",
+        )
+        self.client.force_authenticate(self.alice_user)
+        detail_url = reverse("connection-detail", args=[conn.id])
+        resp = self.client.get(detail_url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["notes"], "Legacy note source")
 
     # ------------------------------------------------------------------
     # Accept / decline
@@ -412,13 +459,20 @@ class AuthViewTests(APITestCase):
     def test_signin_and_signout_cycle(self):
         resp = self.client.post(self.signin_url, {"email": self.user.email, "password": "strongpass"}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        # client should now have session cookie – call get_user
+        self.assertTrue(resp.json().get("success"))
+        access = resp.json()["tokens"]["access"]
+
+        # JWT flow: include bearer token when calling authenticated endpoints
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
         resp_user = self.client.get(self.get_user_url)
-        self.assertTrue(resp_user.json()["success"])  # logged in
-        # sign out
-        self.client.post(self.signout_url)
+        self.assertEqual(resp_user.status_code, status.HTTP_200_OK)
+        self.assertTrue(resp_user.json()["success"])
+
+        # Signout endpoint is a no-op server-side for JWT; client discards token
+        self.assertEqual(self.client.post(self.signout_url).status_code, status.HTTP_200_OK)
+        self.client.credentials()
         resp_after_logout = self.client.get(self.get_user_url)
-        self.assertFalse(resp_after_logout.json()["success"])
+        self.assertEqual(resp_after_logout.status_code, status.HTTP_401_UNAUTHORIZED)
 
 # ---------------------------------------------------------------------------
 # Event CRUD & permissions

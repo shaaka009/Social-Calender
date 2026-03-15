@@ -107,7 +107,7 @@ class ConnectionSerializer(serializers.ModelSerializer):
         child=serializers.DictField(), write_only=True, required=False
     )
     birthday = serializers.DateField(write_only=True, required=False, allow_null=True)
-    notes = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    notes = serializers.CharField(required=False, allow_blank=True)
     tags = serializers.ListField(write_only=True, required=False, child=serializers.CharField())
     nickname = serializers.CharField(required=False, allow_blank=True)
 
@@ -166,7 +166,6 @@ class ConnectionSerializer(serializers.ModelSerializer):
                 email=validated_data.pop('email', ''),
                 phone=validated_data.pop('phone', ''),
                 birthday=validated_data.pop('birthday', None),
-                notes=validated_data.pop('notes', ''),
                 extra_contacts=validated_data.pop('extra_contacts', []),
                 profile_picture=validated_data.pop('profile_picture', None),
             )
@@ -213,7 +212,6 @@ class ConnectionSerializer(serializers.ModelSerializer):
             "email",
             "phone",
             "birthday",
-            "notes",
             "extra_contacts",
             "profile_picture",
         ]
@@ -254,6 +252,9 @@ class ConnectionSerializer(serializers.ModelSerializer):
         # Surface effective labels
         data["effective_organization"] = instance.organization or getattr(instance.target, "organization", "")
         data["nickname"] = instance.nickname or ""
+        # Backward compatibility for legacy manual contacts that stored notes on Person.
+        if not data.get("notes"):
+            data["notes"] = getattr(instance.target, "notes", "") or ""
         return data
 
     class Meta:
