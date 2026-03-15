@@ -213,7 +213,7 @@ const CalendarPreview = ({ events = [], isLoading = false, error = null }) => {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: theme.colors.backgroundSecondary,
+    backgroundColor: theme.colors.primaryLight,
     borderRadius: wp(4),
     padding: wp(4),
     marginBottom: wp(5),

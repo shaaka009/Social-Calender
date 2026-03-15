@@ -104,7 +104,9 @@ const NotificationList = ({ notifications = [], onNotificationPress }) => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Notifications</Text>
+      <Text style={styles.title}>
+        Notifications
+      </Text>
       <View style={styles.list}>
         {notifications.map((notification) => (
           <React.Fragment key={notification.id}>
@@ -133,13 +135,18 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     marginBottom: wp(3),
   },
+  titleCount: {
+    fontSize: wp(4),
+    fontWeight: '400',
+    color: theme.colors.textLight,
+  },
   list: {
     gap: wp(2),
   },
   card: {
     flexDirection: 'row',
     padding: wp(4),
-    backgroundColor: theme.colors.card,
+    backgroundColor: theme.colors.primaryLight,
     borderRadius: wp(3),
     alignItems: 'flex-start',
   },
@@ -191,7 +198,7 @@ const styles = StyleSheet.create({
     paddingTop: wp(0.5),
   },
   separator: {
-    height: wp(2),
+    height: wp(0),
   },
   emptyText: {
     textAlign: 'center',
