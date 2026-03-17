@@ -2,6 +2,24 @@
 
 A calendar management application built with React Native (Expo) and Django.
 
+## Environment Variables
+
+Set runtime secrets and deployment-specific values via environment variables (do not hardcode them in source).
+
+### Backend (`djangoproject`)
+
+- `DJANGO_SECRET_KEY` - required in production
+- `DJANGO_DEBUG` - defaults to `True` locally
+- `DJANGO_ALLOWED_HOSTS` - comma-separated hostnames
+- `DATABASE_URL` - Postgres URL for production (optional locally)
+- `CORS_ALLOWED_ORIGINS` - comma-separated frontend origins
+- `FRONTEND_BASE_URL` - app base URL for deep links/password reset
+- `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL` - optional email config
+
+### Frontend (Expo)
+
+- `EXPO_PUBLIC_API_URL` - backend API base URL (for local dev, defaults to `http://127.0.0.1:8000`)
+
 ## Prerequisites
 
 - Python 3.x
@@ -96,3 +114,10 @@ The application consists of two main parts:
    - Located in the `djangoproject/` directory
    - Handles user authentication
    - Manages calendar data
+
+## Public Repository Safety Checklist
+
+- Do not commit `.env` files, API keys, tokens, or private credentials.
+- Use environment variables for all secrets in local/dev/prod environments.
+- Rotate any key immediately if it was ever committed in git history.
+- Keep production-only infrastructure details and credentials out of this repository.

@@ -26,12 +26,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ.get(
     "DJANGO_SECRET_KEY",
-    "django-insecure-h$nor6e_ubobbzmsi0e6b-nx+lq=2tud14pzco=+)m%q2$a*zi",
+    "django-insecure-dev-only-change-me",
 )
 
 DEBUG = os.environ.get("DJANGO_DEBUG", "True").lower() in ("true", "1", "yes")
 
-ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+ALLOWED_HOSTS = [h.strip() for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
+if DEBUG and not os.environ.get("DJANGO_ALLOWED_HOSTS"):
+    # Dev convenience for physical-device testing on local network.
+    ALLOWED_HOSTS.append("*")
 
 # The base URL the frontend app lives at (used for password-reset deep links, etc.)
 FRONTEND_BASE_URL = os.environ.get("FRONTEND_BASE_URL", "http://localhost:8081")
