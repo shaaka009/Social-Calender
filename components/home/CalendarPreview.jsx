@@ -12,6 +12,82 @@ const toIsoDate = (year, monthOneBased, day) => {
   const safeDay = Math.min(day, daysInMonth(year, monthOneBased));
   return `${year}-${String(monthOneBased).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`;
 };
+const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_EVENT_SPAN_DAYS = 366;
+const RANGE_COLOR = '#E7DDFF';
+const SUBDUED_TAG_COLOR_MAP = {
+  '#ff8c00': '#ffe8cc', // orange
+  '#ff4d4f': '#ffd8d9', // red
+  '#40a9ff': '#d9efff', // blue
+  '#52c41a': '#dcf3d0', // green
+  '#faad14': '#ffefcc', // yellow
+  '#722ed1': '#e6d8f8', // purple
+  '#13c2c2': '#d2f3f3', // teal
+};
+
+const isIsoDate = (value) => typeof value === 'string' && ISO_DATE_REGEX.test(value);
+
+const parseIsoDateUtc = (isoDate) => {
+  if (!isIsoDate(isoDate)) return null;
+  const [year, month, day] = isoDate.split('-').map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (
+    parsed.getUTCFullYear() !== year
+    || parsed.getUTCMonth() !== month - 1
+    || parsed.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return parsed;
+};
+
+const formatIsoDateUtc = (date) => {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getEventColor = (event) => {
+  if (event?.tags?.length > 0 && event.tags[0]?.color) {
+    const normalizedTagColor = String(event.tags[0].color).trim().toLowerCase();
+    return SUBDUED_TAG_COLOR_MAP[normalizedTagColor] || RANGE_COLOR;
+  }
+  if (event?.type === 'birthday') {
+    return '#ffd7d7';
+  }
+  return RANGE_COLOR;
+};
+
+const getEventRange = (event) => {
+  const startDate = event?.start_date || event?.date || null;
+  if (!isIsoDate(startDate)) return null;
+
+  const candidateEndDate = event?.end_date || startDate;
+  const endDate = isIsoDate(candidateEndDate) ? candidateEndDate : startDate;
+
+  if (endDate < startDate) {
+    return { startDate, endDate: startDate };
+  }
+
+  return { startDate, endDate };
+};
+
+const expandEventDates = (startDate, endDate) => {
+  const startUtc = parseIsoDateUtc(startDate);
+  const endUtc = parseIsoDateUtc(endDate);
+  if (!startUtc || !endUtc || endUtc < startUtc) return [];
+
+  const dates = [];
+  const cursor = new Date(startUtc);
+
+  while (cursor <= endUtc && dates.length < MAX_EVENT_SPAN_DAYS) {
+    dates.push(formatIsoDateUtc(cursor));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  return dates;
+};
 
 const EventPreview = ({ event, onPress }) => (
   <Pressable style={styles.eventPreview} onPress={onPress}>
@@ -64,11 +140,10 @@ const CalendarPreview = ({ events = [], isLoading = false, error = null }) => {
   }, []);
 
   const getDateStr = (event) => event?.start_date || event?.date || null;
-  const isIsoDate = (value) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
   const todayIsoDate = React.useMemo(() => new Date().toISOString().split('T')[0], []);
 
   const validEvents = React.useMemo(
-    () => events.filter((event) => isIsoDate(getDateStr(event))),
+    () => events.filter((event) => getEventRange(event)),
     [events]
   );
 
@@ -96,10 +171,12 @@ const CalendarPreview = ({ events = [], isLoading = false, error = null }) => {
       seenRecurringKeys.add(dedupeKey);
 
       for (let year = activeYear - 8; year <= activeYear + 8; year += 1) {
+        const birthdayDate = toIsoDate(year, rawMonth, rawDay);
         expandedEvents.push({
           ...event,
           // Keep the original ID so details routing keeps working with existing screens.
-          start_date: toIsoDate(year, rawMonth, rawDay),
+          start_date: birthdayDate,
+          end_date: birthdayDate,
         });
       }
     });
@@ -122,14 +199,56 @@ const CalendarPreview = ({ events = [], isLoading = false, error = null }) => {
   // Group events by date for quick lookup when a day is pressed.
   const eventsByDate = React.useMemo(() => {
     const groupedEvents = {};
+    const seenEventIdsByDate = {};
+
     calendarEvents.forEach((event) => {
-      const dateStr = getDateStr(event);
-      if (!groupedEvents[dateStr]) {
-        groupedEvents[dateStr] = [];
-      }
-      groupedEvents[dateStr].push(event);
+      const dateRange = getEventRange(event);
+      if (!dateRange) return;
+
+      const eventDates = expandEventDates(dateRange.startDate, dateRange.endDate);
+      const fallbackEventId = `${event.title || 'event'}-${dateRange.startDate}-${dateRange.endDate}`;
+      const eventId = event?.id != null ? String(event.id) : fallbackEventId;
+
+      eventDates.forEach((dateStr) => {
+        if (!groupedEvents[dateStr]) {
+          groupedEvents[dateStr] = [];
+          seenEventIdsByDate[dateStr] = new Set();
+        }
+
+        if (seenEventIdsByDate[dateStr].has(eventId)) return;
+
+        seenEventIdsByDate[dateStr].add(eventId);
+        groupedEvents[dateStr].push(event);
+      });
     });
     return groupedEvents;
+  }, [calendarEvents]);
+
+  const rangeVisualByDate = React.useMemo(() => {
+    const visualMap = {};
+
+    calendarEvents.forEach((event) => {
+      const dateRange = getEventRange(event);
+      if (!dateRange || dateRange.startDate === dateRange.endDate) return;
+
+      const eventDates = expandEventDates(dateRange.startDate, dateRange.endDate);
+      const eventColor = getEventColor(event);
+      eventDates.forEach((dateStr, index) => {
+        if (!visualMap[dateStr]) {
+          visualMap[dateStr] = { isStart: false, isEnd: false, isMiddle: false, color: eventColor };
+        }
+
+        if (index === 0) {
+          visualMap[dateStr].isStart = true;
+        } else if (index === eventDates.length - 1) {
+          visualMap[dateStr].isEnd = true;
+        } else {
+          visualMap[dateStr].isMiddle = true;
+        }
+      });
+    });
+
+    return visualMap;
   }, [calendarEvents]);
 
   // Transform events into the format expected by `react-native-calendars`
@@ -137,43 +256,59 @@ const CalendarPreview = ({ events = [], isLoading = false, error = null }) => {
   // were happening because of timezone conversions.
   const baseMarkedDates = React.useMemo(() => {
     return Object.entries(eventsByDate).reduce((acc, [dateStr, eventsOnThisDate]) => {
-      acc[dateStr] = {
-        dots: eventsOnThisDate.flatMap((event) => {
-          // If event has tags, create a dot for each tag
-          if (event.tags && event.tags.length > 0) {
-            return event.tags.map((tag) => ({
+      const seenDotKeys = new Set();
+      const dots = eventsOnThisDate.flatMap((event) => {
+        if (event.tags && event.tags.length > 0) {
+          return event.tags
+            .map((tag) => ({
               color: tag.color,
               key: `${event.id}-${tag.id}`,
-            }));
-          }
-          // If no tags, fall back to default color scheme
-          return [{
-            color: event.type === 'birthday' ? theme.colors.rose : theme.colors.primary,
-            key: event.id.toString(),
-          }];
-        }),
+            }))
+            .filter((dot) => {
+              if (seenDotKeys.has(dot.key)) return false;
+              seenDotKeys.add(dot.key);
+              return true;
+            });
+        }
+
+        const defaultDot = {
+          color: event.type === 'birthday' ? theme.colors.rose : theme.colors.primary,
+          key: event.id?.toString() || `${event.title}-${dateStr}`,
+        };
+
+        if (seenDotKeys.has(defaultDot.key)) {
+          return [];
+        }
+        seenDotKeys.add(defaultDot.key);
+        return [defaultDot];
+      });
+
+      const dayRangeVisual = rangeVisualByDate[dateStr];
+      const hasRange = Boolean(dayRangeVisual);
+      const primaryDotColor = dots[0]?.color || theme.colors.primary;
+
+      acc[dateStr] = hasRange ? {
+        startingDay: dayRangeVisual.isStart,
+        endingDay: dayRangeVisual.isEnd,
+        color: dayRangeVisual.color || RANGE_COLOR,
+        textColor: theme.colors.text,
         marked: true,
-        selected: dateStr === todayIsoDate,
-        selectedColor: theme.colors.primary + '40',
+        dotColor: primaryDotColor,
+      } : {
+        marked: true,
+        dotColor: primaryDotColor,
       };
+
+      if (dateStr === todayIsoDate && !hasRange) {
+        acc[dateStr].selected = true;
+        acc[dateStr].selectedColor = theme.colors.primary + '40';
+      }
+
       return acc;
     }, {});
-  }, [eventsByDate, todayIsoDate]);
+  }, [eventsByDate, rangeVisualByDate, todayIsoDate]);
 
-  const markedDates = React.useMemo(() => {
-    if (!selectedDate || !baseMarkedDates[selectedDate]) {
-      return baseMarkedDates;
-    }
-
-    return {
-      ...baseMarkedDates,
-      [selectedDate]: {
-        ...baseMarkedDates[selectedDate],
-        selected: true,
-        selectedColor: theme.colors.primary,
-      },
-    };
-  }, [baseMarkedDates, selectedDate]);
+  const markedDates = React.useMemo(() => baseMarkedDates, [baseMarkedDates]);
 
   if (error) {
     return (
@@ -226,7 +361,7 @@ const CalendarPreview = ({ events = [], isLoading = false, error = null }) => {
               textMonthFontWeight: '600',
               textDayHeaderFontWeight: '600',
             }}
-            markingType={'multi-dot'}
+            markingType={'period'}
             markedDates={markedDates}
             enableSwipeMonths={true}
             onDayPress={(day) => {
@@ -294,7 +429,8 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: theme.colors.primaryLight,
     borderRadius: wp(4),
-    padding: wp(4),
+    paddingVertical: wp(3),
+    paddingHorizontal: wp(2),
     marginBottom: wp(5),
     ...theme.shadows.small,
   },
