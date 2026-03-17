@@ -36,6 +36,7 @@ from .serializers import (
     TagSerializer,
 )
 from .models import Connection, Interaction, Person, Account, Event, Tag
+from .birthday_events import build_virtual_birthday_events
 
 from .forms import UserRegistrationForm
 
@@ -342,11 +343,15 @@ class DashboardAPIView(APIView):
         start_date = today - timedelta(days=365)
         end_date = today + timedelta(days=365)
 
-        events = Event.objects.filter(
+        persisted_events = Event.objects.filter(
             user=request.user,
             start_date__gte=start_date,
             start_date__lte=end_date,
         ).order_by('start_date')
+        serialized_events = EventSerializer(persisted_events, many=True, context={'request': request}).data
+        birthday_events = build_virtual_birthday_events(user_person=user_person, today=today)
+        events = list(serialized_events) + birthday_events
+        events.sort(key=lambda item: (item.get("start_date") or "", str(item.get("id"))))
 
         # Refresh notifications (scoped + throttled)
         self._refresh_notifications(request)
@@ -505,6 +510,17 @@ class EventViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        serialized_events = self.get_serializer(queryset, many=True).data
+
+        user_person = get_or_create_person_for_user(request.user)
+        birthday_events = build_virtual_birthday_events(user_person=user_person, today=date.today())
+
+        merged_events = list(serialized_events) + birthday_events
+        merged_events.sort(key=lambda item: (item.get("start_date") or "", str(item.get("id"))))
+        return Response(merged_events)
 
     def create(self, request, *args, **kwargs):
         """Custom create to handle validation errors."""

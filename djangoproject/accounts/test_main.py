@@ -26,6 +26,7 @@ from .models import (
     Event,
     Notification,
 )
+from .birthday_events import add_months
 
 User = get_user_model()
 
@@ -526,6 +527,96 @@ class EventAPITests(APITestCase):
         resp = self.client.delete(url)
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(Event.objects.filter(id=ev.id).exists())
+
+    def test_event_list_includes_virtual_birthdays_within_six_month_window(self):
+        today = date.today()
+        past_day = add_months(today, -3)
+        upcoming_day = add_months(today, 2)
+
+        _, past_person = create_user_with_person(
+            "past-bday@example.com",
+            first_name="Past",
+            birthday=date(1993, past_day.month, past_day.day),
+        )
+        _, upcoming_person = create_user_with_person(
+            "upcoming-bday@example.com",
+            first_name="Upcoming",
+            birthday=date(1995, upcoming_day.month, upcoming_day.day),
+        )
+
+        Connection.objects.create(owner=self.person, target=past_person, status=Connection.ACCEPTED)
+        Connection.objects.create(owner=self.person, target=upcoming_person, status=Connection.ACCEPTED)
+
+        resp = self.client.get(self.event_list_url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        virtual_birthdays = [e for e in resp.data if e.get("is_virtual") and e.get("source") == "person_birthday"]
+        ids = {e["id"] for e in virtual_birthdays}
+        self.assertIn(f"virtual-birthday-{past_person.id}-{date(today.year, past_day.month, past_day.day).isoformat()}", ids)
+        self.assertIn(f"virtual-birthday-{upcoming_person.id}-{date(today.year, upcoming_day.month, upcoming_day.day).isoformat()}", ids)
+
+        # Ensure they are clearly birthday events and include metadata required by UI.
+        for event in virtual_birthdays:
+            self.assertEqual(event["type"], Event.BIRTHDAY)
+            self.assertTrue(event["is_virtual"])
+            self.assertEqual(event["source"], "person_birthday")
+            self.assertIn("time_bucket", event)
+
+    def test_six_month_boundary_birthdays_are_included(self):
+        today = date.today()
+        six_months_past = add_months(today, -6)
+        six_months_upcoming = add_months(today, 6)
+
+        _, past_boundary_person = create_user_with_person(
+            "past-boundary@example.com",
+            first_name="PastBoundary",
+            birthday=date(1988, six_months_past.month, six_months_past.day),
+        )
+        _, upcoming_boundary_person = create_user_with_person(
+            "upcoming-boundary@example.com",
+            first_name="UpcomingBoundary",
+            birthday=date(1989, six_months_upcoming.month, six_months_upcoming.day),
+        )
+
+        Connection.objects.create(owner=self.person, target=past_boundary_person, status=Connection.ACCEPTED)
+        Connection.objects.create(owner=self.person, target=upcoming_boundary_person, status=Connection.ACCEPTED)
+
+        resp = self.client.get(self.event_list_url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        virtual_birthdays = [e for e in resp.data if e.get("is_virtual")]
+
+        expected_past_id = f"virtual-birthday-{past_boundary_person.id}-{date(today.year, six_months_past.month, six_months_past.day).isoformat()}"
+        expected_upcoming_id = f"virtual-birthday-{upcoming_boundary_person.id}-{date(today.year, six_months_upcoming.month, six_months_upcoming.day).isoformat()}"
+        returned_ids = {e["id"] for e in virtual_birthdays}
+
+        self.assertIn(expected_past_id, returned_ids)
+        self.assertIn(expected_upcoming_id, returned_ids)
+
+    def test_virtual_birthday_events_are_immutable_via_event_detail_endpoints(self):
+        today = date.today()
+        target_day = add_months(today, 1)
+
+        _, birthday_person = create_user_with_person(
+            "readonly-bday@example.com",
+            first_name="ReadOnly",
+            birthday=date(1992, target_day.month, target_day.day),
+        )
+        Connection.objects.create(owner=self.person, target=birthday_person, status=Connection.ACCEPTED)
+
+        list_resp = self.client.get(self.event_list_url)
+        self.assertEqual(list_resp.status_code, status.HTTP_200_OK)
+        virtual_event = next(
+            e
+            for e in list_resp.data
+            if e.get("is_virtual") and e.get("person_id") == birthday_person.id
+        )
+
+        detail_url = reverse("event-detail", args=[virtual_event["id"]])
+        patch_resp = self.client.patch(detail_url, {"title": "Mutate"}, format="json")
+        delete_resp = self.client.delete(detail_url)
+
+        self.assertEqual(patch_resp.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(delete_resp.status_code, status.HTTP_404_NOT_FOUND)
 
 # ---------------------------------------------------------------------------
 # Notification serializer logic

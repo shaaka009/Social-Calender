@@ -1,9 +1,8 @@
+import json
 from datetime import date
 
 from django.contrib.auth.models import User
 from rest_framework import serializers
-from django.core.files.uploadedfile import UploadedFile
-
 from .models import (
     Person,
     Account,
@@ -96,7 +95,7 @@ class ConnectionSerializer(serializers.ModelSerializer):
     # Fields for app user connection
     target_person_id = serializers.IntegerField(write_only=True, required=False)
     extra_contacts = serializers.ListField(child=serializers.DictField(), required=False)
-    profile_picture = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    profile_picture = serializers.ImageField(required=False, allow_null=True)
     
     # Fields for manual contact creation
     first_name = serializers.CharField(write_only=True, required=False)
@@ -124,6 +123,21 @@ class ConnectionSerializer(serializers.ModelSerializer):
             "email": obj.owner.email,
         }
 
+    def to_internal_value(self, data):
+        """Ignore URL-like profile_picture strings; only accept file uploads."""
+        mutable_data = data.copy() if hasattr(data, "copy") else dict(data)
+        profile_picture = mutable_data.get("profile_picture")
+        if isinstance(profile_picture, str):
+            mutable_data.pop("profile_picture", None)
+        for key in ("extra_contacts", "tags"):
+            value = mutable_data.get(key)
+            if isinstance(value, str):
+                try:
+                    mutable_data[key] = json.loads(value)
+                except (TypeError, ValueError):
+                    pass
+        return super().to_internal_value(mutable_data)
+
     def validate(self, attrs):
         # Normalize blank numeric fields
         if attrs.get('no_contact_threshold') in ['', None]:
@@ -131,10 +145,6 @@ class ConnectionSerializer(serializers.ModelSerializer):
         # Normalize blank date fields
         if attrs.get('birthday') == '':
             attrs['birthday'] = None
-
-        # If profile_picture is just a URL string, drop it (no new upload)
-        if 'profile_picture' in attrs and isinstance(attrs['profile_picture'], str):
-            attrs.pop('profile_picture')
 
         # For manual contacts, first_name is required
         if 'first_name' in attrs:
@@ -512,7 +522,7 @@ class NotificationSerializer(serializers.ModelSerializer):
 
 class DashboardSerializer(serializers.Serializer):
     user = serializers.SerializerMethodField()
-    events = EventSerializer(many=True)
+    events = serializers.SerializerMethodField()
     notifications = NotificationSerializer(many=True)
 
     def get_user(self, obj):
@@ -523,6 +533,16 @@ class DashboardSerializer(serializers.Serializer):
             "last_name": user.last_name,
             "email": user.email,
         }
+
+    def get_events(self, obj):
+        events = obj.get("events", []) if isinstance(obj, dict) else []
+        result = []
+        for event in events:
+            if isinstance(event, dict):
+                result.append(event)
+            else:
+                result.append(EventSerializer(event, context=self.context).data)
+        return result
 
     class Meta:
         fields = ("user", "events", "notifications")
