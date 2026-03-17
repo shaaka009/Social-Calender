@@ -85,8 +85,13 @@ const EditContactScreen = () => {
   // Image picker for manual contacts
   const handleImagePick = async () => {
     try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permission required', 'Please allow photo library access to choose a contact photo.');
+        return;
+      }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
@@ -131,7 +136,9 @@ const EditContactScreen = () => {
           : formData.birthday
         : null;
 
-      const hasLocalImage = formData.profile_picture && formData.profile_picture.startsWith('file://');
+      const hasLocalImage = typeof formData.profile_picture === 'string' && (
+        formData.profile_picture.startsWith('file://') || formData.profile_picture.startsWith('content://')
+      );
 
       let requestBody = null;
       let headers = {};
@@ -157,9 +164,8 @@ const EditContactScreen = () => {
           type: 'image/jpeg',
         });
         requestBody = fd;
-        headers['Content-Type'] = 'multipart/form-data';
       } else {
-        if (!formData.profile_picture) delete payload.profile_picture;
+        delete payload.profile_picture;
         requestBody = JSON.stringify(payload);
         headers['Content-Type'] = 'application/json';
       }

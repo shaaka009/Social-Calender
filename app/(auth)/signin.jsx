@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
@@ -17,6 +18,7 @@ import { wp } from "../../helpers/common";
 import useLoading from "../../helpers/useLoading";
 
 const SignIn = () => {
+  const queryClient = useQueryClient();
   const { isLoading, withLoading } = useLoading();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -50,6 +52,7 @@ const SignIn = () => {
 
         // Store JWT tokens
         await storeTokens(data.tokens);
+        queryClient.clear();
 
         // Login successful
         router.replace("/home");

@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from "expo-image";
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import React from "react";
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import MapView, { Marker } from "react-native-maps";
@@ -15,6 +16,7 @@ import useProfile from "../../helpers/useProfile";
 
 const ProfileScreen = () => {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { data, isLoading, isError } = useProfile();
   const [region, setRegion] = React.useState(null);
 
@@ -29,6 +31,7 @@ const ProfileScreen = () => {
             await apiFetch(ENDPOINTS.SIGN_OUT, { method: "POST" }).catch(() => {});
           } finally {
             await clearTokens();
+            queryClient.clear();
             router.replace("/welcome");
           }
         },
@@ -185,6 +188,7 @@ const ProfileScreen = () => {
                       // even if server fails, clear local state
                     } finally {
                       await clearTokens();
+                      queryClient.clear();
                       router.replace("/welcome");
                     }
                   },

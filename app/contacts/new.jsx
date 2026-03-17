@@ -2,7 +2,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import CustomButton from '../../components/CustomButton';
 import CustomInput from '../../components/CustomInput';
@@ -16,15 +16,26 @@ import { useCreateTag, useTags } from '../../helpers/useTags';
 
 const AddContactScreen = () => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [showManualForm, setShowManualForm] = useState(false);
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery]);
+
+  const normalizedSearchQuery = useMemo(() => debouncedSearchQuery.trim(), [debouncedSearchQuery]);
   
   // User search results
   const { data: searchResults = [], isLoading: isSearching, isFetching } = useQuery({
-    queryKey: ['userSearch', searchQuery],
-    queryFn: () => searchQuery.trim() 
-      ? apiFetch(`${ENDPOINTS.USER_SEARCH}?q=${encodeURIComponent(searchQuery.trim())}`)
+    queryKey: ['userSearch', normalizedSearchQuery],
+    queryFn: () => normalizedSearchQuery
+      ? apiFetch(`${ENDPOINTS.USER_SEARCH}?q=${encodeURIComponent(normalizedSearchQuery)}`)
       : [],
-    enabled: searchQuery.trim().length > 0,
+    enabled: normalizedSearchQuery.length >= 2,
     placeholderData: keepPreviousData
   });
 
@@ -58,8 +69,13 @@ const AddContactScreen = () => {
 
   const handleImagePick = async () => {
     try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permission required', 'Please allow photo library access to choose a contact photo.');
+        return;
+      }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
@@ -101,6 +117,9 @@ const AddContactScreen = () => {
     try {
       // Build payload from form + contact rows
       const payload = { ...form };
+      const hasLocalImage = typeof form.profile_picture === 'string' && (
+        form.profile_picture.startsWith('file://') || form.profile_picture.startsWith('content://')
+      );
       // Extract email/phone if present
       contactRows.forEach(({ type, value }) => {
         const key = type.trim().toLowerCase();
@@ -114,10 +133,37 @@ const AddContactScreen = () => {
       });
       if (selectedTags.length) payload.tags = selectedTags;
 
+      let body = null;
+      if (hasLocalImage) {
+        const fd = new FormData();
+        Object.entries(payload).forEach(([key, value]) => {
+          if (value === undefined || value === null) return;
+          if (key === 'profile_picture') return;
+          if (key === 'tags' && Array.isArray(value)) {
+            value.forEach(tag => fd.append('tags', tag));
+            return;
+          }
+          if (typeof value === 'object') {
+            fd.append(key, JSON.stringify(value));
+          } else {
+            fd.append(key, value.toString());
+          }
+        });
+        fd.append('profile_picture', {
+          uri: form.profile_picture,
+          name: 'profile.jpg',
+          type: 'image/jpeg',
+        });
+        body = fd;
+      } else {
+        // Avoid sending non-upload strings for image fields.
+        if (!hasLocalImage) delete payload.profile_picture;
+        body = JSON.stringify(payload);
+      }
+
       await apiFetch(ENDPOINTS.CONNECTIONS, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body,
       });
       router.replace('/contacts');
     } catch (err) {
@@ -133,6 +179,16 @@ const AddContactScreen = () => {
         <View style={styles.emptyState}>
           <Text style={styles.emptyStateText}>
             Search for users by name or email
+          </Text>
+        </View>
+      );
+    }
+
+    if (searchQuery.trim().length < 2) {
+      return (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyStateText}>
+            Enter at least 2 characters to search
           </Text>
         </View>
       );
