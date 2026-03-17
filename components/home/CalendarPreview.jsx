@@ -309,6 +309,109 @@ const CalendarPreview = ({ events = [], isLoading = false, error = null }) => {
   }, [eventsByDate, rangeVisualByDate, todayIsoDate]);
 
   const markedDates = React.useMemo(() => baseMarkedDates, [baseMarkedDates]);
+  const handleCalendarDayPress = React.useCallback((day) => {
+    if (eventsByDate[day.dateString]) {
+      setSelectedDate(day.dateString);
+      setShowEventModal(true);
+    }
+  }, [eventsByDate]);
+  const renderCalendarDay = React.useCallback(({ date, state, marking }) => {
+    if (!date) return null;
+
+    const dateString = date.dateString;
+    const [_, monthStr, dayStr] = dateString.split('-');
+    const monthNum = Number(monthStr);
+    const dayNum = Number(dayStr);
+    const hasEvents = Boolean(eventsByDate[dateString]);
+    const isDisabled = state === 'disabled';
+    const hasRange = Boolean(marking?.color);
+    const isRangeStart = Boolean(marking?.startingDay);
+    const isRangeEnd = Boolean(marking?.endingDay);
+    const isRangeMiddle = hasRange && !isRangeStart && !isRangeEnd;
+    const isSelected = Boolean(marking?.selected);
+    const isToday = dateString === todayIsoDate;
+    const isStaticDemoWeek = monthNum === 3 && dayNum >= 24 && dayNum <= 26;
+    const isStaticDemoStart = monthNum === 3 && dayNum === 24;
+    const isStaticDemoEnd = monthNum === 3 && dayNum === 26;
+
+    return (
+      <View style={styles.customDayFrame}>
+        <View style={styles.customDaySlot}>
+          <Pressable
+            disabled={!hasEvents}
+            onPress={() => handleCalendarDayPress(date)}
+            style={[
+              styles.customDayPressable,
+              !isStaticDemoWeek && hasRange && styles.customRangeDay,
+              !isStaticDemoWeek && hasRange && { backgroundColor: marking.color || RANGE_COLOR },
+              !isStaticDemoWeek && isRangeStart && styles.customRangeStart,
+              !isStaticDemoWeek && isRangeEnd && styles.customRangeEnd,
+              !isStaticDemoWeek && isRangeMiddle && styles.customRangeMiddle,
+            ]}
+          >
+            {isStaticDemoWeek && (
+              <>
+                <View
+                  style={[
+                    styles.customStaticDemoBlock,
+                    styles.customStaticDemoBlockColorA,
+                    styles.customStaticDemoBlockFullBottom,
+                    isStaticDemoStart && styles.customStaticDemoBlockStart,
+                    isStaticDemoEnd && styles.customStaticDemoBlockEnd,
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.customStaticDemoBlock,
+                    styles.customStaticDemoBlockColorB,
+                    styles.customStaticDemoBlockHalfBottom,
+                    isStaticDemoStart && styles.customStaticDemoBlockStart,
+                    isStaticDemoEnd && styles.customStaticDemoBlockEnd,
+                    isStaticDemoStart && styles.customStaticDemoBlockInsetStart,
+                    isStaticDemoEnd && styles.customStaticDemoBlockInsetEnd,
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.customStaticDemoBlock,
+                    styles.customStaticDemoBlockColorC,
+                    styles.customStaticDemoBlockSmallHeight,
+                    isStaticDemoStart && styles.customStaticDemoBlockStart,
+                    isStaticDemoEnd && styles.customStaticDemoBlockEnd,
+                    isStaticDemoStart && styles.customStaticDemoBlockInsetStartWide,
+                    isStaticDemoEnd && styles.customStaticDemoBlockInsetEndWide,
+                  ]}
+                />
+              </>
+            )}
+            <View style={styles.customDayForeground}>
+              <View
+                style={[
+                  styles.customDayNumberCircle,
+                  isSelected && !hasRange && styles.customSelectedDay,
+                  isSelected && !hasRange && marking?.selectedColor ? { backgroundColor: marking.selectedColor } : null,
+                  isToday && styles.customTodayCircle,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.customDayText,
+                    isDisabled && styles.customDayTextDisabled,
+                    (hasRange || isStaticDemoWeek) && styles.customDayTextInRange,
+                  ]}
+                >
+                  {date.day}
+                </Text>
+              </View>
+              {marking?.marked && (
+                <View style={[styles.customDayDot, { backgroundColor: marking?.dotColor || theme.colors.primary }]} />
+              )}
+            </View>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }, [eventsByDate, handleCalendarDayPress, todayIsoDate]);
 
   if (error) {
     return (
@@ -363,13 +466,9 @@ const CalendarPreview = ({ events = [], isLoading = false, error = null }) => {
             }}
             markingType={'period'}
             markedDates={markedDates}
+            dayComponent={renderCalendarDay}
             enableSwipeMonths={true}
-            onDayPress={(day) => {
-              if (eventsByDate[day.dateString]) {
-                setSelectedDate(day.dateString);
-                setShowEventModal(true);
-              }
-            }}
+            onDayPress={handleCalendarDayPress}
             onMonthChange={(monthInfo) => {
               if (monthInfo?.year) {
                 setActiveYear(monthInfo.year);
@@ -447,6 +546,129 @@ const styles = StyleSheet.create({
   },
   calendar: {
     borderRadius: wp(4),
+  },
+  customDayFrame: {
+    width: '100%',
+    paddingBottom: wp(4),
+  },
+  customDaySlot: {
+    width: '100%',
+  },
+  customDayPressable: {
+    minHeight: wp(12),
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  customDayForeground: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+  customDayNumberCircle: {
+    width: wp(8),
+    height: wp(8),
+    borderRadius: wp(4),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  customRangeDay: {
+    borderRadius: 0,
+  },
+  customRangeStart: {
+    borderTopLeftRadius: wp(3.8),
+    borderBottomLeftRadius: wp(3.8),
+  },
+  customRangeEnd: {
+    borderTopRightRadius: wp(3.8),
+    borderBottomRightRadius: wp(3.8),
+  },
+  customRangeMiddle: {
+    borderRadius: 0,
+  },
+  // ---- Static stacked demo blocks (Mar 24-27) ----
+  // Shared base for every stacked block layer.
+  customStaticDemoBlock: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    borderRadius: 0,
+  },
+  // Rounded cap styles for the first and last day in the range.
+  customStaticDemoBlockStart: {
+    borderTopLeftRadius: wp(2),
+    borderBottomLeftRadius: wp(2),
+  },
+  customStaticDemoBlockEnd: {
+    borderTopRightRadius: wp(2),
+    borderBottomRightRadius: wp(2),
+  },
+
+  // Bottom / largest block layer (color + vertical reach).
+  customStaticDemoBlockColorA: {
+    backgroundColor: '#d9efff',
+  },
+  customStaticDemoBlockFullBottom: {
+    bottom: -wp(6),
+    top: -wp(2),
+  },
+
+  // Middle / medium block layer (color + vertical reach + cap inset).
+  customStaticDemoBlockColorB: {
+    backgroundColor: '#e7ddff',
+  },
+  customStaticDemoBlockHalfBottom: {
+    bottom: -wp(2.5),
+    top: -wp(0.5),
+  },
+  customStaticDemoBlockInsetStart: {
+    left: wp(1.25),
+  },
+  customStaticDemoBlockInsetEnd: {
+    right: wp(1.25),
+  },
+
+  // Top / smallest block layer (color + stronger cap inset).
+  customStaticDemoBlockColorC: {
+    backgroundColor: '#ffe8cc',
+  },
+  customStaticDemoBlockSmallHeight: {
+    top: wp(1),
+    bottom: wp(1),
+  },
+  customStaticDemoBlockInsetStartWide: {
+    left: wp(2.5),
+  },
+  customStaticDemoBlockInsetEndWide: {
+    right: wp(2.5),
+  },
+
+  // END OF DEMO STACKED BLOCKS
+  customSelectedDay: {
+    backgroundColor: theme.colors.primary + '40',
+  },
+  customTodayCircle: {
+    backgroundColor: '#efe7ff',
+  },
+  customDayText: {
+    fontSize: wp(3.5),
+    color: theme.colors.text,
+    fontWeight: '400',
+  },
+  customDayTextDisabled: {
+    color: theme.colors.textLight,
+  },
+  customDayTextInRange: {
+    color: theme.colors.text,
+  },
+  customDayDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginTop: 3,
   },
   loadingContainer: {
     height: wp(80),
