@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -14,13 +14,53 @@ import useContacts from '../../../helpers/useContacts';
 
 const EventDetailsScreen = () => {
   const { id } = useLocalSearchParams();
+  const eventId = Array.isArray(id) ? id[0] : id;
+  const queryClient = useQueryClient();
+  const isVirtualBirthdayEvent = eventId?.startsWith('virtual-birthday-');
+
+  const getCachedEventById = React.useCallback((targetEventId) => {
+    if (!targetEventId) return null;
+    const normalizedTargetId = String(targetEventId);
+
+    const eventsCache = queryClient.getQueryData(['events']);
+    if (Array.isArray(eventsCache)) {
+      const fromEvents = eventsCache.find((candidate) => String(candidate.id) === normalizedTargetId);
+      if (fromEvents) return fromEvents;
+    }
+
+    const dashboardCache = queryClient.getQueryData(['dashboard']);
+    const dashboardEvents = dashboardCache?.events;
+    if (Array.isArray(dashboardEvents)) {
+      const fromDashboard = dashboardEvents.find((candidate) => String(candidate.id) === normalizedTargetId);
+      if (fromDashboard) return fromDashboard;
+    }
+
+    return null;
+  }, [queryClient]);
+
   const { data: event, isLoading } = useQuery({
-    queryKey: ['event', id],
-    queryFn: () => apiFetch(`${ENDPOINTS.EVENTS}${id}/`),
+    queryKey: ['event', eventId],
+    queryFn: async () => {
+      const cachedEvent = getCachedEventById(eventId);
+      if (cachedEvent) {
+        return cachedEvent;
+      }
+
+      if (isVirtualBirthdayEvent) {
+        const events = await apiFetch(ENDPOINTS.EVENTS);
+        queryClient.setQueryData(['events'], events);
+        return events.find((candidate) => String(candidate.id) === String(eventId)) || null;
+      }
+      return apiFetch(`${ENDPOINTS.EVENTS}${eventId}/`);
+    },
+    enabled: Boolean(eventId),
+    staleTime: 60 * 1000,
   });
 
   // Fetch user's contacts to resolve connection IDs for associated people
-  const { data: contacts = [] } = useContacts();
+  const { data: contacts = [] } = useContacts({
+    enabled: Boolean(event?.people?.length),
+  });
 
   // Helper: map of personId -> connectionId
   const connectionByPersonId = React.useMemo(() => {
@@ -63,12 +103,16 @@ const EventDetailsScreen = () => {
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.title}>Event Details</Text>
-        <CustomButton
-          title="Edit"
-          variant="text"
-          onPress={() => router.push(`/events/${id}/edit`)}
-          style={styles.backBtn}
-        />
+        {!event.is_virtual ? (
+          <CustomButton
+            title="Edit"
+            variant="text"
+            onPress={() => router.push(`/events/${eventId}/edit`)}
+            style={styles.backBtn}
+          />
+        ) : (
+          <View style={styles.backBtn} />
+        )}
       </View>
 
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
@@ -115,6 +159,14 @@ const EventDetailsScreen = () => {
           </View>
         )}
 
+        {event.is_virtual ? (
+          <View style={styles.section}>
+            <Text style={styles.notes}>
+              This birthday is auto-generated from the contact's birthday. Edit it from the contact profile.
+            </Text>
+          </View>
+        ) : null}
+
         {/* People */}
         {event.people?.length ? (
           <View style={styles.section}>
@@ -152,13 +204,15 @@ const EventDetailsScreen = () => {
         ) : null}
 
         {/* Delete Button */}
-        <CustomButton
-          title="Delete Event"
-          variant="text"
-          onPress={() => router.push(`/events/${id}/delete`)}
-          style={styles.deleteButton}
-          textStyle={{ color: theme.colors.danger }}
-        />
+        {!event.is_virtual ? (
+          <CustomButton
+            title="Delete Event"
+            variant="text"
+            onPress={() => router.push(`/events/${eventId}/delete`)}
+            style={styles.deleteButton}
+            textStyle={{ color: theme.colors.danger }}
+          />
+        ) : null}
       </ScrollView>
     </ScreenWrapper>
   );

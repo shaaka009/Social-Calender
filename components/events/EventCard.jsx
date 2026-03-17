@@ -28,8 +28,24 @@ const formatRange = (event) => {
     : `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
 };
 
-const EventCard = ({ event }) => {
-  const isToday = getStart(event).toDateString() === new Date().toDateString();
+const EVENT_ICON_BY_TYPE = EVENT_TYPES.reduce((acc, eventType) => {
+  acc[eventType.value] = eventType.icon;
+  return acc;
+}, {});
+
+const EventCard = React.memo(({ event }) => {
+  const { isToday, formattedRange, iconName } = React.useMemo(() => {
+    const start = getStart(event);
+    return {
+      isToday: start.toDateString() === new Date().toDateString(),
+      formattedRange: formatRange(event),
+      iconName: EVENT_ICON_BY_TYPE[event.type] || 'calendar-outline',
+    };
+  }, [event]);
+
+  const handlePress = React.useCallback(() => {
+    router.push(`/events/${event.id}`);
+  }, [event.id]);
 
   return (
     <Pressable
@@ -38,11 +54,11 @@ const EventCard = ({ event }) => {
         isToday && styles.eventCardToday,
         pressed && styles.eventCardPressed,
       ]}
-      onPress={() => router.push(`/events/${event.id}`)}
+      onPress={handlePress}
     >
       <View style={styles.content}>
         <Text style={styles.eventTitle}>{event.display_title || event.title}</Text>
-        <Text style={styles.eventDate}>{formatRange(event)}</Text>
+        <Text style={styles.eventDate}>{formattedRange}</Text>
         {event.person && (
           <Text style={styles.eventPerson}>
             {event.person.first_name} {event.person.last_name}
@@ -56,14 +72,14 @@ const EventCard = ({ event }) => {
       </View>
       <View style={styles.iconContainer}>
         <Ionicons
-          name={EVENT_TYPES.find((type) => type.value === event.type)?.icon || 'calendar-outline'}
+          name={iconName}
           size={wp(7.5)}
           color={theme.colors.primary}
         />
       </View>
     </Pressable>
   );
-};
+});
 
 const styles = StyleSheet.create({
   eventCard: {

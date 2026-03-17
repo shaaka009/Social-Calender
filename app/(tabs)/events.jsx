@@ -25,6 +25,7 @@ const Events = () => {
   const { data: events = [], isLoading } = useQuery({
     queryKey: ['events'],
     queryFn: () => apiFetch(ENDPOINTS.EVENTS),
+    staleTime: 60 * 1000,
   });
 
   /* --------------------------------------------------
@@ -115,54 +116,9 @@ const Events = () => {
   const eventsByType = useMemo(() => {
     const buildEventsForType = (typeIndex) => {
       const today = new Date(new Date().setHours(0, 0, 0, 0));
-
-      // First filter by upcoming/past with special handling for birthdays
       const timeFilteredEvents = events.filter(event => {
         const eventDate = getStart(event);
-
-        // For birthday events, compare only month and day
-        if (event.type === 'birthday') {
-          // Get month and day for comparison (1-based month)
-          const todayMonth = today.getMonth() + 1;
-          const todayDay = today.getDate();
-          const eventMonth = eventDate.getMonth() + 1;
-          const eventDay = eventDate.getDate();
-
-          // Calculate month-day combinations for comparison (e.g., "12-25" for December 25)
-          const todayValue = todayMonth * 100 + todayDay;
-          const eventValue = eventMonth * 100 + eventDay;
-
-          // Calculate 6 months forward and backward
-          let sixMonthsForward = todayMonth + 6;
-          let sixMonthsBackward = todayMonth - 6;
-
-          // Adjust for year wrap-around
-          if (sixMonthsForward > 12) sixMonthsForward = sixMonthsForward - 12;
-          if (sixMonthsBackward <= 0) sixMonthsBackward = sixMonthsBackward + 12;
-
-          if (typeIndex === 0) {
-            // Upcoming: Show if date is within next 6 months
-            if (sixMonthsForward > todayMonth) {
-              // No year wrap-around case
-              return (eventValue >= todayValue && eventMonth <= sixMonthsForward);
-            }
-            // Year wrap-around case (e.g., today is October, show events until March)
-            return (eventValue >= todayValue || eventMonth <= sixMonthsForward);
-          }
-
-          // Past: Show if date is within last 6 months
-          if (sixMonthsBackward < todayMonth) {
-            // No year wrap-around case
-            return (eventValue < todayValue && eventMonth >= sixMonthsBackward);
-          }
-          // Year wrap-around case (e.g., today is March, show events since October)
-          return (eventValue < todayValue || eventMonth >= sixMonthsBackward);
-        }
-
-        // For non-birthday events, use standard today cutoff
-        return typeIndex === 0
-          ? eventDate >= today  // Upcoming events
-          : eventDate < today;  // Past events
+        return typeIndex === 0 ? eventDate >= today : eventDate < today;
       });
 
       // Filter by tags if any are selected
@@ -174,70 +130,22 @@ const Events = () => {
           )
         );
 
-      // Sort events based on their dates
+      // Sort events based on their dates.
+      // Birthday windowing now comes from backend virtual birthday events.
       return tagFilteredEvents.sort((a, b) => {
-      const today = new Date();
-      const currentYear = today.getFullYear();
-      const currentMonth = today.getMonth(); // 0-11
-      
-      // Create comparison dates, handling year boundaries
-      const getComparisonDate = (event) => {
-        const eventDate = getStart(event);
-        const eventMonth = eventDate.getMonth(); // 0-11
-        
-        // Determine if we should use current year or next/previous year
-        let yearToUse = currentYear;
-        
-        if (typeIndex === 0) { // Upcoming events
-          // If event month is earlier than current month, it must be next year
-          if (eventMonth < currentMonth) {
-            yearToUse = currentYear + 1;
-          }
-        } else { // Past events
-          // If event month is later than current month, it must be previous year
-          if (eventMonth > currentMonth) {
-            yearToUse = currentYear - 1;
-          }
-        }
-        
-        if (event.type === 'birthday') {
-          return new Date(
-            yearToUse,
-            eventMonth,
-            eventDate.getDate()
-          );
-        }
-        
-        // For non-birthday events, use actual date but adjust year if needed
-        if (typeIndex === 0 && eventMonth < currentMonth) {
-          return new Date(
-            currentYear + 1,
-            eventMonth,
-            eventDate.getDate()
-          );
-        } else if (typeIndex === 1 && eventMonth > currentMonth) {
-          return new Date(
-            currentYear - 1,
-            eventMonth,
-            eventDate.getDate()
-          );
-        }
-        return eventDate;
-      };
-
-      const dateA = getComparisonDate(a);
-      const dateB = getComparisonDate(b);
-
-      // For upcoming events, sort in ascending order (nearest future date first)
-      // For past events, sort in descending order (most recent past date first)
-      return typeIndex === 0
-        ? dateA.getTime() - dateB.getTime()  // Upcoming: ascending
-        : dateB.getTime() - dateA.getTime(); // Past: descending
-    });
+        const dateA = getStart(a);
+        const dateB = getStart(b);
+        return typeIndex === 0
+          ? dateA.getTime() - dateB.getTime()
+          : dateB.getTime() - dateA.getTime();
+      });
     };
 
     return [buildEventsForType(0), buildEventsForType(1)];
   }, [events, selectedTags]);
+
+  const renderEventItem = useCallback(({ item }) => <EventCard event={item} />, []);
+  const eventKeyExtractor = useCallback((item) => item.id.toString(), []);
 
   return (
     <ScreenWrapper>
@@ -311,6 +219,7 @@ const Events = () => {
               keyExtractor={(item) => item.name}
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.tagsContainer}
+              removeClippedSubviews
               renderItem={({ item: tag }) => {
                 const isSelected = selectedTags.includes(tag.name);
                 return (
@@ -445,9 +354,13 @@ const Events = () => {
                     {pageEvents.length > 0 ? (
                       <FlatList
                         data={pageEvents}
-                        keyExtractor={(item) => item.id.toString()}
-                        renderItem={({ item }) => <EventCard event={item} />}
+                        keyExtractor={eventKeyExtractor}
+                        renderItem={renderEventItem}
                         contentContainerStyle={styles.listContent}
+                        removeClippedSubviews
+                        initialNumToRender={8}
+                        maxToRenderPerBatch={8}
+                        windowSize={7}
                       />
                     ) : !isLoading && (
                       <View style={styles.emptyState}>

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { theme } from '../../constants/theme';
 import { wp } from '../../helpers/common';
 
@@ -28,7 +28,7 @@ const formatTimeAgo = (dateString) => {
   return past.toLocaleDateString();
 };
 
-const NotificationCard = ({ notification, onPress }) => {
+const NotificationCard = React.memo(({ notification, onPress }) => {
   const getIcon = () => {
     switch (notification.type) {
       case 'UPCOMING_EVENT':
@@ -72,8 +72,12 @@ const NotificationCard = ({ notification, onPress }) => {
     }
   };
 
+  const handlePress = React.useCallback(() => {
+    onPress(notification);
+  }, [notification, onPress]);
+
   return (
-    <TouchableOpacity style={styles.card} onPress={() => onPress(notification)}>
+    <TouchableOpacity style={styles.card} onPress={handlePress}>
       {renderAvatar()}
       <View style={styles.content}>
         <Text style={styles.message}>{notification.message}</Text>
@@ -91,9 +95,15 @@ const NotificationCard = ({ notification, onPress }) => {
       )}
     </TouchableOpacity>
   );
-};
+});
 
 const NotificationList = ({ notifications = [], onNotificationPress }) => {
+  const renderNotificationItem = React.useCallback(({ item }) => (
+    <NotificationCard notification={item} onPress={onNotificationPress} />
+  ), [onNotificationPress]);
+
+  const notificationKeyExtractor = React.useCallback((item) => String(item.id), []);
+
   if (!notifications.length) {
     return (
       <View style={styles.container}>
@@ -107,20 +117,14 @@ const NotificationList = ({ notifications = [], onNotificationPress }) => {
       <Text style={styles.title}>
         Notifications
       </Text>
-      <View style={styles.list}>
-        {notifications.map((notification) => (
-          <React.Fragment key={notification.id}>
-            <NotificationCard
-              notification={notification}
-              onPress={onNotificationPress}
-            />
-            {/* Add separator if not the last item */}
-            {notification.id !== notifications[notifications.length - 1].id && (
-              <View style={styles.separator} />
-            )}
-          </React.Fragment>
-        ))}
-      </View>
+      <FlatList
+        data={notifications}
+        keyExtractor={notificationKeyExtractor}
+        renderItem={renderNotificationItem}
+        scrollEnabled={false}
+        removeClippedSubviews
+        contentContainerStyle={styles.list}
+      />
     </View>
   );
 };

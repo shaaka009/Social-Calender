@@ -12,19 +12,22 @@ import { wp } from '../../../helpers/common';
 
 const DeleteEventScreen = () => {
   const { id } = useLocalSearchParams();
+  const eventId = Array.isArray(id) ? id[0] : id;
   const queryClient = useQueryClient();
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Fetch event data
   const { data: event, isLoading } = useQuery({
-    queryKey: ['event', id],
-    queryFn: () => apiFetch(`${ENDPOINTS.EVENTS}${id}/`),
+    queryKey: ['event', eventId],
+    queryFn: () => apiFetch(`${ENDPOINTS.EVENTS}${eventId}/`),
+    enabled: Boolean(eventId),
+    staleTime: 60 * 1000,
   });
 
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
-      await apiFetch(`${ENDPOINTS.EVENTS}${id}/`, {
+      await apiFetch(`${ENDPOINTS.EVENTS}${eventId}/`, {
         method: 'DELETE',
       });
 

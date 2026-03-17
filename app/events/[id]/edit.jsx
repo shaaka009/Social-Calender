@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Dimensions, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Dimensions, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Toast from 'react-native-root-toast';
 import CustomButton from '../../../components/CustomButton';
 import CustomInput from '../../../components/CustomInput';
@@ -13,10 +13,12 @@ import { EVENT_TYPES } from '../../../constants/eventTypes';
 import { theme } from '../../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../../helpers/api';
 import { parseDateLocal, wp } from '../../../helpers/common';
+import useContacts from '../../../helpers/useContacts';
 import { useCreateTag, useTags } from '../../../helpers/useTags';
 
 const EditEventScreen = () => {
   const { id } = useLocalSearchParams();
+  const eventId = Array.isArray(id) ? id[0] : id;
   const queryClient = useQueryClient();
   const [isSaving, setIsSaving] = useState(false);
 
@@ -32,25 +34,59 @@ const EditEventScreen = () => {
   });
 
   // Contacts & tags data
-  const { data: contacts = [] } = useQuery({
-    queryKey: ['connections'],
-    queryFn: () => apiFetch(ENDPOINTS.CONNECTIONS),
-  });
+  const { data: contacts = [] } = useContacts();
   const { data: tags = [] } = useTags();
   const createTagMutation = useCreateTag();
 
   // UI states
   const [searchQuery, setSearchQuery] = useState('');
   const [showContacts, setShowContacts] = useState(false);
-  const filteredContacts = contacts.filter(conn => {
+  const filteredContacts = useMemo(() => contacts.filter(conn => {
     const searchLower = searchQuery.toLowerCase();
     const name = `${conn.target.first_name} ${conn.target.last_name}`.toLowerCase();
     return !searchQuery || name.includes(searchLower);
-  });
+  }), [contacts, searchQuery]);
 
   // Contacts to display in grid: if user is actively searching (showContacts) use filtered list,
   // otherwise show currently selected contacts so they are visible on initial load.
-  const displayedContacts = showContacts ? filteredContacts : contacts.filter(c=>formData.people_ids.includes(c.target.id));
+  const displayedContacts = useMemo(
+    () => (showContacts ? filteredContacts : contacts.filter((conn) => formData.people_ids.includes(conn.target.id))),
+    [contacts, filteredContacts, formData.people_ids, showContacts]
+  );
+
+  const togglePersonSelection = useCallback((personId, currentlySelected) => {
+    setFormData((prev) => ({
+      ...prev,
+      people_ids: currentlySelected
+        ? prev.people_ids.filter((id) => id !== personId)
+        : [...prev.people_ids, personId],
+    }));
+  }, []);
+
+  const renderContactItem = useCallback(({ item: conn }) => {
+    const selected = formData.people_ids.includes(conn.target.id);
+    const person = conn.target;
+    return (
+      <TouchableOpacity
+        style={styles.gridItem}
+        onPress={() => togglePersonSelection(conn.target.id, selected)}
+      >
+        <View style={styles.avatarWrapper}>
+          {person.profile_picture_url ? (
+            <Image source={{ uri: person.profile_picture_url }} style={styles.gridAvatar} />
+          ) : (
+            <View style={[styles.gridAvatar, styles.gridAvatarPlaceholder]}>
+              <Text style={styles.gridAvatarText}>{person.first_name?.[0]}{person.last_name?.[0]}</Text>
+            </View>
+          )}
+          {selected && (
+            <Ionicons name="checkmark-circle" size={wp(6)} color={theme.colors.primary} style={styles.checkIcon} />
+          )}
+        </View>
+        <Text style={styles.gridName} numberOfLines={1}>{person.first_name}</Text>
+      </TouchableOpacity>
+    );
+  }, [formData.people_ids, togglePersonSelection]);
 
   const COLOR_OPTIONS = ['#ff8c00', '#ff4d4f', '#40a9ff', '#52c41a', '#faad14', '#722ed1', '#13c2c2'];
   const [modalVisible, setModalVisible] = useState(false);
@@ -81,8 +117,10 @@ const EditEventScreen = () => {
 
   // Fetch event data
   const { data: event, isLoading } = useQuery({
-    queryKey: ['event', id],
-    queryFn: () => apiFetch(`${ENDPOINTS.EVENTS}${id}/`),
+    queryKey: ['event', eventId],
+    queryFn: () => apiFetch(`${ENDPOINTS.EVENTS}${eventId}/`),
+    enabled: Boolean(eventId),
+    staleTime: 60 * 1000,
   });
 
   // Update form when event data is loaded
@@ -131,7 +169,7 @@ const EditEventScreen = () => {
         tag_ids: formData.tag_ids,
       };
 
-      await apiFetch(`${ENDPOINTS.EVENTS}${id}/`, {
+      await apiFetch(`${ENDPOINTS.EVENTS}${eventId}/`, {
         method: 'PATCH',
         body: JSON.stringify(apiData),
       });
@@ -145,7 +183,7 @@ const EditEventScreen = () => {
 
       // Invalidate queries to refresh data
       queryClient.invalidateQueries(['events']);
-      queryClient.invalidateQueries(['event', id]);
+      queryClient.invalidateQueries(['event', eventId]);
       queryClient.invalidateQueries(['dashboard']);
 
       // Navigate back
@@ -228,34 +266,16 @@ const EditEventScreen = () => {
 
           {(showContacts || formData.people_ids.length>0) && (
             <View style={styles.gridContainer}>
-              {displayedContacts.map(conn=>{
-                const selected = formData.people_ids.includes(conn.target.id);
-                const person = conn.target;
-                return (
-                  <TouchableOpacity
-                    key={conn.id}
-                    style={styles.gridItem}
-                    onPress={()=>setFormData(prev=>({
-                      ...prev,
-                      people_ids: selected ? prev.people_ids.filter(id=>id!==conn.target.id) : [...prev.people_ids, conn.target.id]
-                    }))}
-                  >
-                    <View style={styles.avatarWrapper}>
-                      {person.profile_picture_url ? (
-                        <Image source={{uri: person.profile_picture_url}} style={styles.gridAvatar} />
-                      ) : (
-                        <View style={[styles.gridAvatar, styles.gridAvatarPlaceholder]}>
-                          <Text style={styles.gridAvatarText}>{person.first_name?.[0]}{person.last_name?.[0]}</Text>
-                        </View>
-                      )}
-                      {selected && (
-                        <Ionicons name="checkmark-circle" size={wp(6)} color={theme.colors.primary} style={styles.checkIcon}/>
-                      )}
-                    </View>
-                    <Text style={styles.gridName} numberOfLines={1}>{person.first_name}</Text>
-                  </TouchableOpacity>
-                );
-              })}
+              <FlatList
+                data={displayedContacts}
+                keyExtractor={(item) => item.id.toString()}
+                renderItem={renderContactItem}
+                numColumns={3}
+                scrollEnabled={false}
+                columnWrapperStyle={styles.gridRow}
+                initialNumToRender={9}
+                removeClippedSubviews
+              />
             </View>
           )}
         </View>
@@ -468,10 +488,13 @@ const styles = StyleSheet.create({
     marginBottom: wp(3),
   },
   gridContainer:{
-    flexDirection:'row',
-    flexWrap:'wrap',
-    gap: wp(4),
+    width: '100%',
     marginTop: wp(3),
+  },
+  gridRow: {
+    justifyContent: 'space-between',
+    gap: wp(3),
+    marginBottom: wp(4),
   },
   gridItem:{
     width: '30%',

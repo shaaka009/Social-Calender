@@ -7,6 +7,12 @@ import { EVENT_TYPES } from '../../constants/eventTypes';
 import { theme } from '../../constants/theme';
 import { wp } from '../../helpers/common';
 
+const daysInMonth = (year, monthOneBased) => new Date(year, monthOneBased, 0).getDate();
+const toIsoDate = (year, monthOneBased, day) => {
+  const safeDay = Math.min(day, daysInMonth(year, monthOneBased));
+  return `${year}-${String(monthOneBased).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`;
+};
+
 const EventPreview = ({ event, onPress }) => (
   <Pressable style={styles.eventPreview} onPress={onPress}>
     <View style={styles.eventIcon}>
@@ -52,54 +58,122 @@ const EventPreview = ({ event, onPress }) => (
 const CalendarPreview = ({ events = [], isLoading = false, error = null }) => {
   const [selectedDate, setSelectedDate] = useState(null);
   const [showEventModal, setShowEventModal] = useState(false);
+  const [activeYear, setActiveYear] = useState(new Date().getFullYear());
   const closeEventModal = React.useCallback(() => {
     setShowEventModal(false);
   }, []);
 
-  // Group events by date for quick lookup when a day is pressed
-  // NOTE: `event.date` is already a server-provided ISO string (YYYY-MM-DD) so
-  // we can rely on it directly instead of converting it to a Date object first.
-  const eventsByDate = events.reduce((acc, event) => {
-    const dateStr = event.start_date || event.date;
-    if (!acc[dateStr]) {
-      acc[dateStr] = [];
-    }
-    acc[dateStr].push(event);
-    return acc;
-  }, {});
+  const getDateStr = (event) => event?.start_date || event?.date || null;
+  const isIsoDate = (value) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  const todayIsoDate = React.useMemo(() => new Date().toISOString().split('T')[0], []);
+
+  const validEvents = React.useMemo(
+    () => events.filter((event) => isIsoDate(getDateStr(event))),
+    [events]
+  );
+
+  const recurringBirthdaySources = React.useMemo(
+    () => validEvents.filter(
+      (event) => event?.type === 'birthday' && event?.is_virtual && event?.source === 'person_birthday'
+    ),
+    [validEvents]
+  );
+
+  // Expand virtual birthdays around the currently viewed year so the home calendar
+  // shows birthday dots across years without changing events-tab behavior.
+  const recurringBirthdayEvents = React.useMemo(() => {
+    const expandedEvents = [];
+    const seenRecurringKeys = new Set();
+
+    recurringBirthdaySources.forEach((event) => {
+      const dateStr = getDateStr(event);
+      const [_, rawMonth, rawDay] = dateStr.split('-').map(Number);
+      if (!rawMonth || !rawDay) return;
+
+      const personKey = event.person_id || event.person?.id || event.id;
+      const dedupeKey = `${personKey}-${rawMonth}-${rawDay}`;
+      if (seenRecurringKeys.has(dedupeKey)) return;
+      seenRecurringKeys.add(dedupeKey);
+
+      for (let year = activeYear - 8; year <= activeYear + 8; year += 1) {
+        expandedEvents.push({
+          ...event,
+          // Keep the original ID so details routing keeps working with existing screens.
+          start_date: toIsoDate(year, rawMonth, rawDay),
+        });
+      }
+    });
+
+    return expandedEvents;
+  }, [activeYear, recurringBirthdaySources]);
+
+  const nonRecurringEvents = React.useMemo(
+    () => validEvents.filter(
+      (event) => !(event?.type === 'birthday' && event?.is_virtual && event?.source === 'person_birthday')
+    ),
+    [validEvents]
+  );
+
+  const calendarEvents = React.useMemo(
+    () => [...nonRecurringEvents, ...recurringBirthdayEvents],
+    [nonRecurringEvents, recurringBirthdayEvents]
+  );
+
+  // Group events by date for quick lookup when a day is pressed.
+  const eventsByDate = React.useMemo(() => {
+    const groupedEvents = {};
+    calendarEvents.forEach((event) => {
+      const dateStr = getDateStr(event);
+      if (!groupedEvents[dateStr]) {
+        groupedEvents[dateStr] = [];
+      }
+      groupedEvents[dateStr].push(event);
+    });
+    return groupedEvents;
+  }, [calendarEvents]);
 
   // Transform events into the format expected by `react-native-calendars`
   // Keep the incoming ISO date intact – this prevents off-by-one errors that
   // were happening because of timezone conversions.
-  const markedDates = events.reduce((acc, event) => {
-    const dateStr = event.start_date || event.date;
-    if (!acc[dateStr]) {
-      const eventsOnThisDate = events.filter(e => (e.start_date || e.date) === dateStr);
-      const isToday = dateStr === new Date().toISOString().split('T')[0];
-      const isSelected = dateStr === selectedDate;
-
+  const baseMarkedDates = React.useMemo(() => {
+    return Object.entries(eventsByDate).reduce((acc, [dateStr, eventsOnThisDate]) => {
       acc[dateStr] = {
-        dots: eventsOnThisDate.flatMap(e => {
+        dots: eventsOnThisDate.flatMap((event) => {
           // If event has tags, create a dot for each tag
-          if (e.tags && e.tags.length > 0) {
-            return e.tags.map(tag => ({
+          if (event.tags && event.tags.length > 0) {
+            return event.tags.map((tag) => ({
               color: tag.color,
-              key: `${e.id}-${tag.id}`,
+              key: `${event.id}-${tag.id}`,
             }));
           }
           // If no tags, fall back to default color scheme
           return [{
-            color: e.type === 'birthday' ? theme.colors.rose : theme.colors.primary,
-            key: e.id.toString(),
+            color: event.type === 'birthday' ? theme.colors.rose : theme.colors.primary,
+            key: event.id.toString(),
           }];
         }),
         marked: true,
-        selected: isSelected || isToday,
-        selectedColor: isSelected ? theme.colors.primary : theme.colors.primary + '40',
+        selected: dateStr === todayIsoDate,
+        selectedColor: theme.colors.primary + '40',
       };
+      return acc;
+    }, {});
+  }, [eventsByDate, todayIsoDate]);
+
+  const markedDates = React.useMemo(() => {
+    if (!selectedDate || !baseMarkedDates[selectedDate]) {
+      return baseMarkedDates;
     }
-    return acc;
-  }, {});
+
+    return {
+      ...baseMarkedDates,
+      [selectedDate]: {
+        ...baseMarkedDates[selectedDate],
+        selected: true,
+        selectedColor: theme.colors.primary,
+      },
+    };
+  }, [baseMarkedDates, selectedDate]);
 
   if (error) {
     return (
@@ -161,10 +235,15 @@ const CalendarPreview = ({ events = [], isLoading = false, error = null }) => {
                 setShowEventModal(true);
               }
             }}
+            onMonthChange={(monthInfo) => {
+              if (monthInfo?.year) {
+                setActiveYear(monthInfo.year);
+              }
+            }}
           />
         </View>
       )}
-      {events.length === 0 && !isLoading && (
+      {calendarEvents.length === 0 && !isLoading && (
         <Text style={styles.emptyText}>No upcoming events</Text>
       )}
 
