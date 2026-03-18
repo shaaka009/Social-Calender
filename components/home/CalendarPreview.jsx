@@ -6,14 +6,15 @@ import { Calendar } from 'react-native-calendars';
 import { EVENT_TYPES } from '../../constants/eventTypes';
 import { theme } from '../../constants/theme';
 import { wp } from '../../helpers/common';
+import {
+  buildEventsByDate,
+  buildMarkedDates,
+  buildMultiDayPillsByDate,
+  getEventRange,
+  parseIsoDateUtc,
+  toIsoDate,
+} from './calendarPreviewCalculations';
 
-const daysInMonth = (year, monthOneBased) => new Date(year, monthOneBased, 0).getDate();
-const toIsoDate = (year, monthOneBased, day) => {
-  const safeDay = Math.min(day, daysInMonth(year, monthOneBased));
-  return `${year}-${String(monthOneBased).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`;
-};
-const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-const MAX_EVENT_SPAN_DAYS = 366;
 const RANGE_COLOR = '#E7DDFF';
 const SUBDUED_TAG_COLOR_MAP = {
   '#ff8c00': '#ffe8cc', // orange
@@ -23,29 +24,6 @@ const SUBDUED_TAG_COLOR_MAP = {
   '#faad14': '#ffefcc', // yellow
   '#722ed1': '#e6d8f8', // purple
   '#13c2c2': '#d2f3f3', // teal
-};
-
-const isIsoDate = (value) => typeof value === 'string' && ISO_DATE_REGEX.test(value);
-
-const parseIsoDateUtc = (isoDate) => {
-  if (!isIsoDate(isoDate)) return null;
-  const [year, month, day] = isoDate.split('-').map(Number);
-  const parsed = new Date(Date.UTC(year, month - 1, day));
-  if (
-    parsed.getUTCFullYear() !== year
-    || parsed.getUTCMonth() !== month - 1
-    || parsed.getUTCDate() !== day
-  ) {
-    return null;
-  }
-  return parsed;
-};
-
-const formatIsoDateUtc = (date) => {
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(date.getUTCDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
 };
 
 const getEventColor = (event) => {
@@ -59,34 +37,14 @@ const getEventColor = (event) => {
   return RANGE_COLOR;
 };
 
-const getEventRange = (event) => {
-  const startDate = event?.start_date || event?.date || null;
-  if (!isIsoDate(startDate)) return null;
-
-  const candidateEndDate = event?.end_date || startDate;
-  const endDate = isIsoDate(candidateEndDate) ? candidateEndDate : startDate;
-
-  if (endDate < startDate) {
-    return { startDate, endDate: startDate };
+const getEventBorderColor = (event) => {
+  if (event?.tags?.length > 0 && event.tags[0]?.color) {
+    return String(event.tags[0].color).trim().toLowerCase();
   }
-
-  return { startDate, endDate };
-};
-
-const expandEventDates = (startDate, endDate) => {
-  const startUtc = parseIsoDateUtc(startDate);
-  const endUtc = parseIsoDateUtc(endDate);
-  if (!startUtc || !endUtc || endUtc < startUtc) return [];
-
-  const dates = [];
-  const cursor = new Date(startUtc);
-
-  while (cursor <= endUtc && dates.length < MAX_EVENT_SPAN_DAYS) {
-    dates.push(formatIsoDateUtc(cursor));
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  if (event?.type === 'birthday') {
+    return theme.colors.rose;
   }
-
-  return dates;
+  return theme.colors.primary;
 };
 
 const EventPreview = ({ event, onPress }) => (
@@ -197,116 +155,23 @@ const CalendarPreview = ({ events = [], isLoading = false, error = null }) => {
   );
 
   // Group events by date for quick lookup when a day is pressed.
-  const eventsByDate = React.useMemo(() => {
-    const groupedEvents = {};
-    const seenEventIdsByDate = {};
+  const eventsByDate = React.useMemo(() => buildEventsByDate(calendarEvents), [calendarEvents]);
 
-    calendarEvents.forEach((event) => {
-      const dateRange = getEventRange(event);
-      if (!dateRange) return;
-
-      const eventDates = expandEventDates(dateRange.startDate, dateRange.endDate);
-      const fallbackEventId = `${event.title || 'event'}-${dateRange.startDate}-${dateRange.endDate}`;
-      const eventId = event?.id != null ? String(event.id) : fallbackEventId;
-
-      eventDates.forEach((dateStr) => {
-        if (!groupedEvents[dateStr]) {
-          groupedEvents[dateStr] = [];
-          seenEventIdsByDate[dateStr] = new Set();
-        }
-
-        if (seenEventIdsByDate[dateStr].has(eventId)) return;
-
-        seenEventIdsByDate[dateStr].add(eventId);
-        groupedEvents[dateStr].push(event);
-      });
-    });
-    return groupedEvents;
-  }, [calendarEvents]);
-
-  const rangeVisualByDate = React.useMemo(() => {
-    const visualMap = {};
-
-    calendarEvents.forEach((event) => {
-      const dateRange = getEventRange(event);
-      if (!dateRange || dateRange.startDate === dateRange.endDate) return;
-
-      const eventDates = expandEventDates(dateRange.startDate, dateRange.endDate);
-      const eventColor = getEventColor(event);
-      eventDates.forEach((dateStr, index) => {
-        if (!visualMap[dateStr]) {
-          visualMap[dateStr] = { isStart: false, isEnd: false, isMiddle: false, color: eventColor };
-        }
-
-        if (index === 0) {
-          visualMap[dateStr].isStart = true;
-        } else if (index === eventDates.length - 1) {
-          visualMap[dateStr].isEnd = true;
-        } else {
-          visualMap[dateStr].isMiddle = true;
-        }
-      });
-    });
-
-    return visualMap;
-  }, [calendarEvents]);
+  const multiDayPillsByDate = React.useMemo(
+    () => buildMultiDayPillsByDate(calendarEvents, { getEventColor, getEventBorderColor }),
+    [calendarEvents]
+  );
 
   // Transform events into the format expected by `react-native-calendars`
   // Keep the incoming ISO date intact – this prevents off-by-one errors that
   // were happening because of timezone conversions.
-  const baseMarkedDates = React.useMemo(() => {
-    return Object.entries(eventsByDate).reduce((acc, [dateStr, eventsOnThisDate]) => {
-      const seenDotKeys = new Set();
-      const dots = eventsOnThisDate.flatMap((event) => {
-        if (event.tags && event.tags.length > 0) {
-          return event.tags
-            .map((tag) => ({
-              color: tag.color,
-              key: `${event.id}-${tag.id}`,
-            }))
-            .filter((dot) => {
-              if (seenDotKeys.has(dot.key)) return false;
-              seenDotKeys.add(dot.key);
-              return true;
-            });
-        }
-
-        const defaultDot = {
-          color: event.type === 'birthday' ? theme.colors.rose : theme.colors.primary,
-          key: event.id?.toString() || `${event.title}-${dateStr}`,
-        };
-
-        if (seenDotKeys.has(defaultDot.key)) {
-          return [];
-        }
-        seenDotKeys.add(defaultDot.key);
-        return [defaultDot];
-      });
-
-      const dayRangeVisual = rangeVisualByDate[dateStr];
-      const hasRange = Boolean(dayRangeVisual);
-      const primaryDotColor = dots[0]?.color || theme.colors.primary;
-
-      acc[dateStr] = hasRange ? {
-        startingDay: dayRangeVisual.isStart,
-        endingDay: dayRangeVisual.isEnd,
-        color: dayRangeVisual.color || RANGE_COLOR,
-        textColor: theme.colors.text,
-        marked: true,
-        dotColor: primaryDotColor,
-      } : {
-        marked: true,
-        dotColor: primaryDotColor,
-      };
-
-      if (dateStr === todayIsoDate && !hasRange) {
-        acc[dateStr].selected = true;
-        acc[dateStr].selectedColor = theme.colors.primary + '40';
-      }
-
-      return acc;
-    }, {});
-  }, [eventsByDate, rangeVisualByDate, todayIsoDate]);
+  const baseMarkedDates = React.useMemo(
+    () => buildMarkedDates(eventsByDate, multiDayPillsByDate, {
+      primary: theme.colors.primary,
+      rose: theme.colors.rose,
+    }),
+    [eventsByDate, multiDayPillsByDate]
+  );
 
   const markedDates = React.useMemo(() => baseMarkedDates, [baseMarkedDates]);
   const handleCalendarDayPress = React.useCallback((day) => {
@@ -319,85 +184,103 @@ const CalendarPreview = ({ events = [], isLoading = false, error = null }) => {
     if (!date) return null;
 
     const dateString = date.dateString;
-    const [_, monthStr, dayStr] = dateString.split('-');
-    const monthNum = Number(monthStr);
-    const dayNum = Number(dayStr);
     const hasEvents = Boolean(eventsByDate[dateString]);
     const isDisabled = state === 'disabled';
-    const hasRange = Boolean(marking?.color);
-    const isRangeStart = Boolean(marking?.startingDay);
-    const isRangeEnd = Boolean(marking?.endingDay);
-    const isRangeMiddle = hasRange && !isRangeStart && !isRangeEnd;
+    const dayPills = multiDayPillsByDate[dateString] || [];
+    const hasRange = dayPills.length > 0;
+    const hasPillStartTitle = dayPills.some((pill) => pill.isStart && Boolean(pill.title));
+    const weekDayIndex = new Date(`${dateString}T00:00:00`).getDay();
+    const overlayZIndex = 100 - weekDayIndex;
+    const utcDateForCell = parseIsoDateUtc(dateString);
+    const dayOfWeekUtc = utcDateForCell ? utcDateForCell.getUTCDay() : 0;
+    const daysRemainingInWeek = 7 - dayOfWeekUtc;
     const isSelected = Boolean(marking?.selected);
     const isToday = dateString === todayIsoDate;
-    const isStaticDemoWeek = monthNum === 3 && dayNum >= 24 && dayNum <= 26;
-    const isStaticDemoStart = monthNum === 3 && dayNum === 24;
-    const isStaticDemoEnd = monthNum === 3 && dayNum === 26;
 
     return (
-      <View style={styles.customDayFrame}>
+      <View
+        style={[
+          styles.customDayFrame,
+          hasPillStartTitle && styles.customDayFrameWithOverlayLabel,
+          hasPillStartTitle && { zIndex: overlayZIndex, elevation: overlayZIndex },
+        ]}
+      >
         <View style={styles.customDaySlot}>
           <Pressable
             disabled={!hasEvents}
             onPress={() => handleCalendarDayPress(date)}
-            style={[
-              styles.customDayPressable,
-              !isStaticDemoWeek && hasRange && styles.customRangeDay,
-              !isStaticDemoWeek && hasRange && { backgroundColor: marking.color || RANGE_COLOR },
-              !isStaticDemoWeek && isRangeStart && styles.customRangeStart,
-              !isStaticDemoWeek && isRangeEnd && styles.customRangeEnd,
-              !isStaticDemoWeek && isRangeMiddle && styles.customRangeMiddle,
-            ]}
+            style={[styles.customDayPressable]}
           >
-            {isStaticDemoWeek && (
-              <>
+            {dayPills.map((pill) => {
+              const visibleTitleDays = Math.max(1, Math.min(pill.duration, daysRemainingInWeek));
+
+              return (
                 <View
+                  key={`${pill.eventId}-${pill.tier}`}
                   style={[
                     styles.customStaticDemoBlock,
-                    styles.customStaticDemoBlockColorA,
-                    styles.customStaticDemoBlockFullBottom,
-                    isStaticDemoStart && styles.customStaticDemoBlockStart,
-                    isStaticDemoEnd && styles.customStaticDemoBlockEnd,
+                    { backgroundColor: pill.color || RANGE_COLOR },
+                    { borderColor: pill.borderColor || theme.colors.primary },
+                    styles.customMultiDayPillOutlineBase,
+                    pill.isStart && styles.customMultiDayPillOutlineStart,
+                    pill.isEnd && styles.customMultiDayPillOutlineEnd,
+                    pill.tier === 'large' && styles.customStaticDemoBlockLargeHeight,
+                    pill.tier === 'middle' && styles.customStaticDemoBlockHalfBottom,
+                    pill.tier === 'small' && styles.customStaticDemoBlockSmallHeight,
+                    pill.isStart && styles.customStaticDemoBlockStart,
+                    pill.isEnd && styles.customStaticDemoBlockEnd,
+                    pill.tier === 'large' && pill.isStart && styles.customStaticDemoBlockInsetStartLarge,
+                    pill.tier === 'large' && pill.isEnd && styles.customStaticDemoBlockInsetEndLarge,
+                    pill.tier === 'middle' && pill.isStart && styles.customStaticDemoBlockInsetStart,
+                    pill.tier === 'middle' && pill.isEnd && styles.customStaticDemoBlockInsetEnd,
+                    pill.tier === 'small' && pill.isStart && styles.customStaticDemoBlockInsetStartWide,
+                    pill.tier === 'small' && pill.isEnd && styles.customStaticDemoBlockInsetEndWide,
                   ]}
-                />
-                <View
-                  style={[
-                    styles.customStaticDemoBlock,
-                    styles.customStaticDemoBlockColorB,
-                    styles.customStaticDemoBlockHalfBottom,
-                    isStaticDemoStart && styles.customStaticDemoBlockStart,
-                    isStaticDemoEnd && styles.customStaticDemoBlockEnd,
-                    isStaticDemoStart && styles.customStaticDemoBlockInsetStart,
-                    isStaticDemoEnd && styles.customStaticDemoBlockInsetEnd,
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.customStaticDemoBlock,
-                    styles.customStaticDemoBlockColorC,
-                    styles.customStaticDemoBlockSmallHeight,
-                    isStaticDemoStart && styles.customStaticDemoBlockStart,
-                    isStaticDemoEnd && styles.customStaticDemoBlockEnd,
-                    isStaticDemoStart && styles.customStaticDemoBlockInsetStartWide,
-                    isStaticDemoEnd && styles.customStaticDemoBlockInsetEndWide,
-                  ]}
-                />
-              </>
-            )}
+                >
+                  {pill.isStart && Boolean(pill.title) && (
+                    <View
+                      style={[
+                        styles.customMultiDayPillTitleWrap,
+                        {
+                          width: `${Math.max(
+                            40,
+                            (visibleTitleDays * 100)
+                              - (pill.tier === 'small' ? 20 : pill.tier === 'middle' ? 24 : 18)
+                          )}%`,
+                        },
+                      ]}
+                    >
+                      <Text
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                        style={[
+                          styles.customMultiDayPillTitle,
+                          pill.tier === 'large' && styles.customMultiDayPillTitleLarge,
+                          pill.tier === 'middle' && styles.customMultiDayPillTitleMiddle,
+                          pill.tier === 'small' && styles.customMultiDayPillTitleSmall,
+                        ]}
+                      >
+                        {pill.title}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
             <View style={styles.customDayForeground}>
               <View
                 style={[
                   styles.customDayNumberCircle,
                   isSelected && !hasRange && styles.customSelectedDay,
                   isSelected && !hasRange && marking?.selectedColor ? { backgroundColor: marking.selectedColor } : null,
-                  isToday && styles.customTodayCircle,
                 ]}
               >
                 <Text
                   style={[
                     styles.customDayText,
                     isDisabled && styles.customDayTextDisabled,
-                    (hasRange || isStaticDemoWeek) && styles.customDayTextInRange,
+                    hasRange && styles.customDayTextInRange,
+                    isToday && styles.customDayTextToday,
                   ]}
                 >
                   {date.day}
@@ -411,7 +294,7 @@ const CalendarPreview = ({ events = [], isLoading = false, error = null }) => {
         </View>
       </View>
     );
-  }, [eventsByDate, handleCalendarDayPress, todayIsoDate]);
+  }, [eventsByDate, handleCalendarDayPress, multiDayPillsByDate, todayIsoDate]);
 
   if (error) {
     return (
@@ -549,10 +432,15 @@ const styles = StyleSheet.create({
   },
   customDayFrame: {
     width: '100%',
-    paddingBottom: wp(4),
+    paddingBottom: wp(2),
+  },
+  customDayFrameWithOverlayLabel: {
+    zIndex: 20,
+    elevation: 20,
   },
   customDaySlot: {
     width: '100%',
+    overflow: 'visible',
   },
   customDayPressable: {
     minHeight: wp(12),
@@ -560,6 +448,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
+    overflow: 'visible',
   },
   customDayForeground: {
     alignItems: 'center',
@@ -573,22 +462,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  customRangeDay: {
-    borderRadius: 0,
-  },
-  customRangeStart: {
-    borderTopLeftRadius: wp(3.8),
-    borderBottomLeftRadius: wp(3.8),
-  },
-  customRangeEnd: {
-    borderTopRightRadius: wp(3.8),
-    borderBottomRightRadius: wp(3.8),
-  },
-  customRangeMiddle: {
-    borderRadius: 0,
-  },
-  // ---- Static stacked demo blocks (Mar 24-27) ----
-  // Shared base for every stacked block layer.
+  // ---- Multi-day pill layers ----
+  // Shared base for every rendered pill layer.
   customStaticDemoBlock: {
     position: 'absolute',
     left: 0,
@@ -597,66 +472,89 @@ const styles = StyleSheet.create({
     bottom: 0,
     borderRadius: 0,
   },
+  customMultiDayPillOutlineBase: {
+    borderTopWidth: 1.2,
+    borderBottomWidth: 1.2,
+  },
+  customMultiDayPillOutlineStart: {
+    borderLeftWidth: 1.2,
+  },
+  customMultiDayPillOutlineEnd: {
+    borderRightWidth: 1.2,
+  },
+  customMultiDayPillTitleWrap: {
+    position: 'absolute',
+    left: wp(1.5),
+    bottom: wp(0.9),
+    overflow: 'hidden',
+    zIndex: 2,
+  },
+  customMultiDayPillTitle: {
+    color: theme.colors.text,
+    fontWeight: '500',
+  },
+  customMultiDayPillTitleLarge: {
+    fontSize: wp(1.75),
+  },
+  customMultiDayPillTitleMiddle: {
+    fontSize: wp(1.75),
+  },
+  customMultiDayPillTitleSmall: {
+    fontSize: wp(1.75),
+  },
   // Rounded cap styles for the first and last day in the range.
   customStaticDemoBlockStart: {
-    borderTopLeftRadius: wp(2),
-    borderBottomLeftRadius: wp(2),
+    borderTopLeftRadius: wp(3),
+    borderBottomLeftRadius: wp(3),
   },
   customStaticDemoBlockEnd: {
-    borderTopRightRadius: wp(2),
-    borderBottomRightRadius: wp(2),
+    borderTopRightRadius: wp(3),
+    borderBottomRightRadius: wp(3),
   },
-
-  // Bottom / largest block layer (color + vertical reach).
-  customStaticDemoBlockColorA: {
-    backgroundColor: '#d9efff',
+  // Bottom / large pill layer (defined for future tier wiring).
+  customStaticDemoBlockLargeHeight: {
+    bottom: -wp(6.2),
+    top: wp(0.5),
   },
-  customStaticDemoBlockFullBottom: {
-    bottom: -wp(6),
-    top: -wp(2),
+  customStaticDemoBlockInsetStartLarge: {
+    left: wp(0.5),
   },
-
-  // Middle / medium block layer (color + vertical reach + cap inset).
-  customStaticDemoBlockColorB: {
-    backgroundColor: '#e7ddff',
+  customStaticDemoBlockInsetEndLarge: {
+    right: wp(0.5),
   },
+  // Middle / medium pill layer.
   customStaticDemoBlockHalfBottom: {
-    bottom: -wp(2.5),
-    top: -wp(0.5),
+    bottom: -wp(3),
+    top: wp(1.5),
   },
   customStaticDemoBlockInsetStart: {
-    left: wp(1.25),
+    left: wp(1),
   },
   customStaticDemoBlockInsetEnd: {
-    right: wp(1.25),
+    right: wp(1),
   },
-
-  // Top / smallest block layer (color + stronger cap inset).
-  customStaticDemoBlockColorC: {
-    backgroundColor: '#ffe8cc',
-  },
+  // Top / smallest pill layer.
   customStaticDemoBlockSmallHeight: {
-    top: wp(1),
-    bottom: wp(1),
+    top: wp(2.5),
+    bottom: wp(0.6),
   },
   customStaticDemoBlockInsetStartWide: {
-    left: wp(2.5),
+    left: wp(2),
   },
   customStaticDemoBlockInsetEndWide: {
-    right: wp(2.5),
+    right: wp(2),
   },
-
-  // END OF DEMO STACKED BLOCKS
   customSelectedDay: {
     backgroundColor: theme.colors.primary + '40',
-  },
-  customTodayCircle: {
-    backgroundColor: '#efe7ff',
   },
   customDayText: {
     fontSize: wp(3.5),
     color: theme.colors.text,
     fontWeight: '400',
+  },
+  customDayTextToday: {
+    color: '#ff66ff',
+    fontWeight: '600',
   },
   customDayTextDisabled: {
     color: theme.colors.textLight,
@@ -665,10 +563,11 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
   },
   customDayDot: {
+    position: 'absolute',
+    bottom: wp(0),
     width: 6,
     height: 6,
     borderRadius: 3,
-    marginTop: 3,
   },
   loadingContainer: {
     height: wp(80),
