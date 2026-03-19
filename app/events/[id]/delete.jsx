@@ -64,7 +64,7 @@ const DeleteEventScreen = () => {
         <View style={styles.content}>
           <Text style={styles.title}>Delete Event</Text>
           <Text style={styles.message}>
-            Are you sure you want to delete "{event.title}"? This action cannot be undone.
+            Are you sure you want to delete &quot;{event.title}&quot;? This action cannot be undone.
           </Text>
 
           <View style={styles.actions}>

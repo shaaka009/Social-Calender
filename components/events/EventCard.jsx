@@ -5,18 +5,14 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { EVENT_TYPES } from '../../constants/eventTypes';
 import { theme } from '../../constants/theme';
 import { getPersonAvatarColors, getPersonInitials } from '../../helpers/avatar';
-import { wp } from '../../helpers/common';
+import { parseDateLocal, wp } from '../../helpers/common';
 
-const parseLocalDate = (isoStr) => {
-  if (!isoStr) return new Date();
-  const [y, m, d] = isoStr.split('-').map(Number);
-  return new Date(y, m - 1, d);
-};
-
-const getStart = (event) => parseLocalDate(event.start_date || event.date);
+const getStart = (event) => (
+  parseDateLocal(event?.start_date || event?.date) || new Date(0)
+);
 
 const getEnd = (event) => (
-  event.end_date ? parseLocalDate(event.end_date) : getStart(event)
+  (event?.end_date ? parseDateLocal(event.end_date) : null) || getStart(event)
 );
 
 const isSameDay = (d1, d2) => d1.toDateString() === d2.toDateString();
@@ -44,8 +40,9 @@ const getBirthdayAge = (event, person) => {
   }
 
   if (!person?.birthday || !event?.start_date) return null;
-  const occurrence = parseLocalDate(event.start_date);
-  const birthDate = parseLocalDate(person.birthday);
+  const occurrence = parseDateLocal(event.start_date);
+  const birthDate = parseDateLocal(person.birthday);
+  if (!occurrence || !birthDate) return null;
   const age = occurrence.getFullYear() - birthDate.getFullYear();
   return Number.isFinite(age) && age > 0 ? age : null;
 };
@@ -99,7 +96,6 @@ const EventCard = React.memo(({
     isBirthdayEvent,
     visiblePeople,
     remainingPeopleCount,
-    hasMultiplePeople,
     isPersonGeneratedEvent,
   } = React.useMemo(() => {
     const start = getStart(event);
@@ -131,7 +127,6 @@ const EventCard = React.memo(({
       isBirthdayEvent: event?.type === 'birthday',
       visiblePeople: people.slice(0, 3),
       remainingPeopleCount: Math.max(0, people.length - 3),
-      hasMultiplePeople: people.length > 1,
       isPersonGeneratedEvent: Boolean(
         event?.source === 'person_birthday' || event?.is_virtual || event?.person_id
       ),
@@ -149,7 +144,7 @@ const EventCard = React.memo(({
       return;
     }
     router.push(`/events/${event.id}`);
-  }, [event, event.id, isSelectionDisabled, isSelectionMode, onSelectionDisabledPress, onToggleSelect]);
+  }, [event, isSelectionDisabled, isSelectionMode, onSelectionDisabledPress, onToggleSelect]);
 
   return (
     <Pressable
@@ -469,5 +464,7 @@ const styles = StyleSheet.create({
     color: theme.colors.textLight,
   },
 });
+
+EventCard.displayName = 'EventCard';
 
 export default EventCard;

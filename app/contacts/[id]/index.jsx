@@ -46,7 +46,8 @@ const ContactProfileScreen = () => {
   // Helper to format date
   const formatDate = (dateStr) => {
     if (!dateStr) return '—';
-    return parseDateLocal(dateStr).toLocaleDateString();
+    const parsedDate = parseDateLocal(dateStr);
+    return parsedDate ? parsedDate.toLocaleDateString() : '—';
   };
 
   const handleLogInteraction = () => {

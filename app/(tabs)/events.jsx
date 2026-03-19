@@ -8,20 +8,18 @@ import Toast from 'react-native-root-toast';
 import EventCard from '../../components/events/EventCard';
 import LoadingState from '../../components/LoadingState';
 import ScreenWrapper from '../../components/ScreenWrapper';
+import { TAG_COLOR_OPTIONS } from '../../constants/tagColors';
 import { theme } from '../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../helpers/api';
-import { wp } from '../../helpers/common';
+import { parseDateLocal, wp } from '../../helpers/common';
 import { useCreateTag, useTags } from '../../helpers/useTags';
 
-// Helper utils for new date fields parsed in local timezone to avoid off-by-one issues
-const parseLocalDate = (isoStr) => {
-  if (!isoStr) return new Date();
-  const [y, m, d] = isoStr.split('-').map(Number);
-  return new Date(y, m - 1, d);
-};
-
-const getStart = (e) => parseLocalDate(e.start_date || e.date);
-const getEnd = (e) => parseLocalDate(e.end_date || e.start_date || e.date);
+const getStart = (e) => (
+  parseDateLocal(e?.start_date || e?.date) || new Date(0)
+);
+const getEnd = (e) => (
+  parseDateLocal(e?.end_date || e?.start_date || e?.date) || getStart(e)
+);
 const getStartOfDay = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
 const getEndOfWeek = (date) => {
   const start = getStartOfDay(date);
@@ -103,7 +101,7 @@ const Events = () => {
     onPanResponderTerminate: () => {
       snapToIndex(selectedIndex);
     },
-  }), [clampTranslateX, eventTypes.length, pagerWidth, selectedIndex, snapToIndex]);
+  }), [clampTranslateX, eventTypes.length, pagerTranslateX, pagerWidth, selectedIndex, snapToIndex]);
 
   useEffect(() => {
     if (!pagerWidth) return;
@@ -119,7 +117,7 @@ const Events = () => {
   const { data: tags = [] } = useTags();
   const createTagMutation = useCreateTag();
 
-  const COLOR_OPTIONS = ['#ff8c00', '#ff4d4f', '#40a9ff', '#52c41a', '#faad14', '#722ed1', '#13c2c2'];
+  const COLOR_OPTIONS = TAG_COLOR_OPTIONS;
   const [modalVisible, setModalVisible] = useState(false);
   const [newTag, setNewTag] = useState({ name: '', color: COLOR_OPTIONS[0] });
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -221,10 +219,11 @@ const Events = () => {
   }, [eventsByType]);
 
   const selectedCount = selectedEventIds.size;
-  const modalTargetIds = bulkDeleteTargetIds.length > 0 ? bulkDeleteTargetIds : [...selectedEventIds];
+  const modalTargetIds = useMemo(
+    () => (bulkDeleteTargetIds.length > 0 ? bulkDeleteTargetIds : [...selectedEventIds]),
+    [bulkDeleteTargetIds, selectedEventIds]
+  );
   const modalTargetCount = modalTargetIds.length;
-  const pageEvents = eventsByType[selectedIndex] || [];
-  const pageData = selectedIndex === 0 ? upcomingListItems : pageEvents;
   const selectedEventsPreview = useMemo(() => {
     if (modalTargetIds.length === 0) return [];
 

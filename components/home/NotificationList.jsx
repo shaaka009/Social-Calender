@@ -83,7 +83,7 @@ const NotificationCard = React.memo(({ notification, onPress }) => {
       {renderAvatar()}
       <View style={styles.content}>
         <Text style={styles.message}>{notification.message}</Text>
-        {notification.type === 'NO_CONTACT' && (
+        {notification.type === 'NO_CONTACT' && notification.daysSince != null && (
           <Text style={styles.details}>
             {notification.daysSince} days since last contact
           </Text>
@@ -98,6 +98,7 @@ const NotificationCard = React.memo(({ notification, onPress }) => {
     </TouchableOpacity>
   );
 });
+NotificationCard.displayName = 'NotificationCard';
 
 const NotificationList = ({ notifications = [], onNotificationPress }) => {
   const renderNotificationItem = React.useCallback(({ item }) => (

@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import ContactCard from '../../components/contacts/ContactCard';
+import { TAG_COLOR_OPTIONS } from '../../constants/tagColors';
 import { theme } from '../../constants/theme';
 import { wp } from '../../helpers/common';
 import useContactRequests from '../../helpers/useContactRequests';
@@ -14,7 +15,7 @@ import { useCreateTag, useTags } from '../../helpers/useTags';
 const Contacts = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState([]);
-  const COLOR_OPTIONS = ['#ff8c00', '#ff4d4f', '#40a9ff', '#52c41a', '#faad14', '#722ed1', '#13c2c2'];
+  const COLOR_OPTIONS = TAG_COLOR_OPTIONS;
   const [modalVisible, setModalVisible] = useState(false);
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [newTag, setNewTag] = useState({ name: '', color: COLOR_OPTIONS[0] });
@@ -35,8 +36,10 @@ const Contacts = () => {
   };
 
   const filterContacts = useCallback((contact) => {
+    const firstName = contact.target?.first_name || '';
+    const lastName = contact.target?.last_name || '';
     const matchesSearch = searchQuery.trim() === '' || 
-      `${contact.target.first_name} ${contact.target.last_name}`
+      `${firstName} ${lastName}`
         .toLowerCase()
         .includes(searchQuery.toLowerCase());
 
@@ -49,12 +52,16 @@ const Contacts = () => {
 
     return matchesSearch && matchesTags && isAccepted;
   }, [searchQuery, selectedTags]);
+  const filteredContacts = useMemo(
+    () => contacts.filter(filterContacts),
+    [contacts, filterContacts]
+  );
 
   const handleContactPress = useCallback((contact) => {
     router.push(`/contacts/${contact.id}`);
   }, []);
 
-  const handleSaveTag = () => {
+  const handleSaveTag = useCallback(() => {
     if (!newTag.name.trim()) return;
     createTagMutation.mutate(newTag, {
       onSuccess: () => {
@@ -62,9 +69,9 @@ const Contacts = () => {
         setNewTag({ name: '', color: COLOR_OPTIONS[0] });
       },
     });
-  };
+  }, [COLOR_OPTIONS, createTagMutation, newTag]);
 
-  const renderTags = () => (
+  const renderTags = useCallback(() => (
     <View style={styles.tagsRow}>
       <Pressable style={styles.plusButton} onPress={() => setModalVisible(true)}>
         <Ionicons name="add" size={wp(6)} color="#fff" />
@@ -179,7 +186,7 @@ const Contacts = () => {
         </View>
       </Modal>
     </View>
-  );
+  ), [COLOR_OPTIONS, allTags, filterModalVisible, handleSaveTag, modalVisible, newTag.color, newTag.name, selectedTags]);
 
   return (
     <ScreenWrapper>
@@ -226,7 +233,7 @@ const Contacts = () => {
         {renderTags()}
 
         <FlatList
-          data={contacts.filter(filterContacts)}
+          data={filteredContacts}
           keyExtractor={item => item.id.toString()}
           renderItem={({ item }) => (
             <ContactCard

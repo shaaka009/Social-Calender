@@ -226,7 +226,7 @@ const styles = StyleSheet.create({
   },
   datePickerContainer: {
     backgroundColor: theme.colors.card,
-    borderRadius: theme.roundness,
+    borderRadius: theme.radius.md,
     padding: wp(4),
     marginTop: wp(2),
   },

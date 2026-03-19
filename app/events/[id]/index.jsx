@@ -162,7 +162,7 @@ const EventDetailsScreen = () => {
         {event.is_virtual ? (
           <View style={styles.section}>
             <Text style={styles.notes}>
-              This birthday is auto-generated from the contact's birthday. Edit it from the contact profile.
+              This birthday is auto-generated from the contact&apos;s birthday. Edit it from the contact profile.
             </Text>
           </View>
         ) : null}

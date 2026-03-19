@@ -491,15 +491,15 @@ const styles = StyleSheet.create({
   },
   // Slight overlap hides subpixel seams between adjacent day cells.
   customMultiDayPillOverlapLeft: {
-    left: -0.6,
+    left: -wp(0.5),
   },
   customMultiDayPillOverlapRight: {
-    right: -0.6,
+    right: -wp(0.5),
   },
   customMultiDayPillTitleWrap: {
     position: 'absolute',
-    left: wp(1.5),
-    bottom: wp(0.3),
+    left: wp(2),
+    bottom: wp(0.5),
     overflow: 'hidden',
     zIndex: 2,
   },
@@ -508,13 +508,13 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   customMultiDayPillTitleLarge: {
-    fontSize: wp(1.75),
+    fontSize: wp(1.9),
   },
   customMultiDayPillTitleMiddle: {
-    fontSize: wp(1.75),
+    fontSize: wp(1.9),
   },
   customMultiDayPillTitleSmall: {
-    fontSize: wp(1.75),
+    fontSize: wp(1.9),
   },
   // Rounded cap styles for the first and last day in the range.
   customStaticDemoBlockStart: {
@@ -538,7 +538,7 @@ const styles = StyleSheet.create({
   },
   // Middle / medium pill layer.
   customStaticDemoBlockHalfBottom: {
-    bottom: -wp(3),
+    bottom: -wp(2.6),
     top: wp(2.5),
   },
   customStaticDemoBlockInsetStart: {
@@ -549,7 +549,7 @@ const styles = StyleSheet.create({
   },
   // Top / smallest pill layer.
   customStaticDemoBlockSmallHeight: {
-    top: wp(3.5),
+    top: wp(3),
     bottom: wp(0.6),
   },
   customStaticDemoBlockInsetStartWide: {

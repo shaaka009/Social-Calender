@@ -10,6 +10,7 @@ import DateRangePicker from '../../../components/DateRangePicker';
 import LoadingState from '../../../components/LoadingState';
 import ScreenWrapper from '../../../components/ScreenWrapper';
 import { EVENT_TYPES } from '../../../constants/eventTypes';
+import { TAG_COLOR_OPTIONS } from '../../../constants/tagColors';
 import { theme } from '../../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../../helpers/api';
 import { getPersonAvatarColors, getPersonInitials } from '../../../helpers/avatar';
@@ -91,7 +92,7 @@ const EditEventScreen = () => {
     );
   }, [formData.people_ids, togglePersonSelection]);
 
-  const COLOR_OPTIONS = ['#ff8c00', '#ff4d4f', '#40a9ff', '#52c41a', '#faad14', '#722ed1', '#13c2c2'];
+  const COLOR_OPTIONS = TAG_COLOR_OPTIONS;
   const [modalVisible, setModalVisible] = useState(false);
   const [newTag, setNewTag] = useState({ name: '', color: COLOR_OPTIONS[0] });
 
@@ -356,10 +357,12 @@ const EditEventScreen = () => {
                           setModalVisible(false);
                           setNewTag({ name: '', color: COLOR_OPTIONS[0] });
                           // Add the new tag to the selected tags
-                          setFormData(prev => ({
-                            ...prev,
-                            tag_ids: [...prev.tag_ids, newTagData.id]
-                          }));
+                          if (newTagData?.id) {
+                            setFormData(prev => ({
+                              ...prev,
+                              tag_ids: [...prev.tag_ids, newTagData.id]
+                            }));
+                          }
                         },
                       });
                     }}
@@ -469,7 +472,7 @@ const styles = StyleSheet.create({
   },
   datePickerContainer: {
     backgroundColor: theme.colors.card,
-    borderRadius: theme.roundness,
+    borderRadius: theme.radius.md,
     padding: wp(4),
     marginTop: wp(2),
   },

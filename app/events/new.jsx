@@ -9,6 +9,7 @@ import CustomInput from '../../components/CustomInput';
 import DateRangePicker from '../../components/DateRangePicker';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import { EVENT_TYPES } from '../../constants/eventTypes';
+import { TAG_COLOR_OPTIONS } from '../../constants/tagColors';
 import { theme } from '../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../helpers/api';
 import { getPersonAvatarColors, getPersonInitials } from '../../helpers/avatar';
@@ -56,7 +57,7 @@ const AddEventScreen = () => {
     }).start(() => setTypeSheetVisible(false));
   };
 
-  const COLOR_OPTIONS = ['#ff8c00', '#ff4d4f', '#40a9ff', '#52c41a', '#faad14', '#722ed1', '#13c2c2'];
+  const COLOR_OPTIONS = TAG_COLOR_OPTIONS;
 
   // Get tags for selection
   const { data: tags = [] } = useTags();
@@ -70,9 +71,19 @@ const AddEventScreen = () => {
   // Filter contacts based on search
   const filteredContacts = useMemo(() => contacts.filter((conn) => {
     const searchLower = searchQuery.toLowerCase();
-    const name = `${conn.target.first_name} ${conn.target.last_name}`.toLowerCase();
+    const firstName = conn.target?.first_name || '';
+    const lastName = conn.target?.last_name || '';
+    const name = `${firstName} ${lastName}`.toLowerCase();
     return !searchQuery || name.includes(searchLower);
   }), [contacts, searchQuery]);
+  const displayedContacts = useMemo(
+    () => (
+      showContacts
+        ? filteredContacts
+        : contacts.filter((conn) => form.people_ids.includes(conn.target.id))
+    ),
+    [contacts, filteredContacts, form.people_ids, showContacts]
+  );
 
   const togglePersonSelection = useCallback((personId, currentlySelected) => {
     setForm((prev) => ({
@@ -224,10 +235,10 @@ const AddEventScreen = () => {
             onFocus={()=>setShowContacts(true)}
           />
 
-          {showContacts && (
+          {(showContacts || form.people_ids.length > 0) && (
             <View style={styles.gridContainer}>
               <FlatList
-                data={filteredContacts}
+                data={displayedContacts}
                 keyExtractor={(item) => item.id.toString()}
                 renderItem={renderContactItem}
                 numColumns={3}
@@ -315,10 +326,12 @@ const AddEventScreen = () => {
                           setModalVisible(false);
                           setNewTag({ name: '', color: COLOR_OPTIONS[0] });
                           // Add the new tag to the selected tags
-                          setForm(prev => ({
-                            ...prev,
-                            tag_ids: [...prev.tag_ids, newTagData.id]
-                          }));
+                          if (newTagData?.id) {
+                            setForm(prev => ({
+                              ...prev,
+                              tag_ids: [...prev.tag_ids, newTagData.id]
+                            }));
+                          }
                         },
                       });
                     }}
@@ -474,7 +487,7 @@ const styles = StyleSheet.create({
   },
   datePickerContainer: {
     backgroundColor: theme.colors.card,
-    borderRadius: theme.roundness,
+    borderRadius: theme.radius.md,
     padding: wp(4),
     marginTop: wp(2),
   },

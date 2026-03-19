@@ -11,6 +11,7 @@ import CustomInput from '../../../components/CustomInput';
 import LoadingState from '../../../components/LoadingState';
 import MonthDayYearPicker from '../../../components/MonthDayYearPicker';
 import ScreenWrapper from '../../../components/ScreenWrapper';
+import { TAG_COLOR_OPTIONS } from '../../../constants/tagColors';
 import { theme } from '../../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../../helpers/api';
 import { formatDateLocal, parseDateLocal, wp } from '../../../helpers/common';
@@ -29,6 +30,11 @@ const EditContactScreen = () => {
   }, [navigation]);
   const queryClient = useQueryClient();
   const [isSaving, setIsSaving] = useState(false);
+  const { data: tagsList = [] } = useTags();
+  const createTagMutation = useCreateTag();
+  const [modalVisible, setModalVisible] = useState(false);
+  const COLOR_OPTIONS = TAG_COLOR_OPTIONS;
+  const [newTag, setNewTag] = useState({ name: '', color: COLOR_OPTIONS[0] });
   
   // Form state
   const [formData, setFormData] = useState({
@@ -99,7 +105,7 @@ const EditContactScreen = () => {
       if (!result.canceled) {
         setFormData(prev => ({ ...prev, profile_picture: result.assets[0].uri }));
       }
-    } catch (e) {
+    } catch (_error) {
       Alert.alert('Error', 'Failed to pick image');
     }
   };
@@ -215,12 +221,6 @@ const EditContactScreen = () => {
   if (isLoading || !contact) {
     return <LoadingState />;
   }
-
-  const { data: tagsList = [] } = useTags();
-  const createTagMutation = useCreateTag();
-  const [modalVisible, setModalVisible] = useState(false);
-  const COLOR_OPTIONS = ['#ff8c00', '#ff4d4f', '#40a9ff', '#52c41a', '#faad14', '#722ed1', '#13c2c2'];
-  const [newTag, setNewTag] = useState({ name: '', color: COLOR_OPTIONS[0] });
 
   const toggleTag = (tag) => {
     setFormData((prev) => ({
@@ -598,7 +598,7 @@ const styles = StyleSheet.create({
   },
   datePickerContainer: {
     backgroundColor: theme.colors.card,
-    borderRadius: theme.roundness,
+    borderRadius: theme.radius.md,
     padding: wp(4),
     marginTop: wp(2),
   },

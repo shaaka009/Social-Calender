@@ -133,9 +133,9 @@ const OnboardingStep3 = () => {
               contentFit="contain"
             />
             
-            <Text style={styles.title}>You're All Set!</Text>
+            <Text style={styles.title}>You&apos;re All Set!</Text>
             <Text style={styles.description}>
-              Welcome to your social calendar. Here's what you can do:
+              Welcome to your social calendar. Here&apos;s what you can do:
             </Text>
 
             <View style={styles.featureList}>
@@ -170,7 +170,7 @@ const OnboardingStep3 = () => {
                 <View style={styles.featureContent}>
                   <Text style={styles.featureTitle}>Get Reminders</Text>
                   <Text style={styles.featureDescription}>
-                    Receive notifications when you haven't contacted someone in a while
+                    Receive notifications when you haven&apos;t contacted someone in a while
                   </Text>
                 </View>
               </View>
