@@ -30,6 +30,12 @@ const formatIsoDateUtc = (date) => {
   const day = String(date.getUTCDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
+const addDaysToIsoDate = (isoDate, daysToAdd) => {
+  const parsed = parseIsoDateUtc(isoDate);
+  if (!parsed) return isoDate;
+  parsed.setUTCDate(parsed.getUTCDate() + daysToAdd);
+  return formatIsoDateUtc(parsed);
+};
 
 export const getEventRange = (event) => {
   const startDate = event?.start_date || event?.date || null;
@@ -91,6 +97,7 @@ export const buildEventsByDate = (calendarEvents) => {
 
 export const buildMultiDayPillsByDate = (calendarEvents, { getEventColor, getEventBorderColor }) => {
   const multiDayRanges = [];
+  const hiddenEventIds = new Set();
 
   calendarEvents.forEach((event) => {
     const dateRange = getEventRange(event);
@@ -115,17 +122,34 @@ export const buildMultiDayPillsByDate = (calendarEvents, { getEventColor, getEve
     });
   });
 
-  const tierByEventId = Object.fromEntries(multiDayRanges.map((range) => [range.eventId, 'small']));
+  const tierByEventId = Object.fromEntries(multiDayRanges.map((range) => [range.eventId, 'large']));
   const intersectionsByIndex = Array.from({ length: multiDayRanges.length }, () => []);
-  const rangesIntersect = (a, b) => !(a.endDate < b.startDate || b.endDate < a.startDate);
-
-  for (let i = 0; i < multiDayRanges.length; i += 1) {
-    for (let j = i + 1; j < multiDayRanges.length; j += 1) {
-      if (!rangesIntersect(multiDayRanges[i], multiDayRanges[j])) continue;
-      intersectionsByIndex[i].push(j);
-      intersectionsByIndex[j].push(i);
+  const sortedRangeIndexes = multiDayRanges
+    .map((_, index) => index)
+    .sort((a, b) => {
+      const rangeA = multiDayRanges[a];
+      const rangeB = multiDayRanges[b];
+      if (rangeA.startDate !== rangeB.startDate) return rangeA.startDate.localeCompare(rangeB.startDate);
+      if (rangeA.endDate !== rangeB.endDate) return rangeA.endDate.localeCompare(rangeB.endDate);
+      return rangeA.eventId.localeCompare(rangeB.eventId);
+    });
+  const activeIndexes = [];
+  sortedRangeIndexes.forEach((rangeIndex) => {
+    const currentRange = multiDayRanges[rangeIndex];
+    for (let i = activeIndexes.length - 1; i >= 0; i -= 1) {
+      const activeRange = multiDayRanges[activeIndexes[i]];
+      if (activeRange.endDate < currentRange.startDate) {
+        activeIndexes.splice(i, 1);
+      }
     }
-  }
+
+    activeIndexes.forEach((activeIndex) => {
+      intersectionsByIndex[rangeIndex].push(activeIndex);
+      intersectionsByIndex[activeIndex].push(rangeIndex);
+    });
+
+    activeIndexes.push(rangeIndex);
+  });
 
   const visited = new Set();
   const sortByPriority = (a, b) => {
@@ -135,6 +159,96 @@ export const buildMultiDayPillsByDate = (calendarEvents, { getEventColor, getEve
     const createdTimeB = Date.parse(b.createdAt || '') || Number.POSITIVE_INFINITY;
     if (createdTimeA !== createdTimeB) return createdTimeA - createdTimeB;
     return a.eventId.localeCompare(b.eventId);
+  };
+  const pickGreedyNonOverlapping = (ranges) => {
+    const orderedRanges = [...ranges].sort((a, b) => {
+      if (a.endDate !== b.endDate) return a.endDate.localeCompare(b.endDate);
+      if (a.startDate !== b.startDate) return a.startDate.localeCompare(b.startDate);
+      if (a.duration !== b.duration) return b.duration - a.duration;
+      return a.eventId.localeCompare(b.eventId);
+    });
+
+    const selectedEventIds = new Set();
+    let lastAcceptedEndDate = null;
+
+    orderedRanges.forEach((range) => {
+      if (lastAcceptedEndDate && range.startDate <= lastAcceptedEndDate) return;
+      selectedEventIds.add(range.eventId);
+      lastAcceptedEndDate = range.endDate;
+    });
+
+    return selectedEventIds;
+  };
+  const minimizeTiersInComponent = (componentIndexes, hiddenEventIdsSet) => {
+    const visibleComponentIndexes = componentIndexes.filter(
+      (index) => !hiddenEventIdsSet.has(multiDayRanges[index].eventId)
+    );
+    if (visibleComponentIndexes.length === 0) return;
+
+    const visibleIndexSet = new Set(visibleComponentIndexes);
+    let changed = true;
+
+    while (changed) {
+      changed = false;
+
+      // First pass: if a middle tier has no overlapping small tier, shrink it.
+      visibleComponentIndexes.forEach((index) => {
+        const eventId = multiDayRanges[index].eventId;
+        if (tierByEventId[eventId] !== 'middle') return;
+
+        const hasOverlappingSmall = intersectionsByIndex[index].some((neighborIndex) => {
+          if (!visibleIndexSet.has(neighborIndex)) return false;
+          const neighborEventId = multiDayRanges[neighborIndex].eventId;
+          return tierByEventId[neighborEventId] === 'small';
+        });
+
+        if (!hasOverlappingSmall) {
+          tierByEventId[eventId] = 'small';
+          changed = true;
+        }
+      });
+
+      // Second pass: if a large tier has no overlapping middle tier, shrink it.
+      visibleComponentIndexes.forEach((index) => {
+        const eventId = multiDayRanges[index].eventId;
+        if (tierByEventId[eventId] !== 'large') return;
+
+        const hasOverlappingMiddle = intersectionsByIndex[index].some((neighborIndex) => {
+          if (!visibleIndexSet.has(neighborIndex)) return false;
+          const neighborEventId = multiDayRanges[neighborIndex].eventId;
+          return tierByEventId[neighborEventId] === 'middle';
+        });
+
+        if (!hasOverlappingMiddle) {
+          tierByEventId[eventId] = 'middle';
+          changed = true;
+        }
+      });
+    }
+  };
+  const getMaxConcurrencyForComponent = (componentIndexes) => {
+    const boundaryDeltas = [];
+    componentIndexes.forEach((index) => {
+      const range = multiDayRanges[index];
+      boundaryDeltas.push({ date: range.startDate, delta: 1 });
+      boundaryDeltas.push({ date: addDaysToIsoDate(range.endDate, 1), delta: -1 });
+    });
+
+    boundaryDeltas.sort((a, b) => {
+      if (a.date !== b.date) return a.date.localeCompare(b.date);
+      return a.delta - b.delta;
+    });
+
+    let runningOverlap = 0;
+    let maxOverlap = 0;
+    boundaryDeltas.forEach((point) => {
+      runningOverlap += point.delta;
+      if (runningOverlap > maxOverlap) {
+        maxOverlap = runningOverlap;
+      }
+    });
+
+    return maxOverlap;
   };
 
   for (let i = 0; i < multiDayRanges.length; i += 1) {
@@ -154,48 +268,46 @@ export const buildMultiDayPillsByDate = (calendarEvents, { getEventColor, getEve
       });
     }
 
-    if (componentIndexes.length <= 1) continue;
-
     const sortedRanges = componentIndexes
       .map((index) => multiDayRanges[index])
       .sort(sortByPriority);
 
-    const overlapCountByDate = {};
-    let maxConcurrentOnAnyDate = 0;
-    sortedRanges.forEach((range) => {
-      range.dates.forEach((dateStr) => {
-        overlapCountByDate[dateStr] = (overlapCountByDate[dateStr] || 0) + 1;
-        if (overlapCountByDate[dateStr] > maxConcurrentOnAnyDate) {
-          maxConcurrentOnAnyDate = overlapCountByDate[dateStr];
-        }
-      });
-    });
+    const maxConcurrentOnAnyDate = getMaxConcurrencyForComponent(componentIndexes);
 
     const tierPool = maxConcurrentOnAnyDate >= 3
       ? ['large', 'middle', 'small']
       : maxConcurrentOnAnyDate === 2
-        ? ['middle', 'small']
-        : ['small'];
+        ? ['large', 'middle']
+        : ['large'];
 
-    const activeRanges = [];
-    sortedRanges.forEach((range) => {
-      const stillActive = activeRanges.filter((activeRange) => activeRange.endDate >= range.startDate);
-      activeRanges.length = 0;
-      activeRanges.push(...stillActive);
+    let unassignedRanges = [...sortedRanges];
+    tierPool.forEach((tier) => {
+      if (unassignedRanges.length === 0) return;
+      const selectedEventIds = pickGreedyNonOverlapping(unassignedRanges);
+      if (selectedEventIds.size === 0) return;
 
-      const usedTiers = new Set(activeRanges.map((activeRange) => activeRange.tier));
-      const nextTier = tierPool.find((tier) => !usedTiers.has(tier)) || tierPool[tierPool.length - 1];
-      tierByEventId[range.eventId] = nextTier;
-
-      activeRanges.push({
-        endDate: range.endDate,
-        tier: nextTier,
+      unassignedRanges.forEach((range) => {
+        if (selectedEventIds.has(range.eventId)) {
+          tierByEventId[range.eventId] = tier;
+        }
       });
+
+      unassignedRanges = unassignedRanges.filter((range) => !selectedEventIds.has(range.eventId));
     });
+
+    // Any overflow beyond available tiers is hidden from pill rendering.
+    if (unassignedRanges.length > 0) {
+      unassignedRanges.forEach((range) => {
+        hiddenEventIds.add(range.eventId);
+      });
+    }
+
+    minimizeTiersInComponent(componentIndexes, hiddenEventIds);
   }
 
   const byDate = {};
   multiDayRanges.forEach((range) => {
+    if (hiddenEventIds.has(range.eventId)) return;
     const tier = tierByEventId[range.eventId] || 'small';
     range.dates.forEach((dateStr, index) => {
       if (!byDate[dateStr]) byDate[dateStr] = [];

@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { theme } from '../../constants/theme';
+import { getPersonAvatarColors, getPersonInitials } from '../../helpers/avatar';
 import { wp } from '../../helpers/common';
 
 const formatTimeAgo = (dateString) => {
@@ -56,10 +57,11 @@ const NotificationCard = React.memo(({ notification, onPress }) => {
       );
     } else if (hasPerson) {
       // Show initials with colored background
-      const initials = `${person.first_name?.[0] || ''}${person.last_name?.[0] || ''}`;
+      const initials = getPersonInitials(person);
+      const avatarColors = getPersonAvatarColors(person);
       return (
-        <View style={styles.avatarContainer}>
-          <Text style={styles.avatarText}>{initials}</Text>
+        <View style={[styles.avatarContainer, { backgroundColor: avatarColors.bg }]}>
+          <Text style={[styles.avatarText, { color: avatarColors.fg }]}>{initials}</Text>
         </View>
       );
     } else {
@@ -167,7 +169,7 @@ const styles = StyleSheet.create({
     width: wp(10),
     height: wp(10),
     borderRadius: wp(5),
-    backgroundColor: theme.colors.primary,
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: wp(3),

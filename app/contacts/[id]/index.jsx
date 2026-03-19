@@ -9,6 +9,7 @@ import LoadingState from '../../../components/LoadingState';
 import ScreenWrapper from '../../../components/ScreenWrapper';
 import { theme } from '../../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../../helpers/api';
+import { getPersonAvatarColors, getPersonInitials } from '../../../helpers/avatar';
 import { parseDateLocal, wp } from '../../../helpers/common';
 import useConnection from '../../../helpers/useConnection';
 import { useTags } from '../../../helpers/useTags';
@@ -17,6 +18,8 @@ const ContactProfileScreen = () => {
   const { id } = useLocalSearchParams();
   const { data: contact, isLoading } = useConnection(id);
   const person = contact?.target || {};
+  const avatarColors = getPersonAvatarColors(person);
+  const initials = getPersonInitials(person);
 
   // Get user's tag palette to resolve colors
   const { data: tagsPalette = [] } = useTags();
@@ -68,12 +71,12 @@ const ContactProfileScreen = () => {
         </View>
 
         {/* Avatar */}
-        <View style={styles.avatarContainer}>
+        <View style={[styles.avatarContainer, !person.profile_picture_url && { backgroundColor: avatarColors.bg }]}>
           {person.profile_picture_url ? (
             <Image source={{ uri: person.profile_picture_url }} style={styles.avatarImage} contentFit="cover" />
           ) : (
-            <Text style={styles.avatarText}>
-              {person.first_name?.[0]}{person.last_name?.[0]}
+            <Text style={[styles.avatarText, { color: avatarColors.fg }]}>
+              {initials}
             </Text>
           )}
         </View>

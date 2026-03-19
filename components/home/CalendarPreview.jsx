@@ -224,6 +224,8 @@ const CalendarPreview = ({ events = [], isLoading = false, error = null }) => {
                     styles.customMultiDayPillOutlineBase,
                     pill.isStart && styles.customMultiDayPillOutlineStart,
                     pill.isEnd && styles.customMultiDayPillOutlineEnd,
+                    !pill.isStart && styles.customMultiDayPillOverlapLeft,
+                    !pill.isEnd && styles.customMultiDayPillOverlapRight,
                     pill.tier === 'large' && styles.customStaticDemoBlockLargeHeight,
                     pill.tier === 'middle' && styles.customStaticDemoBlockHalfBottom,
                     pill.tier === 'small' && styles.customStaticDemoBlockSmallHeight,
@@ -358,6 +360,7 @@ const CalendarPreview = ({ events = [], isLoading = false, error = null }) => {
               }
             }}
           />
+          <View style={styles.calendarBottomSpacer} />
         </View>
       )}
       {calendarEvents.length === 0 && !isLoading && (
@@ -430,6 +433,10 @@ const styles = StyleSheet.create({
   calendar: {
     borderRadius: wp(4),
   },
+  // Uniform extra room below the grid so last-row pills do not get clipped.
+  calendarBottomSpacer: {
+    height: wp(6.2),
+  },
   customDayFrame: {
     width: '100%',
     paddingBottom: wp(2),
@@ -482,10 +489,17 @@ const styles = StyleSheet.create({
   customMultiDayPillOutlineEnd: {
     borderRightWidth: 1.2,
   },
+  // Slight overlap hides subpixel seams between adjacent day cells.
+  customMultiDayPillOverlapLeft: {
+    left: -0.6,
+  },
+  customMultiDayPillOverlapRight: {
+    right: -0.6,
+  },
   customMultiDayPillTitleWrap: {
     position: 'absolute',
     left: wp(1.5),
-    bottom: wp(0.9),
+    bottom: wp(0.3),
     overflow: 'hidden',
     zIndex: 2,
   },
@@ -513,8 +527,8 @@ const styles = StyleSheet.create({
   },
   // Bottom / large pill layer (defined for future tier wiring).
   customStaticDemoBlockLargeHeight: {
-    bottom: -wp(6.2),
-    top: wp(0.5),
+    bottom: -wp(5.8),
+    top: wp(1.5),
   },
   customStaticDemoBlockInsetStartLarge: {
     left: wp(0.5),
@@ -525,17 +539,17 @@ const styles = StyleSheet.create({
   // Middle / medium pill layer.
   customStaticDemoBlockHalfBottom: {
     bottom: -wp(3),
-    top: wp(1.5),
+    top: wp(2.5),
   },
   customStaticDemoBlockInsetStart: {
-    left: wp(1),
+    left: wp(1.2),
   },
   customStaticDemoBlockInsetEnd: {
-    right: wp(1),
+    right: wp(1.2),
   },
   // Top / smallest pill layer.
   customStaticDemoBlockSmallHeight: {
-    top: wp(2.5),
+    top: wp(3.5),
     bottom: wp(0.6),
   },
   customStaticDemoBlockInsetStartWide: {

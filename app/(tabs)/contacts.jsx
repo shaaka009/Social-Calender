@@ -244,7 +244,7 @@ const Contacts = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingVertical: wp(5),
+    paddingTop: wp(5),
   },
   titleContainer: {
     flexDirection: 'row',

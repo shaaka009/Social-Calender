@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, FlatList, Modal, PanResponder, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import Toast from 'react-native-root-toast';
 import EventCard from '../../components/events/EventCard';
 import LoadingState from '../../components/LoadingState';
 import ScreenWrapper from '../../components/ScreenWrapper';
@@ -20,8 +21,26 @@ const parseLocalDate = (isoStr) => {
 };
 
 const getStart = (e) => parseLocalDate(e.start_date || e.date);
+const getEnd = (e) => parseLocalDate(e.end_date || e.start_date || e.date);
+const getStartOfDay = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+const getEndOfWeek = (date) => {
+  const start = getStartOfDay(date);
+  const day = start.getDay();
+  return new Date(start.getFullYear(), start.getMonth(), start.getDate() + (6 - day));
+};
+const getEndOfMonth = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0);
+const formatMonthDay = (date) => date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+const formatMonthDayRange = (event) => {
+  const start = getStart(event);
+  const end = getEnd(event);
+  if (start.toDateString() === end.toDateString()) {
+    return formatMonthDay(start);
+  }
+  return `${formatMonthDay(start)} - ${formatMonthDay(end)}`;
+};
 
 const Events = () => {
+  const queryClient = useQueryClient();
   const { data: events = [], isLoading } = useQuery({
     queryKey: ['events'],
     queryFn: () => apiFetch(ENDPOINTS.EVENTS),
@@ -103,6 +122,11 @@ const Events = () => {
   const COLOR_OPTIONS = ['#ff8c00', '#ff4d4f', '#40a9ff', '#52c41a', '#faad14', '#722ed1', '#13c2c2'];
   const [modalVisible, setModalVisible] = useState(false);
   const [newTag, setNewTag] = useState({ name: '', color: COLOR_OPTIONS[0] });
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedEventIds, setSelectedEventIds] = useState(() => new Set());
+  const [bulkDeleteModalVisible, setBulkDeleteModalVisible] = useState(false);
+  const [bulkDeleteTargetIds, setBulkDeleteTargetIds] = useState([]);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
   const toggleTag = useCallback((tag) => {
     setSelectedTags(prev => (
@@ -144,8 +168,266 @@ const Events = () => {
     return [buildEventsForType(0), buildEventsForType(1)];
   }, [events, selectedTags]);
 
-  const renderEventItem = useCallback(({ item }) => <EventCard event={item} />, []);
-  const eventKeyExtractor = useCallback((item) => item.id.toString(), []);
+  const getEventId = useCallback((event) => (
+    event?.id != null ? String(event.id) : null
+  ), []);
+  const isSelectableEvent = useCallback((event) => (
+    Boolean(getEventId(event)) && !event?.is_virtual
+  ), [getEventId]);
+
+  const upcomingListItems = useMemo(() => {
+    const upcomingEvents = eventsByType[0] || [];
+    if (upcomingEvents.length === 0) return [];
+
+    const today = getStartOfDay(new Date());
+    const endOfWeek = getEndOfWeek(today);
+    const endOfMonth = getEndOfMonth(today);
+
+    const buckets = {
+      today: [],
+      thisWeek: [],
+      thisMonth: [],
+      later: [],
+    };
+
+    upcomingEvents.forEach((event) => {
+      const eventDate = getStartOfDay(getStart(event));
+      if (eventDate.getTime() === today.getTime()) {
+        buckets.today.push(event);
+      } else if (eventDate <= endOfWeek) {
+        buckets.thisWeek.push(event);
+      } else if (eventDate <= endOfMonth) {
+        buckets.thisMonth.push(event);
+      } else {
+        buckets.later.push(event);
+      }
+    });
+
+    const orderedSections = [
+      { key: 'today', title: 'Today' },
+      { key: 'thisWeek', title: 'This Week' },
+      { key: 'thisMonth', title: 'This Month' },
+      { key: 'later', title: 'Later' },
+    ];
+
+    return orderedSections.flatMap((section) => {
+      const sectionEvents = buckets[section.key];
+      if (!sectionEvents || sectionEvents.length === 0) return [];
+      return [
+        { type: 'header', key: `header-${section.key}`, title: section.title },
+        ...sectionEvents.map((event) => ({ type: 'event', key: `event-${event.id}`, event })),
+      ];
+    });
+  }, [eventsByType]);
+
+  const selectedCount = selectedEventIds.size;
+  const modalTargetIds = bulkDeleteTargetIds.length > 0 ? bulkDeleteTargetIds : [...selectedEventIds];
+  const modalTargetCount = modalTargetIds.length;
+  const pageEvents = eventsByType[selectedIndex] || [];
+  const pageData = selectedIndex === 0 ? upcomingListItems : pageEvents;
+  const selectedEventsPreview = useMemo(() => {
+    if (modalTargetIds.length === 0) return [];
+
+    const selectedLookup = new Set(modalTargetIds);
+    const combinedEvents = [...(eventsByType[0] || []), ...(eventsByType[1] || [])];
+    const uniqueSelected = new Map();
+
+    combinedEvents.forEach((event) => {
+      const eventId = getEventId(event);
+      if (!eventId || !selectedLookup.has(eventId) || uniqueSelected.has(eventId)) return;
+      uniqueSelected.set(eventId, event);
+    });
+
+    return [...uniqueSelected.values()].sort((a, b) => getStart(a).getTime() - getStart(b).getTime());
+  }, [eventsByType, getEventId, modalTargetIds]);
+  const allSelectableIds = useMemo(() => {
+    const ids = new Set();
+
+    // Upcoming page contains section header rows + event rows.
+    upcomingListItems.forEach((item) => {
+      if (item?.type === 'header') return;
+      const event = item?.event || item;
+      if (!isSelectableEvent(event)) return;
+      const eventId = getEventId(event);
+      if (eventId) ids.add(eventId);
+    });
+
+    // Past page is a flat array of events.
+    (eventsByType[1] || []).forEach((event) => {
+      if (!isSelectableEvent(event)) return;
+      const eventId = getEventId(event);
+      if (eventId) ids.add(eventId);
+    });
+
+    return ids;
+  }, [eventsByType, getEventId, isSelectableEvent, upcomingListItems]);
+
+  useEffect(() => {
+    if (!isSelectionMode) return;
+
+    setSelectedEventIds((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Set([...prev].filter((id) => allSelectableIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [allSelectableIds, isSelectionMode]);
+
+  const handleToggleSelection = useCallback((event) => {
+    const eventId = getEventId(event);
+    if (!eventId || !isSelectableEvent(event)) return;
+
+    setSelectedEventIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(eventId)) {
+        next.delete(eventId);
+      } else {
+        next.add(eventId);
+      }
+      return next;
+    });
+  }, [getEventId, isSelectableEvent]);
+
+  const handleSelectionDisabledPress = useCallback((event) => {
+    if (event?.type === 'birthday' || event?.is_virtual) {
+      Toast.show(
+        'Birthday events are auto-generated from contacts and cannot be deleted here.',
+        {
+          duration: Toast.durations.LONG,
+          position: Toast.positions.BOTTOM,
+          backgroundColor: theme.colors.text,
+        }
+      );
+      return;
+    }
+
+    Toast.show('This event cannot be deleted from bulk selection.', {
+      duration: Toast.durations.SHORT,
+      position: Toast.positions.BOTTOM,
+      backgroundColor: theme.colors.text,
+    });
+  }, []);
+
+  const handleEnterSelectionMode = useCallback(() => {
+    setSelectedEventIds(new Set());
+    setIsSelectionMode(true);
+  }, []);
+
+  const handleExitSelectionMode = useCallback(() => {
+    setBulkDeleteModalVisible(false);
+    setBulkDeleteTargetIds([]);
+    setIsBulkDeleting(false);
+    setSelectedEventIds(new Set());
+    setIsSelectionMode(false);
+  }, []);
+
+  const handleBulkDelete = useCallback(async () => {
+    const idsToDelete = [...modalTargetIds];
+    if (idsToDelete.length === 0 || isBulkDeleting) return;
+
+    setIsBulkDeleting(true);
+    try {
+      const results = await Promise.allSettled(
+        idsToDelete.map((id) => apiFetch(`${ENDPOINTS.EVENTS}${id}/`, { method: 'DELETE' }))
+      );
+
+      const failedIds = [];
+      let deletedCount = 0;
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          deletedCount += 1;
+        } else {
+          failedIds.push(idsToDelete[index]);
+        }
+      });
+
+      if (deletedCount > 0) {
+        await Promise.all([
+          queryClient.invalidateQueries(['events']),
+          queryClient.invalidateQueries(['dashboard']),
+        ]);
+      }
+
+      if (failedIds.length === 0) {
+        Toast.show(
+          deletedCount === 1
+            ? 'Deleted 1 event'
+            : `Deleted ${deletedCount} events`,
+          {
+            duration: Toast.durations.LONG,
+            position: Toast.positions.BOTTOM,
+            backgroundColor: theme.colors.success,
+          }
+        );
+        handleExitSelectionMode();
+        return;
+      }
+
+      if (deletedCount > 0) {
+        Toast.show(
+          `Deleted ${deletedCount} events, ${failedIds.length} failed`,
+          {
+            duration: Toast.durations.LONG,
+            position: Toast.positions.BOTTOM,
+            backgroundColor: theme.colors.warning || '#f59e0b',
+          }
+        );
+      } else {
+        Toast.show('Failed to delete selected events', {
+          duration: Toast.durations.LONG,
+          position: Toast.positions.BOTTOM,
+          backgroundColor: theme.colors.error,
+        });
+      }
+
+      setSelectedEventIds(new Set(failedIds));
+      setBulkDeleteModalVisible(false);
+      setBulkDeleteTargetIds([]);
+      setIsSelectionMode(true);
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  }, [handleExitSelectionMode, isBulkDeleting, modalTargetIds, queryClient]);
+
+  const openBulkDeleteModal = useCallback(() => {
+    const targetIds = [...selectedEventIds];
+    if (targetIds.length === 0) return;
+    setBulkDeleteTargetIds(targetIds);
+    setBulkDeleteModalVisible(true);
+  }, [selectedEventIds]);
+
+  const renderEventItem = useCallback(({ item }) => {
+    if (item?.type === 'header') {
+      return (
+        <View style={styles.sectionDivider}>
+          <View style={styles.sectionDividerLine} />
+          <Text style={styles.sectionDividerText}>{item.title}</Text>
+          <View style={styles.sectionDividerLine} />
+        </View>
+      );
+    }
+    const event = item.event || item;
+    const eventId = getEventId(event);
+    return (
+      <EventCard
+        event={event}
+        isSelectionMode={isSelectionMode}
+        isSelected={Boolean(eventId && selectedEventIds.has(eventId))}
+        isSelectionDisabled={!isSelectableEvent(event)}
+        onToggleSelect={handleToggleSelection}
+        onSelectionDisabledPress={handleSelectionDisabledPress}
+      />
+    );
+  }, [
+    getEventId,
+    handleSelectionDisabledPress,
+    handleToggleSelection,
+    isSelectableEvent,
+    isSelectionMode,
+    selectedEventIds,
+  ]);
+  const eventKeyExtractor = useCallback((item, index) => (
+    item.key || item.id?.toString() || `list-item-${index}`
+  ), []);
 
   return (
     <ScreenWrapper>
@@ -154,26 +436,53 @@ const Events = () => {
         <View style={styles.titleContainer}>
         <Text style={styles.title}>Events</Text>
         <View style={styles.titleActions}>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => router.push('/home')}
-          >
-            <Ionicons 
-              name="notifications-outline" 
-              size={wp(7)} 
-              color={theme.colors.text}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => router.push('/events/new')}
-          >
-            <Ionicons 
-              name="add" 
-              size={wp(8)} 
-              color={theme.colors.text} 
-            />
-          </TouchableOpacity>
+          {isSelectionMode ? (
+            <>
+              <TouchableOpacity
+                style={styles.selectionActionButton}
+                onPress={handleExitSelectionMode}
+                disabled={isBulkDeleting}
+              >
+                <Text style={styles.selectionActionText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.selectionDeleteButton,
+                  (selectedCount === 0 || isBulkDeleting) && styles.selectionDeleteButtonDisabled,
+                ]}
+                onPress={openBulkDeleteModal}
+                disabled={selectedCount === 0 || isBulkDeleting}
+              >
+                <Ionicons name="trash-outline" size={wp(5)} color="#fff" />
+                <Text style={styles.selectionDeleteText}>
+                  {isBulkDeleting ? 'Deleting...' : `Delete (${selectedCount})`}
+                </Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={handleEnterSelectionMode}
+              >
+                <Ionicons
+                  name="trash-outline"
+                  size={wp(7)}
+                  color={theme.colors.text}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => router.push('/events/new')}
+              >
+                <Ionicons
+                  name="add"
+                  size={wp(8)}
+                  color={theme.colors.text}
+                />
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </View>
 
@@ -345,15 +654,16 @@ const Events = () => {
               ]}
             >
               {eventTypes.map((_, pageIndex) => {
-                const pageEvents = eventsByType[pageIndex] || [];
+                const currentPageEvents = eventsByType[pageIndex] || [];
+                const currentPageData = pageIndex === 0 ? upcomingListItems : currentPageEvents;
                 return (
                   <View
                     key={`events-page-${pageIndex}`}
                     style={[styles.pagerPage, pagerWidth ? { width: pagerWidth } : null]}
                   >
-                    {pageEvents.length > 0 ? (
+                    {currentPageEvents.length > 0 ? (
                       <FlatList
-                        data={pageEvents}
+                        data={currentPageData}
                         keyExtractor={eventKeyExtractor}
                         renderItem={renderEventItem}
                         contentContainerStyle={styles.listContent}
@@ -378,6 +688,65 @@ const Events = () => {
         </LoadingState>
       </View>
       </View>
+
+      <Modal
+        visible={bulkDeleteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setBulkDeleteModalVisible(false);
+          setBulkDeleteTargetIds([]);
+        }}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Delete Selected Events</Text>
+            <Text style={styles.bulkDeleteMessage}>
+              {isBulkDeleting
+                ? `Deleting ${modalTargetCount} event${modalTargetCount === 1 ? '' : 's'}...`
+                : `Delete ${modalTargetCount} selected event${modalTargetCount === 1 ? '' : 's'}? This action cannot be undone.`}
+            </Text>
+            {selectedEventsPreview.length > 0 && (
+              <View style={styles.bulkDeleteList}>
+                {selectedEventsPreview.slice(0, 5).map((event) => (
+                  <View key={`delete-preview-${event.id}`} style={styles.bulkDeleteListItemRow}>
+                    <Text style={styles.bulkDeleteListItemTitle} numberOfLines={1}>
+                      {event.display_title || event.title}
+                    </Text>
+                    <Text style={styles.bulkDeleteListItemDate} numberOfLines={1}>
+                      {formatMonthDayRange(event)}
+                    </Text>
+                  </View>
+                ))}
+                {selectedEventsPreview.length > 5 && (
+                  <Text style={styles.bulkDeleteListMore}>
+                    +{selectedEventsPreview.length - 5} more
+                  </Text>
+                )}
+              </View>
+            )}
+            <View style={styles.modalActions}>
+              <Pressable
+                style={styles.modalBtn}
+                onPress={() => {
+                  setBulkDeleteModalVisible(false);
+                  setBulkDeleteTargetIds([]);
+                }}
+                disabled={isBulkDeleting}
+              >
+                <Text style={styles.cancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={styles.modalBtn}
+                onPress={handleBulkDelete}
+                disabled={isBulkDeleting}
+              >
+                <Text style={styles.deleteText}>{isBulkDeleting ? 'Deleting...' : 'Delete'}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScreenWrapper>
   );
 };
@@ -387,6 +756,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    minHeight: wp(12),
     marginBottom: wp(4),
     paddingHorizontal: wp(5),
   },
@@ -397,15 +767,45 @@ const styles = StyleSheet.create({
   },
   titleActions: {
     flexDirection: 'row',
-    gap: wp(0),
+    alignItems: 'center',
+    gap: wp(1.5),
   },
   actionButton: {
+    height: wp(10),
     paddingHorizontal: wp(3),
-    paddingVertical: wp(2),
     borderRadius: wp(2),
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: 'transparent',
+  },
+  selectionActionButton: {
+    height: wp(10),
+    paddingHorizontal: wp(2),
+    justifyContent: 'center',
+  },
+  selectionActionText: {
+    color: theme.colors.primary,
+    fontSize: wp(4),
+    fontWeight: '600',
+  },
+  selectionDeleteButton: {
+    height: wp(10),
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: wp(1.5),
+    backgroundColor: theme.colors.error,
+    borderRadius: wp(4),
+    paddingHorizontal: wp(3),
+  },
+  selectionDeleteButtonDisabled: {
+    opacity: 0.5,
+  },
+  selectionDeleteText: {
+    color: '#fff',
+    fontSize: wp(3.5),
+    fontWeight: '600',
   },
   badge: {
     backgroundColor: theme.colors.error,
@@ -459,10 +859,31 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    paddingVertical: wp(5),
+    paddingTop: wp(5),
   },
   listContent: {
     paddingBottom: wp(10),
+  },
+  sectionDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(2),
+    paddingHorizontal: wp(5),
+    paddingTop: wp(4),
+    paddingBottom: wp(2),
+    backgroundColor: theme.colors.background,
+  },
+  sectionDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: theme.colors.border,
+  },
+  sectionDividerText: {
+    fontSize: wp(3.2),
+    fontWeight: '700',
+    color: theme.colors.textLight,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   listSwipeArea: {
     flex: 1,
@@ -632,6 +1053,47 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontSize: wp(4),
     fontWeight: '600',
+  },
+  deleteText: {
+    color: theme.colors.error,
+    fontSize: wp(4),
+    fontWeight: '700',
+  },
+  bulkDeleteMessage: {
+    color: theme.colors.text,
+    fontSize: wp(3.8),
+    lineHeight: wp(5.5),
+    marginBottom: wp(3),
+  },
+  bulkDeleteList: {
+    backgroundColor: theme.colors.backgroundSecondary,
+    borderRadius: wp(2.5),
+    paddingHorizontal: wp(3),
+    paddingVertical: wp(2.5),
+    marginBottom: wp(3),
+    gap: wp(1),
+  },
+  bulkDeleteListItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(2),
+  },
+  bulkDeleteListItemTitle: {
+    flex: 1,
+    minWidth: 0,
+    color: theme.colors.text,
+    fontSize: wp(3.4),
+  },
+  bulkDeleteListItemDate: {
+    color: theme.colors.textLight,
+    fontSize: wp(3.2),
+    textAlign: 'right',
+  },
+  bulkDeleteListMore: {
+    color: theme.colors.textLight,
+    fontSize: wp(3.3),
+    fontStyle: 'italic',
+    marginTop: wp(0.5),
   },
   ghostTag: {
     paddingHorizontal: wp(3),

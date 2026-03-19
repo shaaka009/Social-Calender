@@ -11,6 +11,7 @@ import ScreenWrapper from '../../components/ScreenWrapper';
 import { EVENT_TYPES } from '../../constants/eventTypes';
 import { theme } from '../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../helpers/api';
+import { getPersonAvatarColors, getPersonInitials } from '../../helpers/avatar';
 import { wp } from '../../helpers/common';
 import useContacts from '../../helpers/useContacts';
 import { useCreateTag, useTags } from '../../helpers/useTags';
@@ -85,6 +86,8 @@ const AddEventScreen = () => {
   const renderContactItem = useCallback(({ item: conn }) => {
     const selected = form.people_ids.includes(conn.target.id);
     const person = conn.target;
+    const avatarColors = getPersonAvatarColors(person);
+    const initials = getPersonInitials(person);
     return (
       <TouchableOpacity
         style={styles.gridItem}
@@ -94,12 +97,12 @@ const AddEventScreen = () => {
           {person.profile_picture_url ? (
             <Image source={{ uri: person.profile_picture_url }} style={styles.gridAvatar} />
           ) : (
-            <View style={[styles.gridAvatar, styles.gridAvatarPlaceholder]}>
-              <Text style={styles.gridAvatarText}>{person.first_name?.[0]}{person.last_name?.[0]}</Text>
+            <View style={[styles.gridAvatar, styles.gridAvatarPlaceholder, { backgroundColor: avatarColors.bg }]}>
+              <Text style={[styles.gridAvatarText, { color: avatarColors.fg }]}>{initials}</Text>
             </View>
           )}
           {selected && (
-            <Ionicons name="checkmark-circle" size={wp(6)} color={theme.colors.primary} style={styles.checkIcon} />
+            <Ionicons name="checkmark-circle" size={wp(6)} color={theme.colors.success} style={styles.checkIcon} />
           )}
         </View>
         <Text style={styles.gridName} numberOfLines={1}>{person.first_name}</Text>
