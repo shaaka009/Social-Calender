@@ -2,6 +2,7 @@ import json
 from datetime import date
 
 from django.contrib.auth.models import User
+from django.utils import timezone
 from rest_framework import serializers
 from .models import (
     Person,
@@ -56,8 +57,35 @@ class UserSearchSerializer(serializers.ModelSerializer):
         except Exception:
             return None
 
-        outgoing = Connection.objects.filter(owner=request_person, target__account__user=user).first()
-        incoming = Connection.objects.filter(owner__account__user=user, target=request_person).first()
+        if not hasattr(self, "_connection_lookup"):
+            outgoing_map = {}
+            incoming_map = {}
+
+            outgoing_connections = Connection.objects.filter(
+                owner=request_person,
+                target__account__user__isnull=False,
+            ).select_related("target__account__user")
+            for connection in outgoing_connections:
+                target_user_id = getattr(connection.target.account.user, "id", None)
+                if target_user_id is not None:
+                    outgoing_map[target_user_id] = connection
+
+            incoming_connections = Connection.objects.filter(
+                target=request_person,
+                owner__account__user__isnull=False,
+            ).select_related("owner__account__user")
+            for connection in incoming_connections:
+                owner_user_id = getattr(connection.owner.account.user, "id", None)
+                if owner_user_id is not None:
+                    incoming_map[owner_user_id] = connection
+
+            self._connection_lookup = {
+                "outgoing": outgoing_map,
+                "incoming": incoming_map,
+            }
+
+        outgoing = self._connection_lookup["outgoing"].get(user.id)
+        incoming = self._connection_lookup["incoming"].get(user.id)
 
         if not outgoing and not incoming:
             return {'status': 'none'}
@@ -94,7 +122,6 @@ class TagSerializer(serializers.ModelSerializer):
 class ConnectionSerializer(serializers.ModelSerializer):
     # Fields for app user connection
     target_person_id = serializers.IntegerField(write_only=True, required=False)
-    extra_contacts = serializers.ListField(child=serializers.DictField(), required=False)
     profile_picture = serializers.ImageField(required=False, allow_null=True)
     
     # Fields for manual contact creation
@@ -163,12 +190,10 @@ class ConnectionSerializer(serializers.ModelSerializer):
 
         # Extract organization override early if present (for connection-specific label)
         conn_org_override = validated_data.pop("organization", "")
+        tag_names = validated_data.pop("tags", [])
 
         # Handle manual contact creation
         if 'first_name' in validated_data:
-            # Extract tags list (if provided) BEFORE creating Person
-            tag_names = validated_data.pop('tags', [])
-
             target_person = Person.objects.create(
                 owner=owner_person,  # Set the owner for manual contacts
                 first_name=validated_data.pop('first_name'),
@@ -201,7 +226,7 @@ class ConnectionSerializer(serializers.ModelSerializer):
             conn.save(update_fields=["organization"])
 
         # Handle tag assignments (only if the request included any)
-        if 'tag_names' in locals() and tag_names:
+        if tag_names:
             tag_objs = [Tag.objects.get_or_create(owner=owner_person, name=n.strip())[0] for n in tag_names]
             conn.tags.set(tag_objs)
         return conn
@@ -300,7 +325,7 @@ class ConnectionSerializer(serializers.ModelSerializer):
 class InteractionSerializer(serializers.ModelSerializer):
     actor = PersonSerializer(read_only=True)
     target = PersonSerializer(read_only=True)
-    actor_person_id = serializers.IntegerField(write_only=True)
+    actor_person_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     target_person_id = serializers.IntegerField(write_only=True)
     type_display = serializers.SerializerMethodField(read_only=True)
 
@@ -311,19 +336,28 @@ class InteractionSerializer(serializers.ModelSerializer):
         return dict(Interaction.INTERACTION_TYPE_CHOICES).get(obj.get('type', obj) if isinstance(obj, dict) else obj, '')
 
     def validate(self, attrs):
-        # Basic validation that actor owns a connection to target (for permission)
         request = self.context.get("request")
-        if request:
-            actor_person = request.user.account.person
-            target_id = attrs.get("target_person_id")
-            if not Connection.objects.filter(owner=actor_person, target_id=target_id, status__in=[Connection.ACCEPTED, Connection.PENDING]).exists():
-                raise serializers.ValidationError("You need a connection before logging an interaction.")
+        if not request:
+            return attrs
+
+        actor_person = request.user.account.person
+        target_id = attrs.get("target_person_id")
+        if not Person.objects.filter(id=target_id).exists():
+            raise serializers.ValidationError({"target_person_id": "Person does not exist."})
+
+        has_connection = Connection.objects.filter(
+            owner=actor_person,
+            target_id=target_id,
+            status__in=[Connection.ACCEPTED, Connection.PENDING],
+        ).exists()
+        if not has_connection:
+            raise serializers.ValidationError("You need a connection before logging an interaction.")
         return attrs
 
     def create(self, validated_data):
-        actor_id = validated_data.pop("actor_person_id")
+        validated_data.pop("actor_person_id", None)
         target_id = validated_data.pop("target_person_id")
-        actor_person = Person.objects.get(id=actor_id)
+        actor_person = self.context["request"].user.account.person
         target_person = Person.objects.get(id=target_id)
         return Interaction.objects.create(actor=actor_person, target=target_person, **validated_data)
 
@@ -367,11 +401,34 @@ class EventSerializer(serializers.ModelSerializer):
     end_date = serializers.DateField(allow_null=True, required=False)
     display_title = serializers.SerializerMethodField()
 
+    def _get_owner_person(self):
+        request = self.context.get("request")
+        if not request or not hasattr(request.user, "account"):
+            return None
+        return request.user.account.person
+
+    def _resolve_people(self, people_ids):
+        owner_person = self._get_owner_person()
+        if owner_person is None:
+            return Person.objects.none()
+        connection_target_ids = Connection.objects.filter(
+            owner=owner_person
+        ).exclude(
+            status=Connection.DECLINED
+        ).values_list("target_id", flat=True)
+        return Person.objects.filter(id__in=people_ids).filter(id__in=connection_target_ids)
+
+    def _resolve_tags(self, tag_ids):
+        owner_person = self._get_owner_person()
+        if owner_person is None:
+            return Tag.objects.none()
+        return Tag.objects.filter(owner=owner_person, id__in=tag_ids)
+
     def get_display_title(self, obj):
         # For birthday events, check if we have a year and calculate age
         if obj.type == 'birthday' and hasattr(obj, 'start_date') and obj.start_date:
             # Calculate age
-            today = date.today()
+            today = timezone.localdate()
             age = today.year - obj.start_date.year
             # Adjust age if birthday hasn't occurred this year
             if today.month < obj.start_date.month or (today.month == obj.start_date.month and today.day < obj.start_date.day):
@@ -379,30 +436,50 @@ class EventSerializer(serializers.ModelSerializer):
             return f"{obj.title} (turning {age + 1})"
         return obj.title
     def update(self, instance, validated_data):
+        people = None
+        tags = None
+
         # Update people if people_ids is provided
         if 'people_ids' in validated_data:
             people_ids = validated_data.pop('people_ids')
-            instance.people.set(Person.objects.filter(id__in=people_ids))
+            people = self._resolve_people(people_ids)
+            if people.count() != len(set(people_ids)):
+                raise serializers.ValidationError({"people_ids": "One or more people are not valid for this user."})
 
         # Update all other fields
         tag_ids = validated_data.pop('tag_ids', None)
+        if tag_ids is not None:
+            tags = self._resolve_tags(tag_ids)
+            if tags.count() != len(set(tag_ids)):
+                raise serializers.ValidationError({"tag_ids": "One or more tags are not valid for this user."})
+
         for field, value in validated_data.items():
             setattr(instance, field, value)
 
         instance.save()
+        if people is not None:
+            instance.people.set(people)
 
-        if tag_ids is not None:
-            instance.tags.set(Tag.objects.filter(id__in=tag_ids))
+        if tags is not None:
+            instance.tags.set(tags)
         return instance
 
     def create(self, validated_data):
         people_ids = validated_data.pop('people_ids', [])
         tag_ids = validated_data.pop('tag_ids', [])
+        people = self._resolve_people(people_ids)
+        if people.count() != len(set(people_ids)):
+            raise serializers.ValidationError({"people_ids": "One or more people are not valid for this user."})
+
+        tags = self._resolve_tags(tag_ids)
+        if tags.count() != len(set(tag_ids)):
+            raise serializers.ValidationError({"tag_ids": "One or more tags are not valid for this user."})
+
         event = Event.objects.create(**validated_data)
         if people_ids:
-            event.people.set(Person.objects.filter(id__in=people_ids))
+            event.people.set(people)
         if tag_ids:
-            event.tags.set(Tag.objects.filter(id__in=tag_ids))
+            event.tags.set(tags)
         return event
 
     class Meta:
@@ -447,10 +524,10 @@ class NotificationSerializer(serializers.ModelSerializer):
                 owner_person = request.user.account.person
                 conn = Connection.objects.filter(owner=owner_person, target=obj.person).first()
                 if conn and conn.last_contact_date:
-                    return (date.today() - conn.last_contact_date).days
+                    return (timezone.localdate() - conn.last_contact_date).days
         # Fallback: use the notification's stored date
         if obj.date:
-            return (date.today() - obj.date).days
+            return (timezone.localdate() - obj.date).days
         return None
 
     def get_daysUntil(self, obj):
@@ -463,7 +540,7 @@ class NotificationSerializer(serializers.ModelSerializer):
             elif obj.date:
                 event_date = obj.date  # legacy fallback
             if event_date:
-                return (event_date - date.today()).days
+                return (event_date - timezone.localdate()).days
         return None
 
     def get_connection_id(self, obj):

@@ -4,6 +4,8 @@ import calendar
 from datetime import date
 from typing import Dict, Iterable, List
 
+from django.utils import timezone
+
 from .models import Connection, Person
 
 
@@ -112,7 +114,7 @@ def birthday_people_for_user(user_person: Person) -> Iterable[Person]:
 
 def build_virtual_birthday_events(user_person: Person, today: date | None = None) -> List[Dict]:
     """Return birthday events that fall within +/- 6 months of today."""
-    today = today or date.today()
+    today = today or timezone.localdate()
     window_start = add_months(today, -6)
     window_end = add_months(today, 6)
 

@@ -9,6 +9,7 @@ from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils import timezone
 from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -139,7 +140,7 @@ def signin(request):
             try:
                 user_obj = get_user_model().objects.get(email=email)
                 user = authenticate(username=user_obj.username, password=password)
-            except get_user_model().DoesNotExist:
+            except (get_user_model().DoesNotExist, get_user_model().MultipleObjectsReturned):
                 user = None
 
         if user is not None:
@@ -283,7 +284,7 @@ class DashboardAPIView(APIView):
             return
         self._last_notif_refresh[user.id] = now
 
-        today = date.today()
+        today = timezone.localdate()
 
         # --- No-contact notifications (scoped to THIS user's connections) ---
         connections = Connection.objects.filter(
@@ -339,7 +340,7 @@ class DashboardAPIView(APIView):
 
     def get(self, request):
         user_person = get_or_create_person_for_user(request.user)
-        today = date.today()
+        today = timezone.localdate()
         start_date = today - timedelta(days=365)
         end_date = today + timedelta(days=365)
 
@@ -401,8 +402,8 @@ class ConnectionViewSet(viewsets.ModelViewSet):
         # Show connections where user is owner, plus pending connections where user is target
         return Connection.objects.filter(
             Q(owner=user_person) | 
-            Q(target=user_person, status='pending')
-        ).order_by('target__first_name', 'target__last_name')
+            Q(target=user_person, status=Connection.PENDING)
+        ).select_related('owner', 'target').prefetch_related('tags').order_by('target__first_name', 'target__last_name')
 
     def perform_create(self, serializer):
         user_person = get_or_create_person_for_user(self.request.user)
@@ -416,20 +417,20 @@ class ConnectionViewSet(viewsets.ModelViewSet):
         
         if connection.target != user_person:
             raise PermissionDenied("You can only accept requests sent to you")
-        if connection.status != 'pending':
+        if connection.status != Connection.PENDING:
             return Response(
                 {"detail": "Connection is not in pending state"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        connection.status = 'accepted'
+        connection.status = Connection.ACCEPTED
         connection.save()
         
         # Create reciprocal connection
         Connection.objects.update_or_create(
             owner=user_person,
             target=connection.owner,
-            defaults={'status': 'accepted', 'no_contact_threshold': connection.no_contact_threshold}
+            defaults={'status': Connection.ACCEPTED, 'no_contact_threshold': connection.no_contact_threshold}
         )
         
         return Response({"detail": "Connection accepted"})
@@ -442,13 +443,13 @@ class ConnectionViewSet(viewsets.ModelViewSet):
         
         if connection.target != user_person:
             raise PermissionDenied("You can only decline requests sent to you")
-        if connection.status != 'pending':
+        if connection.status != Connection.PENDING:
             return Response(
                 {"detail": "Connection is not in pending state"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        connection.status = 'declined'
+        connection.status = Connection.DECLINED
         connection.save()
         return Response({"detail": "Connection declined"})
 
@@ -506,7 +507,7 @@ class EventViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Event.objects.filter(user=self.request.user).order_by('start_date')
+        return Event.objects.filter(user=self.request.user).prefetch_related('people', 'tags').order_by('start_date')
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -516,7 +517,7 @@ class EventViewSet(viewsets.ModelViewSet):
         serialized_events = self.get_serializer(queryset, many=True).data
 
         user_person = get_or_create_person_for_user(request.user)
-        birthday_events = build_virtual_birthday_events(user_person=user_person, today=date.today())
+        birthday_events = build_virtual_birthday_events(user_person=user_person, today=timezone.localdate())
 
         merged_events = list(serialized_events) + birthday_events
         merged_events.sort(key=lambda item: (item.get("start_date") or "", str(item.get("id"))))
