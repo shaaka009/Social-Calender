@@ -687,6 +687,7 @@ class SignupPasswordResetTests(APITestCase):
     def setUp(self):
         self.signup_url = reverse("signup")
         self.reset_url = reverse("password_reset")
+        self.signin_url = reverse("signin")
 
     def test_signup_creates_user_and_person(self):
         payload = {"email": "new@example.com", "first_name": "New", "last_name": "User", "password1": "Passw0rd!", "password2": "Passw0rd!"}
@@ -694,10 +695,45 @@ class SignupPasswordResetTests(APITestCase):
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
         self.assertTrue(User.objects.filter(email="new@example.com").exists())
         self.assertTrue(Person.objects.filter(email="new@example.com").exists())
+        created_user = User.objects.get(email="new@example.com")
+        self.assertFalse(created_user.is_active)
+        self.assertTrue(resp.json().get("requires_verification"))
+
+    def test_signup_existing_email_returns_validation_error(self):
+        create_user_with_person("existing@example.com", password="Passw0rd!")
+        payload = {
+            "email": "existing@example.com",
+            "first_name": "Existing",
+            "last_name": "User",
+            "password1": "Passw0rd!",
+            "password2": "Passw0rd!",
+        }
+        resp = self.client.post(self.signup_url, payload, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("email", resp.json().get("errors", {}))
 
     def test_password_reset_request_nonexistent_email_still_200(self):
         resp = self.client.post(self.reset_url, {"email": "ghost@example.com"}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+    def test_signin_blocks_unverified_user(self):
+        signup_payload = {
+            "email": "pending@example.com",
+            "first_name": "Pending",
+            "last_name": "User",
+            "password1": "Passw0rd!",
+            "password2": "Passw0rd!",
+        }
+        signup_resp = self.client.post(self.signup_url, signup_payload, format="json")
+        self.assertEqual(signup_resp.status_code, status.HTTP_201_CREATED)
+
+        signin_resp = self.client.post(
+            self.signin_url,
+            {"email": "pending@example.com", "password": "Passw0rd!"},
+            format="json",
+        )
+        self.assertEqual(signin_resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(signin_resp.json().get("requires_verification"))
 
 
 # ---------------------------------------------------------------------------
@@ -778,3 +814,43 @@ class PasswordResetFlowTests(APITestCase):
         # Authenticate with new password to confirm
         login_resp = self.client.post(reverse("signin"), {"email": self.user.email, "password": "NewPass123!"}, format="json")
         self.assertTrue(login_resp.json().get("success"))
+
+
+class EmailVerificationFlowTests(APITestCase):
+    def setUp(self):
+        self.signup_url = reverse("signup")
+        self.verify_url = reverse("verify_email")
+
+    def test_verify_email_activates_user_and_allows_signin(self):
+        payload = {
+            "email": "verifyme@example.com",
+            "first_name": "Verify",
+            "last_name": "Me",
+            "password1": "Passw0rd!",
+            "password2": "Passw0rd!",
+        }
+        signup_resp = self.client.post(self.signup_url, payload, format="json")
+        self.assertEqual(signup_resp.status_code, status.HTTP_201_CREATED)
+
+        user = User.objects.get(email="verifyme@example.com")
+        self.assertFalse(user.is_active)
+
+        verification_code = user.account.verification_code
+        verify_resp = self.client.post(
+            self.verify_url,
+            {"email": "verifyme@example.com", "code": verification_code},
+            format="json",
+        )
+        self.assertEqual(verify_resp.status_code, status.HTTP_200_OK)
+        self.assertIn("tokens", verify_resp.json())
+
+        user.refresh_from_db()
+        self.assertTrue(user.is_active)
+
+        signin_resp = self.client.post(
+            reverse("signin"),
+            {"email": "verifyme@example.com", "password": "Passw0rd!"},
+            format="json",
+        )
+        self.assertEqual(signin_resp.status_code, status.HTTP_200_OK)
+        self.assertTrue(signin_resp.json().get("success"))

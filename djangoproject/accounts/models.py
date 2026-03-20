@@ -202,6 +202,8 @@ class Account(models.Model):
         on_delete=models.CASCADE,
         related_name="account",
     )
+    verification_code = models.CharField(max_length=6, blank=True, default="")
+    verification_code_expires_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return str(self.user)

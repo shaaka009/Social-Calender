@@ -14,6 +14,8 @@ router.register("tags", views.TagViewSet, basename="tag")
 
 urlpatterns = [
     path("signup/", views.signup, name="signup"),
+    path("verify-email/", views.verify_email, name="verify_email"),
+    path("verify-email/resend/", views.resend_verification_email, name="resend_verification_email"),
     path("signin/", views.signin, name="signin"),
     path("signout/", views.signout, name="signout"),
     path("user/", views.get_user, name="get_user"),

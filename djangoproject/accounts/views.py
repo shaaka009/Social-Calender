@@ -1,7 +1,10 @@
 import json
+import secrets
+import string
 
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.tokens import default_token_generator
+from django.db import IntegrityError
 from django.db import models
 from django.db.models import Q
 from django.db import transaction
@@ -55,6 +58,27 @@ def _tokens_for_user(user):
     }
 
 
+def _generate_verification_code():
+    return "".join(secrets.choice(string.digits) for _ in range(6))
+
+
+def _send_verification_email(user, verification_code):
+    """Send 6-digit verification code. Fail silently in development."""
+    subject = "Verify your email address"
+    message = (
+        f"Hi {user.first_name or 'there'},\n\n"
+        "Thanks for signing up for Social Calendar.\n"
+        "Please verify your email address using this 6-digit code:\n\n"
+        f"{verification_code}\n\n"
+        "This code expires in 15 minutes.\n\n"
+        "If you did not create this account, you can ignore this email."
+    )
+    try:
+        send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [user.email])
+    except Exception:
+        pass
+
+
 # Create your views here.
 
 # -------------------------------------------------
@@ -85,31 +109,45 @@ def signup(request):
     if request.method == "POST":
         form = UserRegistrationForm(json.loads(request.body))
         if form.is_valid():
-            with transaction.atomic():
-                user = form.save()
-                
-                # Create a Person and Account for this user
-                person = Person.objects.create(
-                    first_name=user.first_name,
-                    last_name=user.last_name,
-                    email=user.email,
-                )
-                Account.objects.create(user=user, person=person)
-                
-                tokens = _tokens_for_user(user)
-                return JsonResponse(
-                    {
-                        "message": "Account created successfully!",
-                        "success": True,
-                        "tokens": tokens,
-                        "user": {
-                            "id": user.id,
-                            "email": user.email,
-                            "first_name": user.first_name,
-                            "last_name": user.last_name,
+            try:
+                with transaction.atomic():
+                    user = form.save()
+                    user.is_active = False
+                    user.save(update_fields=["is_active"])
+                    verification_code = _generate_verification_code()
+                    verification_expiry = timezone.now() + timedelta(minutes=15)
+                    
+                    # Create a Person and Account for this user
+                    person = Person.objects.create(
+                        first_name=user.first_name,
+                        last_name=user.last_name,
+                        email=user.email,
+                    )
+                    Account.objects.create(
+                        user=user,
+                        person=person,
+                        verification_code=verification_code,
+                        verification_code_expires_at=verification_expiry,
+                    )
+                    _send_verification_email(user, verification_code)
+                    return JsonResponse(
+                        {
+                            "message": "Account created. Please verify your email to continue.",
+                            "success": True,
+                            "requires_verification": True,
+                            "user": {
+                                "id": user.id,
+                                "email": user.email,
+                                "first_name": user.first_name,
+                                "last_name": user.last_name,
+                            },
                         },
-                    },
-                    status=201,
+                        status=201,
+                    )
+            except IntegrityError:
+                return JsonResponse(
+                    {"message": "Invalid form data", "errors": {"email": ["An account with this email already exists."]}},
+                    status=400,
                 )
         else:
             return JsonResponse(
@@ -139,6 +177,15 @@ def signin(request):
             # If username auth failed, try to find user by email
             try:
                 user_obj = get_user_model().objects.get(email=email)
+                if user_obj.check_password(password) and not user_obj.is_active:
+                    return JsonResponse(
+                        {
+                            "success": False,
+                            "message": "Please verify your email before signing in.",
+                            "requires_verification": True,
+                        },
+                        status=403,
+                    )
                 user = authenticate(username=user_obj.username, password=password)
             except (get_user_model().DoesNotExist, get_user_model().MultipleObjectsReturned):
                 user = None
@@ -165,6 +212,92 @@ def signin(request):
             )
 
     return JsonResponse({"message": "Method not allowed"}, status=405)
+
+
+@csrf_exempt
+def verify_email(request):
+    if request.method != "POST":
+        return JsonResponse({"message": "Method not allowed"}, status=405)
+
+    data = json.loads(request.body or "{}")
+    email = (data.get("email") or "").strip().lower()
+    code = (data.get("code") or "").strip()
+
+    if not email or not code:
+        return JsonResponse({"success": False, "message": "Email and code are required."}, status=400)
+
+    try:
+        user = get_user_model().objects.get(email__iexact=email)
+    except get_user_model().DoesNotExist:
+        return JsonResponse({"success": False, "message": "Invalid verification code."}, status=400)
+
+    if user.is_active:
+        tokens = _tokens_for_user(user)
+        return JsonResponse(
+            {
+                "success": True,
+                "message": "Email already verified.",
+                "tokens": tokens,
+            }
+        )
+
+    try:
+        account = user.account
+    except Account.DoesNotExist:
+        return JsonResponse({"success": False, "message": "Unable to verify account."}, status=400)
+
+    if not account.verification_code or account.verification_code != code:
+        return JsonResponse({"success": False, "message": "Invalid verification code."}, status=400)
+    if not account.verification_code_expires_at or timezone.now() > account.verification_code_expires_at:
+        return JsonResponse({"success": False, "message": "Verification code expired. Please request a new code."}, status=400)
+
+    user.is_active = True
+    user.save(update_fields=["is_active"])
+    account.verification_code = ""
+    account.verification_code_expires_at = None
+    account.save(update_fields=["verification_code", "verification_code_expires_at"])
+
+    tokens = _tokens_for_user(user)
+    return JsonResponse(
+        {
+            "success": True,
+            "message": "Email verified successfully.",
+            "tokens": tokens,
+        }
+    )
+
+
+@csrf_exempt
+def resend_verification_email(request):
+    if request.method != "POST":
+        return JsonResponse({"message": "Method not allowed"}, status=405)
+
+    data = json.loads(request.body or "{}")
+    email = (data.get("email") or "").strip().lower()
+    if not email:
+        return JsonResponse({"success": False, "message": "Email is required."}, status=400)
+
+    try:
+        user = get_user_model().objects.get(email__iexact=email)
+        if not user.is_active:
+            account = user.account
+            verification_code = _generate_verification_code()
+            account.verification_code = verification_code
+            account.verification_code_expires_at = timezone.now() + timedelta(minutes=15)
+            account.save(update_fields=["verification_code", "verification_code_expires_at"])
+            _send_verification_email(user, verification_code)
+    except get_user_model().DoesNotExist:
+        # Avoid leaking account existence.
+        pass
+    except Account.DoesNotExist:
+        pass
+
+    return JsonResponse(
+        {
+            "success": True,
+            "message": "If this email exists and is unverified, a verification link has been sent.",
+        }
+    )
 
 
 @csrf_exempt
