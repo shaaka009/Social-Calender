@@ -16,6 +16,13 @@ const getEnd = (event) => (
 );
 
 const isSameDay = (d1, d2) => d1.toDateString() === d2.toDateString();
+const getStartOfDay = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+const isDateInRangeInclusive = (date, start, end) => {
+  const normalizedDate = getStartOfDay(date);
+  const normalizedStart = getStartOfDay(start);
+  const normalizedEnd = getStartOfDay(end);
+  return normalizedDate >= normalizedStart && normalizedDate <= normalizedEnd;
+};
 
 const formatRange = (event) => {
   const start = getStart(event);
@@ -99,6 +106,8 @@ const EventCard = React.memo(({
     isPersonGeneratedEvent,
   } = React.useMemo(() => {
     const start = getStart(event);
+    const end = getEnd(event);
+    const today = new Date();
     const people = [];
 
     if (Array.isArray(event.people) && event.people.length > 0) {
@@ -118,7 +127,7 @@ const EventCard = React.memo(({
       || 'Birthday';
 
     return {
-      isToday: start.toDateString() === new Date().toDateString(),
+      isToday: isDateInRangeInclusive(today, start, end),
       formattedRange: formatRange(event),
       iconName: EVENT_ICON_BY_TYPE[event.type] || 'calendar-outline',
       displayTitle: getEventCardTitle(event),

@@ -139,8 +139,8 @@ const Events = () => {
     const buildEventsForType = (typeIndex) => {
       const today = new Date(new Date().setHours(0, 0, 0, 0));
       const timeFilteredEvents = events.filter(event => {
-        const eventDate = getStart(event);
-        return typeIndex === 0 ? eventDate >= today : eventDate < today;
+        const eventEndDate = getEnd(event);
+        return typeIndex === 0 ? eventEndDate >= today : eventEndDate < today;
       });
 
       // Filter by tags if any are selected
@@ -217,6 +217,48 @@ const Events = () => {
       ];
     });
   }, [eventsByType]);
+  const pastListItems = useMemo(() => {
+    const pastEvents = eventsByType[1] || [];
+    if (pastEvents.length === 0) return [];
+
+    const today = getStartOfDay(new Date());
+    const lastWeekStart = new Date(today);
+    lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+    const lastMonthStart = new Date(today);
+    lastMonthStart.setDate(lastMonthStart.getDate() - 30);
+
+    const buckets = {
+      lastWeek: [],
+      lastMonth: [],
+      everythingPastThat: [],
+    };
+
+    pastEvents.forEach((event) => {
+      const eventDate = getStartOfDay(getStart(event));
+      if (eventDate >= lastWeekStart) {
+        buckets.lastWeek.push(event);
+      } else if (eventDate >= lastMonthStart) {
+        buckets.lastMonth.push(event);
+      } else {
+        buckets.everythingPastThat.push(event);
+      }
+    });
+
+    const orderedSections = [
+      { key: 'lastWeek', title: 'Last Week' },
+      { key: 'lastMonth', title: 'Last Month' },
+      { key: 'everythingPastThat', title: 'Earlier' },
+    ];
+
+    return orderedSections.flatMap((section) => {
+      const sectionEvents = buckets[section.key];
+      if (!sectionEvents || sectionEvents.length === 0) return [];
+      return [
+        { type: 'header', key: `header-${section.key}`, title: section.title },
+        ...sectionEvents.map((event) => ({ type: 'event', key: `event-${event.id}`, event })),
+      ];
+    });
+  }, [eventsByType]);
 
   const selectedCount = selectedEventIds.size;
   const modalTargetIds = useMemo(
@@ -251,15 +293,17 @@ const Events = () => {
       if (eventId) ids.add(eventId);
     });
 
-    // Past page is a flat array of events.
-    (eventsByType[1] || []).forEach((event) => {
+    // Past page contains section header rows + event rows.
+    pastListItems.forEach((item) => {
+      if (item?.type === 'header') return;
+      const event = item?.event || item;
       if (!isSelectableEvent(event)) return;
       const eventId = getEventId(event);
       if (eventId) ids.add(eventId);
     });
 
     return ids;
-  }, [eventsByType, getEventId, isSelectableEvent, upcomingListItems]);
+  }, [getEventId, isSelectableEvent, pastListItems, upcomingListItems]);
 
   useEffect(() => {
     if (!isSelectionMode) return;
@@ -654,7 +698,7 @@ const Events = () => {
             >
               {eventTypes.map((_, pageIndex) => {
                 const currentPageEvents = eventsByType[pageIndex] || [];
-                const currentPageData = pageIndex === 0 ? upcomingListItems : currentPageEvents;
+                const currentPageData = pageIndex === 0 ? upcomingListItems : pastListItems;
                 return (
                   <View
                     key={`events-page-${pageIndex}`}

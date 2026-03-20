@@ -12,6 +12,7 @@ import { theme } from "../../constants/theme";
 import { ENDPOINTS, apiFetch } from "../../helpers/api";
 import { clearTokens } from "../../helpers/auth";
 import { formatDateForDisplay, wp } from "../../helpers/common";
+import { getPersonAvatarColors, getPersonInitials } from "../../helpers/avatar";
 import useProfile from "../../helpers/useProfile";
 
 const ProfileScreen = () => {
@@ -19,6 +20,8 @@ const ProfileScreen = () => {
   const queryClient = useQueryClient();
   const { data, isLoading, isError } = useProfile();
   const [region, setRegion] = React.useState(null);
+  const avatarColors = getPersonAvatarColors(data || {});
+  const initials = getPersonInitials(data || {});
 
   const handleSignOut = () => {
     Alert.alert("Sign Out", "Are you sure you want to sign out?", [
@@ -72,6 +75,16 @@ const ProfileScreen = () => {
           <View style={styles.titleActions}>
             <TouchableOpacity
               style={styles.actionButton}
+              onPress={() => router.push("/profile/settings")}
+            >
+              <Ionicons
+                name="settings-outline"
+                size={wp(6)}
+                color={theme.colors.text}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionButton}
               onPress={() => router.push("/profile/edit")}
             >
               <Ionicons
@@ -91,9 +104,9 @@ const ProfileScreen = () => {
               contentFit="cover"
             />
           ) : (
-            <View style={styles.placeholderImage}>
-              <Text style={styles.placeholderText}>
-                {data.first_name?.[0]?.toUpperCase() || "?"}
+            <View style={[styles.placeholderImage, { backgroundColor: avatarColors.bg }]}>
+              <Text style={[styles.placeholderText, { color: avatarColors.fg }]}>
+                {initials}
               </Text>
             </View>
           )}
@@ -257,8 +270,7 @@ const styles = StyleSheet.create({
   },
   placeholderText: {
     fontSize: wp(12),
-    color: theme.colors.text,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   infoSection: {
     backgroundColor: theme.colors.card,

@@ -9,6 +9,7 @@ import LoadingState from "../../components/LoadingState";
 import MonthDayYearPicker from '../../components/MonthDayYearPicker';
 import ScreenWrapper from "../../components/ScreenWrapper";
 import { theme } from "../../constants/theme";
+import { getPersonAvatarColors, getPersonInitials } from "../../helpers/avatar";
 import { formatDateLocal, parseDateLocal, wp } from "../../helpers/common";
 import useProfile, { useUpdateProfileMutation } from "../../helpers/useProfile";
 
@@ -28,6 +29,16 @@ const EditProfileScreen = () => {
     birthday: null,
     profile_picture: null,
     location: "",
+  });
+  const avatarColors = getPersonAvatarColors({
+    id: data?.id,
+    email: data?.email,
+    first_name: form.first_name,
+    last_name: form.last_name,
+  });
+  const initials = getPersonInitials({
+    first_name: form.first_name,
+    last_name: form.last_name,
   });
 
   // Contact rows table
@@ -135,9 +146,9 @@ const EditProfileScreen = () => {
               contentFit="cover"
             />
           ) : (
-            <View style={styles.placeholderImage}>
-              <Text style={styles.placeholderText}>
-                {form.first_name?.[0]?.toUpperCase() || "?"}
+            <View style={[styles.placeholderImage, { backgroundColor: avatarColors.bg }]}>
+              <Text style={[styles.placeholderText, { color: avatarColors.fg }]}>
+                {initials}
               </Text>
             </View>
           )}
@@ -294,7 +305,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   placeholderText: {
-    color: "white",
     fontSize: wp(12),
     fontWeight: "bold",
   },
