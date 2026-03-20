@@ -1,10 +1,10 @@
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import CustomButton from "../../components/CustomButton";
 import CustomInput from "../../components/CustomInput";
@@ -12,7 +12,6 @@ import LoadingState from "../../components/LoadingState";
 import ScreenWrapper from "../../components/ScreenWrapper";
 import { theme } from "../../constants/theme";
 import { ENDPOINTS } from "../../helpers/api";
-import { storeTokens } from "../../helpers/auth";
 import { wp } from "../../helpers/common";
 import useLoading from "../../helpers/useLoading";
 
@@ -64,14 +63,10 @@ const SignUp = () => {
           return;
         }
 
-        // Signup now returns JWT tokens — store them and go to onboarding
-        if (data.tokens) {
-          await storeTokens(data.tokens);
-          router.replace("/onboarding/step1");
-        } else {
-          // Fallback: shouldn't happen, but send to signin
-          router.replace("/(auth)/signin");
-        }
+        router.replace({
+          pathname: "/onboarding/verify-email",
+          params: { email: email.trim().toLowerCase() },
+        });
       } catch (err) {
         setError("Network error or server is not responding");
       }

@@ -11,7 +11,6 @@ import {
 } from "react-native";
 import CustomButton from "../../components/CustomButton";
 import LoadingState from "../../components/LoadingState";
-import ProgressIndicator from "../../components/ProgressIndicator";
 import ScreenWrapper from "../../components/ScreenWrapper";
 import { theme } from "../../constants/theme";
 import { wp } from "../../helpers/common";
@@ -71,8 +70,6 @@ const OnboardingStep2 = () => {
     <LoadingState isLoading={isLoading} subtle={true}>
       <ScreenWrapper bg="white">
         <View style={styles.container}>
-          <ProgressIndicator totalSteps={3} currentStep={2} />
-
           <View style={styles.content}>
             <Text style={styles.title}>Add a Profile Picture</Text>
             <Text style={styles.description}>

@@ -7,6 +7,8 @@ export const API_BASE_URL =
 export const ENDPOINTS = {
   SIGN_IN: `${API_BASE_URL}/api/signin/`,
   SIGN_UP: `${API_BASE_URL}/api/signup/`,
+  VERIFY_EMAIL: `${API_BASE_URL}/api/verify-email/`,
+  RESEND_VERIFICATION_EMAIL: `${API_BASE_URL}/api/verify-email/resend/`,
   SIGN_OUT: `${API_BASE_URL}/api/signout/`,
   TOKEN_REFRESH: `${API_BASE_URL}/api/token/refresh/`,
   PASSWORD_RESET: `${API_BASE_URL}/api/password-reset/`,

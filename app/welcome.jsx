@@ -36,7 +36,7 @@ const Welcome = () => {
           <View style={styles.bottomContainer}>
             <CustomButton
               title="Sign Up"
-              onPress={() => handleNavigation("/(auth)/signup")}
+              onPress={() => handleNavigation("/onboarding/signup")}
               style={styles.button}
             />
             <TouchableOpacity onPress={() => handleNavigation("/(auth)/signin")}>

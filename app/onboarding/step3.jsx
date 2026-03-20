@@ -10,7 +10,6 @@ import {
 } from "react-native";
 import CustomButton from "../../components/CustomButton";
 import LoadingState from "../../components/LoadingState";
-import ProgressIndicator from "../../components/ProgressIndicator";
 import ScreenWrapper from "../../components/ScreenWrapper";
 import { theme } from "../../constants/theme";
 import { ENDPOINTS, apiFetch } from "../../helpers/api";
@@ -124,8 +123,6 @@ const OnboardingStep3 = () => {
     <LoadingState isLoading={isLoading} subtle={true}>
       <ScreenWrapper bg="white">
         <View style={styles.container}>
-          <ProgressIndicator totalSteps={3} currentStep={3} />
-
           <View style={styles.content}>
             <Image
               source={require("../../assets/images/logo.svg")}
@@ -259,6 +256,7 @@ const styles = StyleSheet.create({
   },
   bottomContainer: {
     padding: wp(5),
+    bottom: wp(8),
   },
   button: {
     width: "100%",

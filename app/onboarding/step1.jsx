@@ -12,7 +12,6 @@ import CustomButton from "../../components/CustomButton";
 import CustomInput from "../../components/CustomInput";
 import LoadingState from "../../components/LoadingState";
 import MonthDayYearPicker from "../../components/MonthDayYearPicker";
-import ProgressIndicator from "../../components/ProgressIndicator";
 import ScreenWrapper from "../../components/ScreenWrapper";
 import { theme } from "../../constants/theme";
 import { formatDateLocal, parseDateLocal, wp } from "../../helpers/common";
@@ -62,8 +61,6 @@ const OnboardingStep1 = () => {
     <LoadingState isLoading={isLoading} subtle={true}>
       <ScreenWrapper bg="white">
         <View style={styles.container}>
-          <ProgressIndicator totalSteps={3} currentStep={1} />
-
           <ScrollView
             contentContainerStyle={styles.content}
             showsVerticalScrollIndicator={false}

@@ -47,6 +47,13 @@ const SignIn = () => {
         const data = await response.json();
 
         if (!response.ok) {
+          if (data.requires_verification) {
+            router.replace({
+              pathname: "/onboarding/verify-email",
+              params: { email: email.trim().toLowerCase() },
+            });
+            return;
+          }
           throw new Error(data.message || "Login failed");
         }
 
@@ -108,7 +115,7 @@ const SignIn = () => {
           </View>
 
           <View style={styles.bottomContainer}>
-            <TouchableOpacity onPress={() => router.push("/(auth)/signup")}>
+            <TouchableOpacity onPress={() => router.push("/onboarding/signup")}>
               <Text style={styles.linkText}>
                 Don&apos;t have an account? Sign Up
               </Text>
