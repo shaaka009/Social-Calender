@@ -63,7 +63,8 @@ class UserProfileAPITests(APITestCase):
             first_name="John",
             last_name="Doe",
             phone="123-456-7890",
-            birthday=date(1990, 1, 1)
+            birthday=date(1990, 1, 1),
+            contact_email="john.contact@example.com",
         )
         self.client.force_authenticate(self.user)
         self.profile_url = reverse("user_profile")
@@ -74,28 +75,32 @@ class UserProfileAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["first_name"], "John")
         self.assertEqual(response.data["last_name"], "Doe")
+        self.assertEqual(response.data["login_email"], "profile@example.com")
         self.assertEqual(response.data["email"], "profile@example.com")
+        self.assertEqual(response.data["contact_email"], "john.contact@example.com")
         self.assertEqual(response.data["phone"], "123-456-7890")
         self.assertEqual(response.data["birthday"], date(1990, 1, 1))
         first_name = response.data["first_name"]
         # Ensure first_name fallback worked
         self.assertEqual(first_name, "John")
 
-    def test_update_profile_user_fields(self):
-        """PATCH /profile should update User model fields."""
+    def test_update_profile_contact_email_does_not_change_login_email(self):
+        """PATCH /profile should update contact email only."""
         payload = {
             "first_name": "Johnny",
             "last_name": "Smith",
-            "email": "johnny@example.com"
+            "contact_email": "new-contact@example.com",
         }
         response = self.client.patch(self.profile_url, payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
-        # Verify User model was updated
+        # Verify User model first/last were updated, login email unchanged
         self.user.refresh_from_db()
+        self.person.refresh_from_db()
         self.assertEqual(self.user.first_name, "Johnny")
         self.assertEqual(self.user.last_name, "Smith")
-        self.assertEqual(self.user.email, "johnny@example.com")
+        self.assertEqual(self.user.email, "profile@example.com")
+        self.assertEqual(self.person.contact_email, "new-contact@example.com")
 
     def test_update_profile_person_fields(self):
         """PATCH /profile should update Person model fields."""
@@ -736,6 +741,87 @@ class SignupPasswordResetTests(APITestCase):
         self.assertTrue(signin_resp.json().get("requires_verification"))
 
 
+class LoginEmailChangeFlowTests(APITestCase):
+    def setUp(self):
+        self.user, self.person = create_user_with_person("loginchange@example.com", password="Passw0rd!")
+        self.client.force_authenticate(self.user)
+        self.request_url = reverse("request_login_email_change")
+        self.verify_url = reverse("verify_login_email_change")
+
+    def test_request_requires_correct_current_password(self):
+        resp = self.client.post(
+            self.request_url,
+            {"current_password": "wrong-password", "new_email": "newlogin@example.com"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("incorrect", resp.data["message"].lower())
+
+    def test_request_and_verify_login_email_change(self):
+        request_resp = self.client.post(
+            self.request_url,
+            {"current_password": "Passw0rd!", "new_email": "newlogin@example.com"},
+            format="json",
+        )
+        self.assertEqual(request_resp.status_code, status.HTTP_200_OK)
+
+        self.user.refresh_from_db()
+        account = self.user.account
+        self.assertEqual(account.pending_login_email, "newlogin@example.com")
+        self.assertTrue(account.login_email_change_code)
+
+        verify_resp = self.client.post(
+            self.verify_url,
+            {"code": account.login_email_change_code},
+            format="json",
+        )
+        self.assertEqual(verify_resp.status_code, status.HTTP_200_OK)
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.email, "newlogin@example.com")
+        self.assertEqual(self.user.username, "newlogin@example.com")
+        account.refresh_from_db()
+        self.assertEqual(account.login_email_change_code, "")
+        self.assertIsNone(account.pending_login_email)
+
+    def test_old_login_email_works_until_verification(self):
+        self.client.post(
+            self.request_url,
+            {"current_password": "Passw0rd!", "new_email": "pendinglogin@example.com"},
+            format="json",
+        )
+
+        self.client.force_authenticate(user=None)
+        signin_resp = self.client.post(
+            reverse("signin"),
+            {"email": "loginchange@example.com", "password": "Passw0rd!"},
+            format="json",
+        )
+        self.assertEqual(signin_resp.status_code, status.HTTP_200_OK)
+
+
+class DeleteAccountAPITests(APITestCase):
+    def setUp(self):
+        self.user, self.person = create_user_with_person("deleteme@example.com", password="Passw0rd!")
+        self.url = reverse("delete_account")
+        self.client.force_authenticate(self.user)
+
+    def test_delete_account_requires_password(self):
+        response = self.client.delete(self.url, {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("password", response.json().get("message", "").lower())
+
+    def test_delete_account_fails_with_wrong_password(self):
+        response = self.client.delete(self.url, {"password": "wrong"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("incorrect", response.json().get("message", "").lower())
+
+    def test_delete_account_succeeds_with_correct_password(self):
+        response = self.client.delete(self.url, {"password": "Passw0rd!"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(User.objects.filter(id=self.user.id).exists())
+
+
 # ---------------------------------------------------------------------------
 # Additional coverage – Tags, User Search, Password Reset confirm, etc.
 # ---------------------------------------------------------------------------
@@ -767,6 +853,44 @@ class TagAPITests(APITestCase):
         tag = Tag.objects.get(owner=self.person, name="Work")
         self.assertEqual(tag.color, "#123456")
 
+    def test_get_tag_detail(self):
+        tag = Tag.objects.create(owner=self.person, name="Alpha", color="#111111")
+        detail_url = reverse("tag-detail", kwargs={"pk": tag.pk})
+        resp = self.client.get(detail_url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["name"], "Alpha")
+        self.assertEqual(resp.data["color"], "#111111")
+
+    def test_patch_tag(self):
+        tag = Tag.objects.create(owner=self.person, name="Old", color="#000000")
+        detail_url = reverse("tag-detail", kwargs={"pk": tag.pk})
+        resp = self.client.patch(detail_url, {"name": "Renamed", "color": "#abcdef"}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        tag.refresh_from_db()
+        self.assertEqual(tag.name, "Renamed")
+        self.assertEqual(tag.color, "#abcdef")
+
+    def test_patch_tag_duplicate_name_returns_400(self):
+        Tag.objects.create(owner=self.person, name="First", color="#111111")
+        second = Tag.objects.create(owner=self.person, name="Second", color="#222222")
+        detail_url = reverse("tag-detail", kwargs={"pk": second.pk})
+        resp = self.client.patch(detail_url, {"name": "First"}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_delete_tag_returns_204(self):
+        tag = Tag.objects.create(owner=self.person, name="Gone", color="#333333")
+        detail_url = reverse("tag-detail", kwargs={"pk": tag.pk})
+        resp = self.client.delete(detail_url)
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Tag.objects.filter(pk=tag.pk).exists())
+
+    def test_delete_other_users_tag_returns_404(self):
+        other_user, other_person = create_user_with_person("other@example.com")
+        foreign_tag = Tag.objects.create(owner=other_person, name="Theirs", color="#444444")
+        detail_url = reverse("tag-detail", kwargs={"pk": foreign_tag.pk})
+        resp = self.client.delete(detail_url)
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
 
 class UserSearchAPITests(APITestCase):
     """Verify that connection status metadata is returned correctly during user search."""
@@ -783,6 +907,7 @@ class UserSearchAPITests(APITestCase):
         resp = self._search_for("alice")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertEqual(resp.data[0]["connection_status"]["status"], "none")
+        self.assertEqual(resp.data[0]["person_id"], self.alice_person.id)
 
     def test_pending_connection_status(self):
         # Bob sends request to Alice – pending

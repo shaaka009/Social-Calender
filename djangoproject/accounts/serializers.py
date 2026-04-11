@@ -49,6 +49,14 @@ class PersonSerializer(serializers.ModelSerializer):
 # -------------------------------------------------------------------
 class UserSearchSerializer(serializers.ModelSerializer):
     connection_status = serializers.SerializerMethodField()
+    person_id = serializers.SerializerMethodField()
+
+    def get_person_id(self, user):
+        """Person pk for Connection.target_person_id (differs from User.pk)."""
+        account = getattr(user, "account", None)
+        if account is None:
+            return None
+        return account.person_id
 
     def get_connection_status(self, user):
         request_user = self.context['request'].user
@@ -99,6 +107,7 @@ class UserSearchSerializer(serializers.ModelSerializer):
         model = User
         fields = (
             'id',
+            'person_id',
             'first_name',
             'last_name',
             'email',
@@ -115,6 +124,19 @@ class TagSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tag
         fields = ("id", "name", "color")
+
+    def validate_name(self, value):
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("This field may not be blank.")
+        instance = self.instance
+        if instance is None:
+            return value
+        owner = instance.owner
+        qs = Tag.objects.filter(owner=owner, name=value).exclude(pk=instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError("A tag with this name already exists.")
+        return value
 
 # -------------------------------------------------------------------
 # Connection (replaces Contact)
@@ -632,13 +654,29 @@ class UserProfileSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
     first_name = serializers.CharField(required=False, allow_blank=True)
     last_name = serializers.CharField(required=False, allow_blank=True)
-    email = serializers.EmailField(required=False, allow_blank=True)
+    email = serializers.EmailField(required=False, allow_blank=True, read_only=True)
+    login_email = serializers.EmailField(required=False, allow_blank=True, read_only=True)
+    contact_email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
     phone = serializers.CharField(required=False, allow_blank=True)
     birthday = serializers.DateField(required=False, allow_null=True)
     organization = serializers.CharField(required=False, allow_blank=True)
     location = serializers.CharField(required=False, allow_blank=True)
     extra_contacts = serializers.ListField(child=serializers.DictField(), required=False)
     profile_picture = serializers.ImageField(required=False, allow_null=True)
+
+    def to_internal_value(self, data):
+        """Multipart uploads send JSON lists as strings; ignore URL-like profile_picture strings."""
+        mutable_data = data.copy() if hasattr(data, "copy") else dict(data)
+        profile_picture = mutable_data.get("profile_picture")
+        if isinstance(profile_picture, str):
+            mutable_data.pop("profile_picture", None)
+        value = mutable_data.get("extra_contacts")
+        if isinstance(value, str):
+            try:
+                mutable_data["extra_contacts"] = json.loads(value)
+            except (TypeError, ValueError):
+                pass
+        return super().to_internal_value(mutable_data)
 
     def to_representation(self, person):
         # The instance is a Person object, get the linked User
@@ -652,6 +690,8 @@ class UserProfileSerializer(serializers.Serializer):
             "first_name": (user.first_name if user and user.first_name else person.first_name) or "",
             "last_name": (user.last_name if user and user.last_name else person.last_name) or "",
             "email": (user.email if user else person.email) or "",
+            "login_email": (user.email if user else person.email) or "",
+            "contact_email": person.contact_email if person.contact_email is not None else person.email,
             "phone": person.phone or "",
             "organization": person.organization or "",
             "location": person.location or "",
@@ -672,8 +712,12 @@ class UserProfileSerializer(serializers.Serializer):
         return data
 
     def update(self, person, validated_data):
+        # Backward compatibility: treat legacy email payload as contact_email.
+        if "email" in validated_data and "contact_email" not in validated_data:
+            validated_data["contact_email"] = validated_data.pop("email")
+
         # Update Person fields
-        for attr in ("phone", "birthday", "profile_picture", "extra_contacts", "organization", "location"):
+        for attr in ("phone", "birthday", "profile_picture", "extra_contacts", "organization", "location", "contact_email"):
             if attr in validated_data:
                 setattr(person, attr, validated_data[attr])
         person.save()
@@ -681,7 +725,7 @@ class UserProfileSerializer(serializers.Serializer):
         # Update related User fields if Account & User exist
         if hasattr(person, "account") and hasattr(person.account, "user"):
             user = person.account.user
-            for attr in ("first_name", "last_name", "email"):
+            for attr in ("first_name", "last_name"):
                 if attr in validated_data:
                     setattr(user, attr, validated_data[attr])
                     # Clear duplicates on Person so it behaves like a wrapper

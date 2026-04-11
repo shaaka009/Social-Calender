@@ -117,6 +117,7 @@ class Person(models.Model):
     first_name = models.CharField(max_length=100, blank=True, null=True)
     last_name = models.CharField(max_length=100, blank=True, null=True)
     organization = models.CharField(max_length=255, blank=True, help_text="Organization/company name shared with contacts.")
+    contact_email = models.EmailField(blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
     phone = models.CharField(max_length=30, blank=True)
     # Home city / region the Person decides to share (not editable by other users)
@@ -151,7 +152,7 @@ class Person(models.Model):
 
     def __str__(self):
         name = f"{self.first_name} {self.last_name}".strip()
-        return name or self.email or f"Person {self.id}"
+        return name or self.contact_email or self.email or f"Person {self.id}"
 
     # Convenience for UI – do we have a full app account?
     @property
@@ -204,6 +205,9 @@ class Account(models.Model):
     )
     verification_code = models.CharField(max_length=6, blank=True, default="")
     verification_code_expires_at = models.DateTimeField(null=True, blank=True)
+    pending_login_email = models.EmailField(blank=True, null=True)
+    login_email_change_code = models.CharField(max_length=6, blank=True, default="")
+    login_email_change_code_expires_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return str(self.user)

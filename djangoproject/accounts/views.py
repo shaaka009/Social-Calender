@@ -79,6 +79,22 @@ def _send_verification_email(user, verification_code):
         pass
 
 
+def _send_login_email_change_code(first_name, new_email, verification_code):
+    """Send 6-digit code for login email change."""
+    subject = "Confirm your new login email"
+    message = (
+        f"Hi {first_name or 'there'},\n\n"
+        "Use this code to confirm your new login email:\n\n"
+        f"{verification_code}\n\n"
+        "This code expires in 15 minutes.\n\n"
+        "If you did not request this change, you can ignore this email."
+    )
+    try:
+        send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [new_email])
+    except Exception:
+        pass
+
+
 # Create your views here.
 
 # -------------------------------------------------
@@ -96,6 +112,7 @@ def get_or_create_person_for_user(user):
             first_name=user.first_name,
             last_name=user.last_name,
             email=user.email,
+            contact_email=user.email,
         )
         Account.objects.create(user=user, person=person)
         return person
@@ -122,6 +139,7 @@ def signup(request):
                         first_name=user.first_name,
                         last_name=user.last_name,
                         email=user.email,
+                        contact_email=user.email,
                     )
                     Account.objects.create(
                         user=user,
@@ -295,7 +313,127 @@ def resend_verification_email(request):
     return JsonResponse(
         {
             "success": True,
-            "message": "If this email exists and is unverified, a verification link has been sent.",
+            "message": "If this email exists and is unverified, a verification code has been sent.",
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def request_login_email_change(request):
+    current_password = (request.data.get("current_password") or "").strip()
+    new_email = (request.data.get("new_email") or "").strip().lower()
+    user = request.user
+
+    if not current_password or not new_email:
+        return Response(
+            {"success": False, "message": "Current password and new login email are required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if new_email == (user.email or "").strip().lower():
+        return Response(
+            {"success": False, "message": "New login email must be different from current login email."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if not user.check_password(current_password):
+        return Response(
+            {"success": False, "message": "Current password is incorrect."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if get_user_model().objects.filter(Q(email__iexact=new_email) | Q(username__iexact=new_email)).exclude(
+        id=user.id
+    ).exists():
+        return Response(
+            {"success": False, "message": "That email is already in use."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        account = user.account
+    except Account.DoesNotExist:
+        return Response(
+            {"success": False, "message": "Unable to update login email for this account."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    verification_code = _generate_verification_code()
+    account.pending_login_email = new_email
+    account.login_email_change_code = verification_code
+    account.login_email_change_code_expires_at = timezone.now() + timedelta(minutes=15)
+    account.save(
+        update_fields=["pending_login_email", "login_email_change_code", "login_email_change_code_expires_at"]
+    )
+    _send_login_email_change_code(user.first_name, new_email, verification_code)
+    return Response(
+        {
+            "success": True,
+            "message": "Verification code sent to your new login email.",
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def verify_login_email_change(request):
+    code = (request.data.get("code") or "").strip()
+    if not code:
+        return Response(
+            {"success": False, "message": "Verification code is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    user = request.user
+    try:
+        account = user.account
+    except Account.DoesNotExist:
+        return Response(
+            {"success": False, "message": "Unable to verify login email change."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if not account.pending_login_email or not account.login_email_change_code:
+        return Response(
+            {"success": False, "message": "No login email change is pending."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if account.login_email_change_code != code:
+        return Response(
+            {"success": False, "message": "Invalid verification code."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if (
+        not account.login_email_change_code_expires_at
+        or timezone.now() > account.login_email_change_code_expires_at
+    ):
+        return Response(
+            {"success": False, "message": "Verification code expired. Request a new code."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    normalized_email = account.pending_login_email.strip().lower()
+    if get_user_model().objects.filter(Q(email__iexact=normalized_email) | Q(username__iexact=normalized_email)).exclude(
+        id=user.id
+    ).exists():
+        return Response(
+            {"success": False, "message": "That email is already in use."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    user.email = normalized_email
+    user.username = normalized_email
+    user.save(update_fields=["email", "username"])
+
+    account.pending_login_email = None
+    account.login_email_change_code = ""
+    account.login_email_change_code_expires_at = None
+    account.save(
+        update_fields=["pending_login_email", "login_email_change_code", "login_email_change_code_expires_at"]
+    )
+    return Response(
+        {
+            "success": True,
+            "message": "Login email updated successfully.",
+            "login_email": user.email,
         }
     )
 
@@ -518,7 +656,7 @@ class UserSearchViewSet(viewsets.ReadOnlyModelViewSet):
             Q(email__icontains=query)
         ).exclude(
             id=self.request.user.id  # Don't show current user
-        )
+        ).select_related("account")
 
 
 # =========================================================================
@@ -673,6 +811,9 @@ class EventViewSet(viewsets.ModelViewSet):
 
 class TagViewSet(mixins.ListModelMixin,
                  mixins.CreateModelMixin,
+                 mixins.RetrieveModelMixin,
+                 mixins.UpdateModelMixin,
+                 mixins.DestroyModelMixin,
                  viewsets.GenericViewSet):
     serializer_class = TagSerializer
     permission_classes = [IsAuthenticated]
@@ -730,6 +871,17 @@ class DeleteAccountAPIView(APIView):
 
     def delete(self, request):
         user = request.user
+        password = request.data.get("password") if isinstance(request.data, dict) else None
+        if not password:
+            return Response(
+                {"message": "Password is required to delete account."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not user.check_password(password):
+            return Response(
+                {"message": "Incorrect password."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         with transaction.atomic():
             # Get the user's Person record if it exists
