@@ -1,14 +1,61 @@
+import Constants from 'expo-constants';
 import { clearTokens, getAccessToken, getRefreshToken, storeTokens } from './auth';
 
-// Use an Expo env var when available; fall back to localhost for development.
-export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+const DEFAULT_API_BASE = 'http://127.0.0.1:8000';
+
+/**
+ * EXPO_PUBLIC_API_URL wins (production, tunnels, custom setups). In __DEV__, if unset,
+ * use the same host Expo uses for Metro (LAN IP when you scan the QR code) so Django
+ * on :8000 is reachable from a physical device.
+ */
+function resolveApiBaseUrl() {
+  const fromEnv = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '');
+  if (fromEnv) return fromEnv;
+
+  if (!__DEV__) return DEFAULT_API_BASE;
+
+  const raw = Constants.expoConfig?.hostUri;
+  if (!raw) return DEFAULT_API_BASE;
+
+  let hostname;
+  try {
+    const normalized = raw.includes('://') ? raw : `http://${raw}`;
+    hostname = new URL(normalized).hostname;
+  } catch {
+    return DEFAULT_API_BASE;
+  }
+
+  if (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '[::1]' ||
+    hostname === '::1'
+  ) {
+    return DEFAULT_API_BASE;
+  }
+
+  const privateLan =
+    /^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+    /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(hostname);
+
+  if (privateLan || hostname === '10.0.2.2' || hostname.endsWith('.local')) {
+    return `http://${hostname}:8000`;
+  }
+
+  // e.g. Expo tunnel — set EXPO_PUBLIC_API_URL to a reachable API base
+  return DEFAULT_API_BASE;
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 export const ENDPOINTS = {
   SIGN_IN: `${API_BASE_URL}/api/signin/`,
   SIGN_UP: `${API_BASE_URL}/api/signup/`,
   VERIFY_EMAIL: `${API_BASE_URL}/api/verify-email/`,
   RESEND_VERIFICATION_EMAIL: `${API_BASE_URL}/api/verify-email/resend/`,
+  REQUEST_LOGIN_EMAIL_CHANGE: `${API_BASE_URL}/api/login-email/change/request/`,
+  VERIFY_LOGIN_EMAIL_CHANGE: `${API_BASE_URL}/api/login-email/change/verify/`,
   SIGN_OUT: `${API_BASE_URL}/api/signout/`,
   TOKEN_REFRESH: `${API_BASE_URL}/api/token/refresh/`,
   PASSWORD_RESET: `${API_BASE_URL}/api/password-reset/`,
@@ -24,6 +71,7 @@ export const ENDPOINTS = {
   PROFILE: `${API_BASE_URL}/api/profile/`,
   DELETE_ACCOUNT: `${API_BASE_URL}/api/account/delete/`,
   TAGS: `${API_BASE_URL}/api/tags/`,
+  TAG_DETAIL: (id) => `${API_BASE_URL}/api/tags/${id}/`,
 };
 
 // -----------------------------------------------------------------
