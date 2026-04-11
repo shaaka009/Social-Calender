@@ -1,17 +1,22 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
-import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import ScreenWrapper from "../../../components/ScreenWrapper";
 import { theme } from "../../../constants/theme";
+import { ENDPOINTS, apiFetch } from "../../../helpers/api";
+import { clearTokens } from "../../../helpers/auth";
 import { wp } from "../../../helpers/common";
 
 const SETTINGS_OPTIONS = [
+  { key: "account", label: "Account", icon: "person-circle-outline", route: "/profile/settings/account" },
   { key: "about", label: "About", icon: "information-circle-outline", route: "/profile/settings/about" },
 ];
 
 const SettingsScreen = () => {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredOptions = useMemo(() => {
@@ -20,12 +25,49 @@ const SettingsScreen = () => {
     return SETTINGS_OPTIONS.filter((option) => option.label.toLowerCase().includes(query));
   }, [searchQuery]);
 
+  const handleSignOut = () => {
+    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Sign Out",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await apiFetch(ENDPOINTS.SIGN_OUT, { method: "POST" }).catch(() => {});
+          } finally {
+            await clearTokens();
+            await queryClient.cancelQueries();
+            queryClient.clear();
+            router.replace("/welcome");
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      "Delete Account",
+      "This will permanently delete your account and all data. Continue?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Continue",
+          style: "destructive",
+          onPress: () => router.push("/profile/settings/delete-account"),
+        },
+      ]
+    );
+  };
+
   return (
     <ScreenWrapper>
       <FlatList
         data={filteredOptions}
         keyExtractor={(item) => item.key}
         contentContainerStyle={styles.listContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
         ListHeaderComponent={
           <View style={styles.headerBlock}>
             <View style={styles.titleRow}>
@@ -58,6 +100,19 @@ const SettingsScreen = () => {
             <Ionicons name="chevron-forward" size={wp(5)} color={theme.colors.textLight} />
           </TouchableOpacity>
         )}
+        ListFooterComponent={
+          <View style={styles.footerActions}>
+            <TouchableOpacity style={styles.subtleAction} onPress={handleSignOut}>
+              <Ionicons name="log-out-outline" size={wp(4.8)} color={theme.colors.error} />
+              <Text style={styles.signOutText}>Sign Out</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.deleteAction} onPress={handleDeleteAccount}>
+              <Ionicons name="trash-outline" size={wp(5)} color={theme.colors.error} />
+              <Text style={styles.deleteActionText}>Delete Account</Text>
+            </TouchableOpacity>
+          </View>
+        }
       />
     </ScreenWrapper>
   );
@@ -133,6 +188,33 @@ const styles = StyleSheet.create({
     fontSize: wp(4.2),
     color: theme.colors.text,
     fontWeight: "500",
+  },
+  footerActions: {
+    marginTop: wp(6),
+    paddingTop: wp(2),
+    gap: wp(1),
+  },
+  subtleAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: wp(2.5),
+    paddingVertical: wp(3),
+  },
+  signOutText: {
+    fontSize: wp(4),
+    color: theme.colors.error,
+    fontWeight: "500",
+  },
+  deleteAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: wp(2.5),
+    paddingVertical: wp(3),
+  },
+  deleteActionText: {
+    fontSize: wp(4.2),
+    color: theme.colors.error,
+    fontWeight: "700",
   },
 });
 

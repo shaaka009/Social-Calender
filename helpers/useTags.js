@@ -17,6 +17,41 @@ export const useCreateTag = () => {
         method: "POST",
         body: JSON.stringify(tag),
       }),
-    onSuccess: () => queryClient.invalidateQueries(["tags"]),
+    onSuccess: () => {
+      queryClient.invalidateQueries(["tags"]);
+      queryClient.invalidateQueries(["connections"]);
+      queryClient.invalidateQueries(["events"]);
+    },
+  });
+};
+
+export const useUpdateTag = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }) =>
+      apiFetch(ENDPOINTS.TAG_DETAIL(id), {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries(["tags"]);
+      queryClient.invalidateQueries(["connections"]);
+      queryClient.invalidateQueries(["events"]);
+    },
+  });
+};
+
+export const useDeleteTag = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id) =>
+      apiFetch(ENDPOINTS.TAG_DETAIL(id), {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries(["tags"]);
+      queryClient.invalidateQueries(["connections"]);
+      queryClient.invalidateQueries(["events"]);
+    },
   });
 };
