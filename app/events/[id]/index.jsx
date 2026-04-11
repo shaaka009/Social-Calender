@@ -115,7 +115,12 @@ const EventDetailsScreen = () => {
         )}
       </View>
 
-      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
         {/* Event Title */}
         <Text style={styles.eventTitle}>{event.title}</Text>
         {/* Event Type Badge */}

@@ -14,8 +14,7 @@ const Welcome = () => {
   return (
     <ScreenWrapper bg="white">
         <View style={styles.container}>
-          <View style={styles.content}>
-            
+          <View style={styles.inner}>
             <View style={styles.textContainer}>
               <Text style={styles.title}>
                 Welcome to
@@ -32,18 +31,18 @@ const Welcome = () => {
                 {" to get started with managing your calendar."}
               </Text>
             </View>
-          </View>
-          <View style={styles.bottomContainer}>
-            <CustomButton
-              title="Sign Up"
-              onPress={() => handleNavigation("/onboarding/signup")}
-              style={styles.button}
-            />
-            <TouchableOpacity onPress={() => handleNavigation("/(auth)/signin")}>
-              <Text style={styles.linkText}>
-                Already have an account? Sign In
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.actions}>
+              <CustomButton
+                title="Sign Up"
+                onPress={() => handleNavigation("/onboarding/signup")}
+                style={styles.button}
+              />
+              <TouchableOpacity onPress={() => handleNavigation("/(auth)/signin")}>
+                <Text style={styles.linkText}>
+                  Already have an account? Sign In
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </ScreenWrapper>
@@ -53,18 +52,18 @@ const Welcome = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "space-between",
+    justifyContent: "center",
     padding: wp(5),
   },
-  content: {
-    flex: 1,
+  inner: {
     alignItems: "center",
-    justifyContent: "center",
+    width: "100%",
   },
-  bottomContainer: {
+  actions: {
     alignItems: "center",
-    paddingVertical: wp(5),
-    gap: wp(2),
+    alignSelf: "stretch",
+    marginTop: wp(30),
+    gap: wp(5),
   },
   button: {
     width: "100%",

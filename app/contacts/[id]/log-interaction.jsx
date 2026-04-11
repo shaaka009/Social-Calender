@@ -105,7 +105,12 @@ const LogInteractionScreen = () => {
         <Text style={styles.subtitle}>with {person.first_name} {person.last_name}</Text>
       </View>
 
-      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
         {/* Date Picker */}
         <View style={styles.section}>
           <MonthDayYearPicker

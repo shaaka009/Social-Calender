@@ -257,7 +257,12 @@ const EditContactScreen = () => {
         </Pressable>
       </View>
 
-      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
         {isAppUser ? (
           // App User Contact - Show profile info as read-only
           <View style={styles.section}>

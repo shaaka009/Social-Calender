@@ -95,13 +95,13 @@ const VerifyEmail = () => {
           <View style={styles.content}>
             <Text style={styles.title}>Verify Your Email</Text>
             <Text style={styles.description}>
-              We sent a 6-digit verification code to your email. Enter it below to continue.
+              We sent a 6-digit verification code to your login email. Enter it below to continue.
             </Text>
 
             <View style={styles.form}>
               <CustomInput
-                label="Email"
-                placeholder="Email"
+                label="Login Email"
+                placeholder="Login Email"
                 value={email}
                 editable={false}
                 autoCapitalize="none"

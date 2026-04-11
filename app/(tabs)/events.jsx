@@ -8,10 +8,13 @@ import Toast from 'react-native-root-toast';
 import EventCard from '../../components/events/EventCard';
 import LoadingState from '../../components/LoadingState';
 import ScreenWrapper from '../../components/ScreenWrapper';
+import AnimatedTagFilterChip from '../../components/tags/AnimatedTagFilterChip';
+import TagEditModal from '../../components/tags/TagEditModal';
 import { TAG_COLOR_OPTIONS } from '../../constants/tagColors';
 import { theme } from '../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../helpers/api';
 import { parseDateLocal, wp } from '../../helpers/common';
+import { tagStripStyles } from '../../helpers/tagStripStyles';
 import { useCreateTag, useTags } from '../../helpers/useTags';
 
 const getStart = (e) => (
@@ -112,7 +115,6 @@ const Events = () => {
    * Tag filtering (event types)
    * -------------------------------------------------- */
   const [selectedTags, setSelectedTags] = useState([]);
-  const [filterModalVisible, setFilterModalVisible] = useState(false);
 
   const { data: tags = [] } = useTags();
   const createTagMutation = useCreateTag();
@@ -125,12 +127,31 @@ const Events = () => {
   const [bulkDeleteModalVisible, setBulkDeleteModalVisible] = useState(false);
   const [bulkDeleteTargetIds, setBulkDeleteTargetIds] = useState([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [tagEditVisible, setTagEditVisible] = useState(false);
+  const [tagEditTarget, setTagEditTarget] = useState(null);
 
   const toggleTag = useCallback((tag) => {
     setSelectedTags(prev => (
       prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
     ));
   }, []);
+
+  const handleTagFilterAfterEdit = useCallback(
+    (updated) => {
+      if (!tagEditTarget) return;
+      const oldName = tagEditTarget.name;
+      if (updated == null) {
+        setSelectedTags((prev) => prev.filter((t) => t !== oldName));
+        return;
+      }
+      const newName = updated.name;
+      setSelectedTags((prev) => {
+        if (!prev.includes(oldName)) return prev;
+        return [...prev.filter((t) => t !== oldName), newName];
+      });
+    },
+    [tagEditTarget]
+  );
 
   /* --------------------------------------------------
    * Derived list
@@ -503,28 +524,16 @@ const Events = () => {
               </TouchableOpacity>
             </>
           ) : (
-            <>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={handleEnterSelectionMode}
-              >
-                <Ionicons
-                  name="trash-outline"
-                  size={wp(7)}
-                  color={theme.colors.text}
-                />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => router.push('/events/new')}
-              >
-                <Ionicons
-                  name="add"
-                  size={wp(8)}
-                  color={theme.colors.text}
-                />
-              </TouchableOpacity>
-            </>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={handleEnterSelectionMode}
+            >
+              <Ionicons
+                name="trash-outline"
+                size={wp(7)}
+                color={theme.colors.text}
+              />
+            </TouchableOpacity>
           )}
         </View>
       </View>
@@ -553,7 +562,7 @@ const Events = () => {
       {/* Tags row */}
       <View style={styles.tagsRow}>
         <Pressable style={styles.plusButton} onPress={() => setModalVisible(true)}>
-          <Ionicons name="add" size={wp(6)} color="#fff" />
+          <Ionicons name="add" size={wp(5)} color="#fff" />
         </Pressable>
 
         {/* Wrap FlatList to allow fade overlay */}
@@ -568,22 +577,25 @@ const Events = () => {
             <FlatList
               data={tags}
               horizontal
-              keyExtractor={(item) => item.name}
+              keyExtractor={(item) => String(item.id)}
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.tagsContainer}
               removeClippedSubviews
               renderItem={({ item: tag }) => {
                 const isSelected = selectedTags.includes(tag.name);
                 return (
-                  <Pressable
+                  <AnimatedTagFilterChip
+                    label={tag.name}
+                    borderColor={tag.color || theme.colors.primary}
+                    backgroundColor={isSelected ? tag.color || theme.colors.primary : 'transparent'}
+                    textColor={isSelected ? '#fff' : theme.colors.textLight}
                     onPress={() => toggleTag(tag.name)}
-                    style={[styles.tagButton, {
-                      backgroundColor: isSelected ? tag.color || theme.colors.primary : 'transparent',
-                      borderColor: tag.color || theme.colors.primary,
-                    }]}
-                  >
-                    <Text style={[styles.tagText, { color: isSelected ? '#fff' : theme.colors.textLight }]}> {tag.name} </Text>
-                  </Pressable>
+                    onLongPress={() => {
+                      setTagEditTarget(tag);
+                      setTagEditVisible(true);
+                    }}
+                    delayLongPress={300}
+                  />
                 );
               }}
             />
@@ -600,12 +612,16 @@ const Events = () => {
           )}
         </View>
 
-        {/* spacing between tags and filter */}
-        <View style={{ width: wp(2) }} />
-        <TouchableOpacity style={styles.filterButton} onPress={() => setFilterModalVisible(true)}>
-          <Ionicons name="filter" size={wp(6)} color={theme.colors.text} />
-        </TouchableOpacity>
-       
+      <TagEditModal
+        visible={tagEditVisible}
+        tag={tagEditTarget}
+        onClose={() => {
+          setTagEditVisible(false);
+          setTagEditTarget(null);
+        }}
+        onAfterChange={handleTagFilterAfterEdit}
+      />
+
       {/* Create Tag Modal */}
       <Modal
         visible={modalVisible}
@@ -648,26 +664,6 @@ const Events = () => {
                 }}
               >
                 <Text style={styles.saveText}>Save</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Filter Modal */}
-      <Modal
-        visible={filterModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setFilterModalVisible(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Filter Events</Text>
-            <Text style={{ color: theme.colors.text, marginBottom: wp(3) }}>Filter options coming soon...</Text>
-            <View style={styles.modalActions}>
-              <Pressable style={styles.modalBtn} onPress={() => setFilterModalVisible(false)}>
-                <Text style={styles.cancelText}>Close</Text>
               </Pressable>
             </View>
           </View>
@@ -732,6 +728,19 @@ const Events = () => {
       </View>
       </View>
 
+      {!isSelectionMode && (
+        <View style={styles.addEventFabContainer} pointerEvents="box-none">
+          <Pressable
+            style={styles.addEventFab}
+            onPress={() => router.push('/events/new')}
+            accessibilityRole="button"
+            accessibilityLabel="Add event"
+          >
+            <Ionicons name="add" size={wp(8)} color="#fff" />
+          </Pressable>
+        </View>
+      )}
+
       <Modal
         visible={bulkDeleteModalVisible}
         transparent
@@ -795,6 +804,7 @@ const Events = () => {
 };
 
 const styles = StyleSheet.create({
+  ...tagStripStyles,
   titleContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -905,7 +915,28 @@ const styles = StyleSheet.create({
     paddingTop: wp(5),
   },
   listContent: {
-    paddingBottom: wp(10),
+    paddingBottom: wp(28),
+  },
+  addEventFabContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: wp(3),
+    alignItems: 'center',
+    pointerEvents: 'box-none',
+  },
+  addEventFab: {
+    width: wp(14),
+    height: wp(14),
+    borderRadius: wp(7),
+    backgroundColor: theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.28,
+    shadowRadius: 5,
   },
   sectionDivider: {
     flexDirection: 'row',
@@ -954,58 +985,6 @@ const styles = StyleSheet.create({
   eventList: {
     gap: wp(3),
   },
-  /* Tags */
-  tagsContainer: {
-    paddingHorizontal: wp(5),
-    flexDirection: 'row',
-    gap: wp(2),
-    marginTop: wp(2),
-    marginBottom: wp(2),
-  },
-  tagsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: wp(2),
-    marginBottom: wp(2),
-    paddingRight: wp(3.5),
-  },
-  tagsList: {
-    flexShrink: 1,
-    flexGrow: 1,
-    overflow: 'hidden',
-  },
-  tagsFade: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    bottom: 0,
-    width: wp(12),
-  },
-  filterButton: {
-    paddingHorizontal: wp(2),
-    paddingVertical: wp(2),
-  },
-  tagButton: {
-    paddingHorizontal: wp(3),
-    paddingVertical: wp(1.5),
-    borderRadius: wp(4),
-    backgroundColor: theme.colors.backgroundSecondary,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    minHeight: wp(8),
-    justifyContent: 'center',
-  },
-  tagButtonSelected: {
-    backgroundColor: theme.colors.primary,
-    borderColor: theme.colors.primary,
-  },
-  tagText: {
-    color: theme.colors.textLight,
-    fontSize: wp(3.5),
-  },
-  tagTextSelected: {
-    color: '#fff',
-  },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'flex-start',
@@ -1026,15 +1005,6 @@ const styles = StyleSheet.create({
   },
   emptyButton: {
     minWidth: wp(40),
-  },
-  plusButton: {
-    backgroundColor: theme.colors.primary,
-    width: wp(8),
-    height: wp(8),
-    borderRadius: wp(4),
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: wp(5),
   },
 
   /* Modal */
@@ -1137,23 +1107,6 @@ const styles = StyleSheet.create({
     fontSize: wp(3.3),
     fontStyle: 'italic',
     marginTop: wp(0.5),
-  },
-  ghostTag: {
-    paddingHorizontal: wp(3),
-    paddingVertical: wp(1.5),
-    borderRadius: wp(4),
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderStyle: 'dashed',
-    minHeight: wp(8),
-    justifyContent: 'center',
-    opacity: 0.5,
-  },
-  ghostTagText: {
-    color: theme.colors.textLight,
-    fontSize: wp(3.5),
-    fontStyle: 'italic',
   },
 });
 

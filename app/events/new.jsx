@@ -192,7 +192,12 @@ const AddEventScreen = () => {
         </Pressable>
       </View>
 
-      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
         {/* Basic Info */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Event Details</Text>
@@ -261,10 +266,11 @@ const AddEventScreen = () => {
               <Ionicons name="add" size={wp(6)} color="#fff" />
             </Pressable>
 
-            <ScrollView 
-              horizontal 
+            <ScrollView
+              horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.tagsContainer}
+              keyboardShouldPersistTaps="handled"
             >
               {tags.map(tag => (
                 <Pressable

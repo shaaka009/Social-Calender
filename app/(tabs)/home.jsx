@@ -44,6 +44,8 @@ const Home = () => {
       <ScreenWrapper>
         <ScrollView
           style={styles.container}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }

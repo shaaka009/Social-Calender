@@ -5,9 +5,12 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import ContactCard from '../../components/contacts/ContactCard';
+import AnimatedTagFilterChip from '../../components/tags/AnimatedTagFilterChip';
+import TagEditModal from '../../components/tags/TagEditModal';
 import { TAG_COLOR_OPTIONS } from '../../constants/tagColors';
 import { theme } from '../../constants/theme';
 import { wp } from '../../helpers/common';
+import { tagStripStyles } from '../../helpers/tagStripStyles';
 import useContactRequests from '../../helpers/useContactRequests';
 import useContacts from '../../helpers/useContacts';
 import { useCreateTag, useTags } from '../../helpers/useTags';
@@ -19,6 +22,8 @@ const Contacts = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [newTag, setNewTag] = useState({ name: '', color: COLOR_OPTIONS[0] });
+  const [tagEditVisible, setTagEditVisible] = useState(false);
+  const [tagEditTarget, setTagEditTarget] = useState(null);
 
   const { data: contacts = [] } = useContacts();
   const { data: tags = [] } = useTags();
@@ -71,10 +76,27 @@ const Contacts = () => {
     });
   }, [COLOR_OPTIONS, createTagMutation, newTag]);
 
+  const handleTagFilterAfterEdit = useCallback(
+    (updated) => {
+      if (!tagEditTarget) return;
+      const oldName = tagEditTarget.name;
+      if (updated == null) {
+        setSelectedTags((prev) => prev.filter((t) => t !== oldName));
+        return;
+      }
+      const newName = updated.name;
+      setSelectedTags((prev) => {
+        if (!prev.includes(oldName)) return prev;
+        return [...prev.filter((t) => t !== oldName), newName];
+      });
+    },
+    [tagEditTarget]
+  );
+
   const renderTags = useCallback(() => (
     <View style={styles.tagsRow}>
       <Pressable style={styles.plusButton} onPress={() => setModalVisible(true)}>
-        <Ionicons name="add" size={wp(6)} color="#fff" />
+        <Ionicons name="add" size={wp(5)} color="#fff" />
       </Pressable>
 
       {/* Wrap FlatList to allow fade overlay */}
@@ -89,21 +111,24 @@ const Contacts = () => {
           <FlatList
             data={allTags}
             horizontal
-            keyExtractor={(item) => item.name}
+            keyExtractor={(item) => String(item.id)}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.tagsContainer}
             renderItem={({ item: tag }) => {
               const isSelected = selectedTags.includes(tag.name);
               return (
-                <Pressable
+                <AnimatedTagFilterChip
+                  label={tag.name}
+                  borderColor={tag.color || theme.colors.primary}
+                  backgroundColor={isSelected ? tag.color || theme.colors.primary : 'transparent'}
+                  textColor={isSelected ? '#fff' : theme.colors.textLight}
                   onPress={() => toggleTag(tag.name)}
-                  style={[styles.tagButton, {
-                    backgroundColor: isSelected ? tag.color || theme.colors.primary : 'transparent',
-                    borderColor: tag.color || theme.colors.primary,
-                  }]}
-                >
-                  <Text style={[styles.tagText, { color: isSelected ? '#fff' : theme.colors.textLight }]}> {tag.name} </Text>
-                </Pressable>
+                  onLongPress={() => {
+                    setTagEditTarget(tag);
+                    setTagEditVisible(true);
+                  }}
+                  delayLongPress={300}
+                />
               );
             }}
           />
@@ -119,12 +144,6 @@ const Contacts = () => {
           />
         )}
       </View>
-
-      {/* spacing between tags and filter */}
-      <View style={{ width: wp(2) }} />
-      <TouchableOpacity style={styles.filterButton} onPress={() => setFilterModalVisible(true)}>
-        <Ionicons name="filter" size={wp(6)} color={theme.colors.text} />
-      </TouchableOpacity>
 
       {/* Create Tag Modal */}
       <Modal
@@ -166,6 +185,16 @@ const Contacts = () => {
         </View>
       </Modal>
 
+      <TagEditModal
+        visible={tagEditVisible}
+        tag={tagEditTarget}
+        onClose={() => {
+          setTagEditVisible(false);
+          setTagEditTarget(null);
+        }}
+        onAfterChange={handleTagFilterAfterEdit}
+      />
+
       {/* Filter Modal */}
       <Modal
         visible={filterModalVisible}
@@ -186,7 +215,7 @@ const Contacts = () => {
         </View>
       </Modal>
     </View>
-  ), [COLOR_OPTIONS, allTags, filterModalVisible, handleSaveTag, modalVisible, newTag.color, newTag.name, selectedTags]);
+  ), [COLOR_OPTIONS, allTags, filterModalVisible, handleSaveTag, handleTagFilterAfterEdit, modalVisible, newTag.color, newTag.name, selectedTags, tagEditTarget, tagEditVisible]);
 
   return (
     <ScreenWrapper>
@@ -222,19 +251,30 @@ const Contacts = () => {
           </View>
         </View>
 
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search your contacts..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholderTextColor={theme.colors.textLight}
-        />
+        <View style={styles.searchRow}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search your contacts..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor={theme.colors.textLight}
+          />
+          <TouchableOpacity
+            style={styles.filterButton}
+            onPress={() => setFilterModalVisible(true)}
+            accessibilityLabel="Open contact filters"
+          >
+            <Ionicons name="filter" size={wp(6)} color={theme.colors.text} />
+          </TouchableOpacity>
+        </View>
 
         {renderTags()}
 
         <FlatList
           data={filteredContacts}
           keyExtractor={item => item.id.toString()}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
           renderItem={({ item }) => (
             <ContactCard
               contact={item}
@@ -249,6 +289,7 @@ const Contacts = () => {
 };
 
 const styles = StyleSheet.create({
+  ...tagStripStyles,
   container: {
     flex: 1,
     paddingTop: wp(5),
@@ -257,6 +298,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    minHeight: wp(12),
     marginBottom: wp(4),
     paddingHorizontal: wp(5),
   },
@@ -305,72 +347,20 @@ const styles = StyleSheet.create({
     marginBottom: wp(4),
     paddingHorizontal: wp(5),
   },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: wp(1.5),
+    marginHorizontal: wp(5),
+    gap: wp(2),
+  },
   searchInput: {
+    flex: 1,
     backgroundColor: theme.colors.backgroundSecondary,
     borderRadius: wp(2),
     padding: wp(3),
-    marginBottom: wp(4),
-    marginHorizontal: wp(5),
     fontSize: wp(4),
     color: theme.colors.text,
-  },
-  tagsContainer: {
-    paddingHorizontal: wp(5),
-    flexDirection: 'row',
-    gap: wp(2),
-    marginTop: wp(2),
-    marginBottom: wp(2),
-  },
-  tagsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: wp(2),
-    marginBottom: wp(2),
-    paddingRight: wp(3.5),
-  },
-  tagsList: {
-    flexShrink: 1,
-    flexGrow: 1,
-    overflow: 'hidden',
-    marginLeft: wp(0),
-    paddingLeft: wp(0),
-  },
-  tagsFade: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    bottom: 0,
-    width: wp(12), // wider fade for smoother look
-  },
-  plusButton: {
-    backgroundColor: theme.colors.primary,
-    width: wp(8),
-    height: wp(8),
-    borderRadius: wp(4),
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: wp(5),
-  }, 
-  tagButton: {
-    paddingHorizontal: wp(3),
-    paddingVertical: wp(1.5),
-    borderRadius: wp(4),
-    backgroundColor: theme.colors.backgroundSecondary,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    minHeight: wp(8),
-    justifyContent: 'center',
-  },
-  tagButtonSelected: {
-    backgroundColor: theme.colors.primary,
-    borderColor: theme.colors.primary,
-  },
-  tagText: {
-    color: theme.colors.textLight,
-    fontSize: wp(3.5),
-  },
-  tagTextSelected: {
-    color: '#fff',
   },
   listContent: {
     paddingBottom: wp(3),
@@ -436,27 +426,9 @@ const styles = StyleSheet.create({
     fontSize: wp(4),
     fontWeight: '600',
   },
-  // EDIT: new styles for divider and filter button
   filterButton: {
     paddingHorizontal: wp(2),
     paddingVertical: wp(2),
-  },
-  ghostTag: {
-    paddingHorizontal: wp(3),
-    paddingVertical: wp(1.5),
-    borderRadius: wp(4),
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderStyle: 'dashed',
-    minHeight: wp(8),
-    justifyContent: 'center',
-    opacity: 0.5,
-  },
-  ghostTagText: {
-    color: theme.colors.textLight,
-    fontSize: wp(3.5),
-    fontStyle: 'italic',
   },
 });
 

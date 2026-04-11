@@ -88,12 +88,17 @@ const AddContactScreen = () => {
     }
   };
 
-  const handleAddContact = useCallback(async (userId) => {
+  const handleAddContact = useCallback(async (personId) => {
+    const id = Number(personId);
+    if (personId == null || Number.isNaN(id) || id <= 0) {
+      Alert.alert('Error', 'Could not resolve this user. Pull to refresh or update the app.');
+      return;
+    }
     try {
       await apiFetch(ENDPOINTS.CONNECTIONS, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target_person_id: Number(userId) }),
+        body: JSON.stringify({ target_person_id: id }),
       });
       Alert.alert('Success', 'Contact request sent!');
       router.replace('/contacts');
@@ -220,7 +225,7 @@ const AddContactScreen = () => {
         {user.connection_status?.status === 'none' && (
           <CustomButton
             title="Add Contact"
-            onPress={() => handleAddContact(user.id)}
+            onPress={() => handleAddContact(user.person_id)}
           />
         )}
         
@@ -256,7 +261,11 @@ const AddContactScreen = () => {
         )}
       </View>
 
-      <ScrollView contentContainerStyle={showManualForm ? styles.containerManual : styles.container}>
+      <ScrollView
+        contentContainerStyle={showManualForm ? styles.containerManual : styles.container}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
         {!showManualForm ? (
           <>
             <CustomInput

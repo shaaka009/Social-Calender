@@ -1,10 +1,10 @@
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import CustomButton from "../../components/CustomButton";
 import CustomInput from "../../components/CustomInput";
@@ -101,8 +101,8 @@ const SignUp = () => {
               />
 
               <CustomInput
-                label="Email"
-                placeholder="Email"
+                label="Account Email"
+                placeholder="Account Email"
                 value={email}
                 onChangeText={setEmail}
                 autoCapitalize="none"

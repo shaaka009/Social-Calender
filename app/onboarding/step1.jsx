@@ -64,6 +64,8 @@ const OnboardingStep1 = () => {
           <ScrollView
             contentContainerStyle={styles.content}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
           >
             <Text style={styles.title}>Complete Your Profile</Text>
             <Text style={styles.description}>

@@ -18,7 +18,7 @@ Set runtime secrets and deployment-specific values via environment variables (do
 
 ### Frontend (Expo)
 
-- `EXPO_PUBLIC_API_URL` - backend API base URL (for local dev, defaults to `http://127.0.0.1:8000`)
+- `EXPO_PUBLIC_API_URL` - backend API base URL (optional in local dev: when unset, `__DEV__` uses the Metro dev host from Expo — your LAN IP when you open the app via QR — with port `8000`; simulators still use `127.0.0.1`)
 
 ## Prerequisites
 

@@ -40,7 +40,7 @@ const SignIn = () => {
           },
           body: JSON.stringify({
             email,
-            password,
+            password: password,
           }),
         });
 
@@ -81,8 +81,8 @@ const SignIn = () => {
 
             <View style={styles.form}>
               <CustomInput
-                label="Email"
-                placeholder="Email"
+                label="Login Email"
+                placeholder="Login Email"
                 value={email}
                 onChangeText={setEmail}
                 autoCapitalize="none"
