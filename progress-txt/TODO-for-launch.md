@@ -4,6 +4,29 @@ This file is a **single source of truth** for what's left before shipping an MVP
 
 ---
 
+## Domains & architecture (decided)
+
+Owned domains: **join-social.com** and **join-social.net**.
+
+- **Primary:** `join-social.com`. Redirect `join-social.net` → `join-social.com` (301).
+- **Landing / legal:** `https://join-social.com` — host `/privacy` and `/support` (or `support@join-social.com`).
+- **Backend API:** `https://api.join-social.com` (Render Web Service custom domain).
+- **Deep links + password reset:** `https://join-social.com` — hosts `.well-known/apple-app-site-association` and `.well-known/assetlinks.json`; this is the value for `FRONTEND_BASE_URL`.
+
+Concrete env values to use:
+
+| Var | Value |
+|-----|-------|
+| `DJANGO_ALLOWED_HOSTS` | `api.join-social.com,<service>.onrender.com` |
+| `CORS_ALLOWED_ORIGINS` | `https://join-social.com` |
+| `FRONTEND_BASE_URL` | `https://join-social.com` |
+| `EXPO_PUBLIC_API_URL` | `https://api.join-social.com` |
+| `PASSWORD_RESET_APP_SCHEME` | `socialcalendar` (already the default; leave as-is) |
+
+**Branding note (decision, not a blocker):** app name is "Social Calendar", URL scheme is `socialcalendar`, bundle id is `com.socialcalendar.app`, but the domain is "join-social". The scheme/bundle do NOT need to match the domain, and changing the bundle id later is painful — leave them. Just decide intentionally what the App Store display name and landing-page branding should be.
+
+---
+
 ## ✅ Completed
 
 - [x] **Switch auth from sessions to JWT** — `djangorestframework-simplejwt` added, signin/signup return tokens, all API views use `JWTAuthentication`, token refresh endpoint at `/api/token/refresh/`
@@ -17,38 +40,61 @@ This file is a **single source of truth** for what's left before shipping an MVP
 - [x] **Remove TODO placeholders** — events tab notification button now navigates to home (notification center)
 - [x] **Removed `CsrfExemptSessionAuthentication`** — cleaned up unused session auth code
 
+### ✅ Completed in the pre-launch cleanup session
+
+- [x] **Code cleanup (Phase 0)** — deleted dead `components/home/QuickActions.jsx`; built out `app/profile/settings/about.jsx` (name/version + Privacy/Terms/Support links to `join-social.com`); removed redundant contacts filter stub modal (tag chips already filter inline); renamed npm package `kitcal` → `social-calendar`, README + Makefile now say "Social Calendar"; removed broken `reset-project` npm script; `make test-frontend` now runs `expo lint`.
+- [x] **Backend made production-serve-ready** — pinned `Django>=4.2,<5.0`; added `gunicorn` + `whitenoise`; WhiteNoise middleware + `CompressedManifestStaticFilesStorage`; `SECURE_PROXY_SSL_HEADER`, HSTS, SSL redirect, secure cookies, and `CSRF_TRUSTED_ORIGINS` (all env-gated / prod-only); Postgres now uses `CONN_MAX_AGE` + `sslmode=require` for remote DBs.
+- [x] **Render config committed** — `render.yaml` blueprint (web service + free Postgres, gunicorn start command, `/admin/login/` health check, all env vars scaffolded) and executable `build.sh` (installs deps, `collectstatic`, `migrate`).
+- [x] **Verified** — `manage.py check --deploy` clean with a real key; `collectstatic` OK (469 files post-processed); 56/56 backend tests pass; frontend lint has 0 errors.
+
 ---
 
-## Still to do (before first TestFlight)
+## The plan (sequenced)
 
-### Infrastructure / deployment
+### Phase 0 — Pre-flight code cleanup — ✅ DONE (see above)
 
-- [ ] **Set up Render** (or chosen host) for Django
-  - [ ] Create Render Web Service + Render Postgres
-  - [ ] Set env vars: `DJANGO_SECRET_KEY`, `DJANGO_DEBUG=False`, `DJANGO_ALLOWED_HOSTS`, `DATABASE_URL` (auto-set by Render), `CORS_ALLOWED_ORIGINS`, `FRONTEND_BASE_URL`
-  - [ ] Configure email env vars (`EMAIL_HOST`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`)
-  - [ ] Run `python manage.py migrate` and `python manage.py collectstatic`
-- [ ] **Set `EXPO_PUBLIC_API_URL`** in `.env` to point at the Render deployment URL
-- [ ] **Media storage** — decide on Render persistent disk vs S3 for profile pictures
+### Phase 1 — Backend deployment on Render
 
-### Deep link setup (for password reset emails opening the app)
+Code/config is ready (`render.yaml`, `build.sh`, gunicorn, whitenoise). Remaining is the actual Render setup:
 
-- [ ] Choose + register domain (e.g. `app.socialcalendar.com`)
-- [ ] Host `/.well-known/apple-app-site-association` and `/.well-known/assetlinks.json`
-- [ ] Add `associatedDomains` to `app.json` `ios` section
-- [ ] Add `intentFilters` to `app.json` `android` section
-- [ ] Set `FRONTEND_BASE_URL` env var to `https://app.socialcalendar.com`
+- [ ] In Render: **New + → Blueprint**, point at this repo (it reads `render.yaml`) → creates web service + Postgres
+- [ ] Fill the `sync: false` env vars in the Render dashboard:
+  - [ ] `DJANGO_ALLOWED_HOSTS=api.join-social.com,<service>.onrender.com` (**must include the onrender.com host or health checks 400**)
+  - [ ] `CORS_ALLOWED_ORIGINS=https://join-social.com`
+  - [ ] `CSRF_TRUSTED_ORIGINS=https://api.join-social.com`
+  - [ ] `FRONTEND_BASE_URL=https://join-social.com`
+  - [ ] Email: `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL` (e.g. `noreply@join-social.com`)
+  - [ ] (`DJANGO_SECRET_KEY` auto-generated, `DATABASE_URL` auto-wired, `DJANGO_DEBUG=False` preset by the blueprint)
+- [ ] First deploy runs `build.sh` (migrate + collectstatic) automatically — watch the logs
+- [ ] Smoke-test the API against the `.onrender.com` URL (e.g. `/admin/login/`, a signup/signin round-trip)
+- [ ] **Media storage decision (blocker for profile pics):** in production `DEBUG=False` Django does **not** serve `/media/`, and Render's disk is ephemeral. Choose Render persistent disk (+ a way to serve `/media/`) or S3-compatible storage (`django-storages` + `boto3`). Flagged in `settings.py`.
 
-### Privacy / legal
+### Phase 2 — DNS / domain wiring
 
-- [ ] **Privacy policy** — write and host at a URL
-- [ ] **Support URL** — create a support page or email address
-- [ ] Fill in `eas.json` submit section with real Apple credentials (`appleId`, `ascAppId`, `appleTeamId`)
+- [ ] Point `api.join-social.com` (CNAME) at the Render service; add it as a custom domain in Render (TLS auto-provisions)
+- [ ] Set up the `join-social.com` landing site (even a single static page works) — needed for App Store URLs and `.well-known` hosting
+- [ ] 301-redirect `join-social.net` → `join-social.com`
+- [ ] Set `EXPO_PUBLIC_API_URL=https://api.join-social.com` in the frontend `.env`
 
-### Build & submission
+### Phase 3 — Deep links (password-reset emails open the app)
 
-- [ ] Create Apple Developer account + App Store Connect app record
-- [ ] Update `app.json` bundle identifier if different from `com.socialcalendar.app`
-- [ ] `eas build -p ios` → first TestFlight build
-- [ ] Real-device smoke test
-- [ ] App Store submission metadata: screenshots, description, keywords, privacy questionnaire, review notes
+- [ ] Host `https://join-social.com/.well-known/apple-app-site-association` (JSON, `appID` = `<TeamID>.com.socialcalendar.app`, served as `application/json`, no extension)
+- [ ] Host `https://join-social.com/.well-known/assetlinks.json` (Android, package `com.socialcalendar.app` + SHA-256 cert fingerprint from EAS)
+- [ ] Add to `app.json` iOS: `"associatedDomains": ["applinks:join-social.com"]`
+- [ ] Add to `app.json` Android `intentFilters`: an `autoVerify` https filter for `join-social.com` (in addition to the existing `socialcalendar` scheme)
+- [ ] Verify reset flow end-to-end: request reset → email link (`https://join-social.com/reset-password/<uid>/<token>`) opens the app
+
+### Phase 4 — Privacy / legal / store prerequisites
+
+- [ ] Write + host **privacy policy** at `https://join-social.com/privacy`
+- [ ] Create **support** page/email at `https://join-social.com/support` (or `support@join-social.com`)
+- [ ] Create Apple Developer account + App Store Connect app record (get Team ID + ASC App ID)
+- [ ] Fill `eas.json` submit section with real `appleId`, `ascAppId`, `appleTeamId`
+
+### Phase 5 — Build, test, submit
+
+- [ ] `eas build -p ios --profile production` → first TestFlight build
+- [ ] Real-device smoke test (auth, onboarding, contacts, events, password reset deep link, account deletion)
+- [ ] App Store metadata: screenshots, description, keywords, privacy questionnaire, review notes
+- [ ] Submit to TestFlight, then App Store review
+- [ ] (Optional) Android/Play Store follow-up with the same backend
