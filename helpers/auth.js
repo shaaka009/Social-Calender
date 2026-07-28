@@ -57,3 +57,25 @@ export async function isAuthenticated() {
   const token = await getAccessToken();
   return !!token;
 }
+
+/**
+ * Decode a JWT and decide whether it is expired.
+ * Returns `true` if the token is missing, unreadable, or past its `exp`
+ * (minus a small clock-skew buffer). When we can't decode it we return
+ * `true` so the caller falls back to a server-side refresh, which validates
+ * the token for real.
+ */
+export function isTokenExpired(token, skewSeconds = 30) {
+  if (!token) return true;
+  try {
+    const payload = token.split('.')[1];
+    if (!payload || typeof atob !== 'function') return true;
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padLen = (4 - (normalized.length % 4)) % 4;
+    const { exp } = JSON.parse(atob(normalized + '='.repeat(padLen)));
+    if (!exp) return true;
+    return Date.now() / 1000 >= exp - skewSeconds;
+  } catch {
+    return true;
+  }
+}

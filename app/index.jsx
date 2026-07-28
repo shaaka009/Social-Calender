@@ -2,7 +2,7 @@ import { useRouter } from "expo-router";
 import { useEffect } from "react";
 import { Image, StyleSheet, View } from "react-native";
 import ScreenWrapper from "../components/ScreenWrapper";
-import { isAuthenticated } from "../helpers/auth";
+import { ensureValidSession } from "../helpers/api";
 import { theme } from "../constants/theme";
 import { hp, wp } from "../helpers/common";
 
@@ -11,7 +11,7 @@ const Index = () => {
 
   useEffect(() => {
     const timer = setTimeout(async () => {
-      const loggedIn = await isAuthenticated();
+      const loggedIn = await ensureValidSession();
       router.replace(loggedIn ? "/home" : "/welcome");
     }, 2000);
 

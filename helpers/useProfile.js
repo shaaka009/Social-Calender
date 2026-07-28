@@ -44,6 +44,16 @@ export const useVerifyLoginEmailChangeMutation = () => {
   });
 };
 
+export const useChangePasswordMutation = () => {
+  return useMutation({
+    mutationFn: ({ current_password, new_password }) =>
+      apiFetch(ENDPOINTS.CHANGE_PASSWORD, {
+        method: "POST",
+        body: JSON.stringify({ current_password, new_password }),
+      }),
+  });
+};
+
 const useProfile = () => {
   return useQuery({
     queryKey: ["profile"],

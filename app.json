@@ -20,6 +20,7 @@
       "bundleIdentifier": "com.socialcalendar.app",
       "buildNumber": "1",
       "infoPlist": {
+        "LSApplicationQueriesSchemes": ["socialcalendar"],
         "NSPhotoLibraryUsageDescription": "Social Calendar needs access to your photo library to set a profile picture.",
         "NSCameraUsageDescription": "Social Calendar needs access to your camera to take a profile picture.",
         "NSLocationWhenInUseUsageDescription": "Social Calendar uses your location to display your city on your profile."
@@ -28,6 +29,13 @@
     "android": {
       "package": "com.socialcalendar.app",
       "versionCode": 1,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [{ "scheme": "socialcalendar" }],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ],
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",

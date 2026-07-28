@@ -40,6 +40,12 @@ const ProfileLayout = () => {
         }}
       />
       <Stack.Screen
+        name="settings/change-password"
+        options={{
+          title: "Change Password",
+        }}
+      />
+      <Stack.Screen
         name="edit"
         options={{
           title: "Edit Profile",

@@ -13,6 +13,12 @@ const ACCOUNT_OPTIONS = [
     icon: "mail-outline",
     route: "/profile/change-login-email",
   },
+  {
+    key: "change_password",
+    label: "Change Password",
+    icon: "key-outline",
+    route: "/profile/settings/change-password",
+  },
 ];
 
 const AccountSettingsScreen = () => {

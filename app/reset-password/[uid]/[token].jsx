@@ -14,9 +14,16 @@ import { ENDPOINTS } from "../../../helpers/api";
 import { wp } from "../../../helpers/common";
 import useLoading from "../../../helpers/useLoading";
 
+function firstParam(value) {
+  if (value == null) return '';
+  return Array.isArray(value) ? value[0] : value;
+}
+
 const ResetPassword = () => {
   const { isLoading, withLoading } = useLoading();
-  const { uid, token } = useLocalSearchParams();
+  const params = useLocalSearchParams();
+  const uid = firstParam(params.uid);
+  const token = firstParam(params.token);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
@@ -24,6 +31,10 @@ const ResetPassword = () => {
 
   const handleSubmit = () => {
     setError("");
+    if (!uid || !token) {
+      setError("This reset link is missing required information. Request a new link from the sign-in screen.");
+      return;
+    }
     if (!password || !confirmPassword) {
       setError("Please fill in all fields");
       return;
@@ -46,7 +57,13 @@ const ResetPassword = () => {
           }
         );
 
-        const data = await response.json();
+        const raw = await response.text();
+        let data = {};
+        try {
+          data = raw ? JSON.parse(raw) : {};
+        } catch {
+          throw new Error("Unexpected server response. Please try again.");
+        }
 
         if (!response.ok) {
           throw new Error(data.message || "Failed to reset password");

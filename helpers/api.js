@@ -1,5 +1,12 @@
 import Constants from 'expo-constants';
-import { clearTokens, getAccessToken, getRefreshToken, storeTokens } from './auth';
+import { clearTokens, getAccessToken, getRefreshToken, isTokenExpired, storeTokens } from './auth';
+
+// Callback invoked when a session definitively expires (refresh token rejected).
+// Registered by the root layout to redirect to /welcome and clear cached data.
+let _onSessionExpired = null;
+export function setOnSessionExpired(fn) {
+  _onSessionExpired = fn;
+}
 
 const DEFAULT_API_BASE = 'http://127.0.0.1:8000';
 
@@ -59,8 +66,11 @@ export const ENDPOINTS = {
   SIGN_OUT: `${API_BASE_URL}/api/signout/`,
   TOKEN_REFRESH: `${API_BASE_URL}/api/token/refresh/`,
   PASSWORD_RESET: `${API_BASE_URL}/api/password-reset/`,
-  PASSWORD_RESET_CONFIRM: (uid, token) =>
-    `${API_BASE_URL}/api/password-reset/${uid}/${token}/`,
+  PASSWORD_RESET_CONFIRM: (uid, token) => {
+    const u = encodeURIComponent(String(uid ?? ''));
+    const t = encodeURIComponent(String(token ?? ''));
+    return `${API_BASE_URL}/api/password-reset/${u}/${t}/`;
+  },
   USER: `${API_BASE_URL}/api/user/`,
   DASHBOARD: `${API_BASE_URL}/api/dashboard/`,
   CONNECTIONS: `${API_BASE_URL}/api/connections/`,
@@ -69,6 +79,7 @@ export const ENDPOINTS = {
   EVENTS: `${API_BASE_URL}/api/events/`,
   EVENT_DETAIL: (id) => `${API_BASE_URL}/api/events/${id}/`,
   PROFILE: `${API_BASE_URL}/api/profile/`,
+  CHANGE_PASSWORD: `${API_BASE_URL}/api/account/change-password/`,
   DELETE_ACCOUNT: `${API_BASE_URL}/api/account/delete/`,
   TAGS: `${API_BASE_URL}/api/tags/`,
   TAG_DETAIL: (id) => `${API_BASE_URL}/api/tags/${id}/`,
@@ -98,6 +109,7 @@ async function _refreshAccessToken() {
       if (!res.ok) {
         // Refresh token is also expired / invalid → force logout
         await clearTokens();
+        _onSessionExpired?.();
         return false;
       }
 
@@ -115,6 +127,20 @@ async function _refreshAccessToken() {
   })();
 
   return _refreshPromise;
+}
+
+// -----------------------------------------------------------------
+// Startup auth check: is there a usable session?
+// Returns true only if we have a valid (or successfully refreshed)
+// access token. A stale/expired token that can't be refreshed clears
+// itself and returns false, so the app routes to /welcome instead of
+// stranding the user on an authenticated screen.
+// -----------------------------------------------------------------
+export async function ensureValidSession() {
+  const access = await getAccessToken();
+  if (!access) return false;
+  if (!isTokenExpired(access)) return true;
+  return _refreshAccessToken();
 }
 
 // -----------------------------------------------------------------
