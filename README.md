@@ -1,4 +1,4 @@
-# KITcal - Calendar Management App
+# Social Calendar - Calendar Management App
 
 A calendar management application built with React Native (Expo) and Django.
 

@@ -153,7 +153,7 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     padding: wp(4),
-    backgroundColor: theme.colors.primaryLight,
+    backgroundColor: theme.colors.primary + '15',
     borderRadius: wp(3),
     alignItems: 'flex-start',
   },

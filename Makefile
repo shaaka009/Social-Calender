@@ -15,7 +15,7 @@ NC = \033[0m # No Color
 
 # Default target
 help:
-	@echo "$(CYAN)KITcal Development Commands:$(NC)"
+	@echo "$(CYAN)Social Calendar Development Commands:$(NC)"
 	@echo "$(GREEN)make install$(NC)        - Install all dependencies (frontend & backend)"
 	@echo "$(GREEN)make setup-backend$(NC)  - Set up Python virtual environment and install backend dependencies"
 	@echo "$(GREEN)make setup-frontend$(NC) - Install frontend dependencies"
@@ -76,7 +76,7 @@ test-backend:
 	@echo "$(CYAN)Running Django backend tests...$(NC)"
 	cd djangoproject && ../$(PYTHON_VENV) manage.py test
 
-# Frontend tests
+# Frontend checks (no unit tests yet — run the linter)
 test-frontend:
-	@echo "$(CYAN)Running frontend tests...$(NC)"
-	$(NPM) test
+	@echo "$(CYAN)Running frontend lint...$(NC)"
+	$(NPM) run lint

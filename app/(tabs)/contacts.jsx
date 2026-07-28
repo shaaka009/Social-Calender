@@ -20,7 +20,6 @@ const Contacts = () => {
   const [selectedTags, setSelectedTags] = useState([]);
   const COLOR_OPTIONS = TAG_COLOR_OPTIONS;
   const [modalVisible, setModalVisible] = useState(false);
-  const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [newTag, setNewTag] = useState({ name: '', color: COLOR_OPTIONS[0] });
   const [tagEditVisible, setTagEditVisible] = useState(false);
   const [tagEditTarget, setTagEditTarget] = useState(null);
@@ -94,15 +93,14 @@ const Contacts = () => {
   );
 
   const renderTags = useCallback(() => (
-    <View style={styles.tagsRow}>
+    <View style={styles.tagStrip}>
       <Pressable style={styles.plusButton} onPress={() => setModalVisible(true)}>
         <Ionicons name="add" size={wp(5)} color="#fff" />
       </Pressable>
 
-      {/* Wrap FlatList to allow fade overlay */}
-      <View style={styles.tagsList}>
+      <View style={styles.tagScroll}>
         {allTags.length === 0 ? (
-          <View style={styles.tagsContainer}>
+          <View style={styles.chipRow}>
             <View style={styles.ghostTag} pointerEvents="none">
               <Text style={styles.ghostTagText}>Create tags to organize contacts</Text>
             </View>
@@ -113,7 +111,7 @@ const Contacts = () => {
             horizontal
             keyExtractor={(item) => String(item.id)}
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tagsContainer}
+            contentContainerStyle={styles.chipRow}
             renderItem={({ item: tag }) => {
               const isSelected = selectedTags.includes(tag.name);
               return (
@@ -139,7 +137,7 @@ const Contacts = () => {
             colors={["rgba(255, 255, 255, 0)", "rgba(255, 255, 255, 1)"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
-            style={styles.tagsFade}
+            style={styles.tagFade}
             pointerEvents="none"
           />
         )}
@@ -194,28 +192,8 @@ const Contacts = () => {
         }}
         onAfterChange={handleTagFilterAfterEdit}
       />
-
-      {/* Filter Modal */}
-      <Modal
-        visible={filterModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setFilterModalVisible(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Filter Contacts</Text>
-            <Text style={{ color: theme.colors.text, marginBottom: wp(3) }}>Filter options coming soon...</Text>
-            <View style={styles.modalActions}>
-              <Pressable style={styles.modalBtn} onPress={() => setFilterModalVisible(false)}>
-                <Text style={styles.cancelText}>Close</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
-  ), [COLOR_OPTIONS, allTags, filterModalVisible, handleSaveTag, handleTagFilterAfterEdit, modalVisible, newTag.color, newTag.name, selectedTags, tagEditTarget, tagEditVisible]);
+  ), [COLOR_OPTIONS, allTags, handleSaveTag, handleTagFilterAfterEdit, modalVisible, newTag.color, newTag.name, selectedTags, tagEditTarget, tagEditVisible]);
 
   return (
     <ScreenWrapper>
@@ -259,13 +237,6 @@ const Contacts = () => {
             onChangeText={setSearchQuery}
             placeholderTextColor={theme.colors.textLight}
           />
-          <TouchableOpacity
-            style={styles.filterButton}
-            onPress={() => setFilterModalVisible(true)}
-            accessibilityLabel="Open contact filters"
-          >
-            <Ionicons name="filter" size={wp(6)} color={theme.colors.text} />
-          </TouchableOpacity>
         </View>
 
         {renderTags()}
@@ -425,10 +396,6 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontSize: wp(4),
     fontWeight: '600',
-  },
-  filterButton: {
-    paddingHorizontal: wp(2),
-    paddingVertical: wp(2),
   },
 });
 

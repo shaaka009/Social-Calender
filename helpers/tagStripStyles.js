@@ -1,40 +1,49 @@
 import { theme } from '../constants/theme';
 import { wp } from './common';
 
+/** Top inset for chip scale animation; + uses the same offset so it stays aligned with chips. */
+const TAG_STRIP_TOP_INSET = wp(1);
+
 /**
- * Shared layout for the tag strip (+ button + horizontal tag list) on Contacts and Events.
- * Single source of truth so tab switches do not shift the add button or chips.
+ * Tag filter strip (Contacts / Events tabs).
+ *
+ * - tagStrip: single wrapper — tweak padding/margin here; + and chips move together.
+ * - tagScroll: clips horizontal list + edge fade (flexes; minWidth 0 avoids row overflow).
+ * - chipRow: FlatList content only (row of chips / ghost), not the strip chrome.
+ * - plusButton: hit target only; vertical offset matches chipRow via TAG_STRIP_TOP_INSET.
  */
 export const tagStripStyles = {
-  tagsContainer: {
-    paddingHorizontal: wp(5),
-    flexDirection: 'row',
-    gap: wp(2),
-    marginBottom: wp(2),
-    alignItems: 'center',
-  },
-  tagsRow: {
+  tagStrip: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     marginTop: wp(1),
     marginBottom: wp(2),
+    // Whole strip: changing these moves + and chip list together.
+    paddingLeft: wp(5),
     paddingRight: wp(3.5),
   },
-  tagsList: {
+  tagScroll: {
+    flex: 1,
     flexShrink: 1,
-    flexGrow: 1,
-    overflow: 'hidden',
-    marginLeft: wp(0),
-    paddingLeft: wp(0),
+    minWidth: 0,
+    overflow: 'hidden'
   },
-  tagsFade: {
+  chipRow: {
+    flexDirection: 'row',
+    gap: wp(2),
+    alignItems: 'center',
+    marginBottom: wp(2),
+    paddingLeft: wp(5),
+    paddingRight: wp(5),
+    paddingTop: TAG_STRIP_TOP_INSET,
+  },
+  tagFade: {
     position: 'absolute',
     right: 0,
     top: 0,
     bottom: 0,
     width: wp(12),
   },
-  /* Match AnimatedTagFilterChip: minHeight wp(8), borderRadius wp(4); no border so use same box */
   plusButton: {
     backgroundColor: theme.colors.primary,
     minWidth: wp(8),
@@ -44,7 +53,7 @@ export const tagStripStyles = {
     borderRadius: wp(4),
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: wp(5),
+    marginTop: TAG_STRIP_TOP_INSET,
   },
   ghostTag: {
     paddingHorizontal: wp(3),

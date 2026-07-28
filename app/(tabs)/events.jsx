@@ -559,16 +559,15 @@ const Events = () => {
         </View>
       </View>
 
-      {/* Tags row */}
-      <View style={styles.tagsRow}>
+      {/* Tag filter strip */}
+      <View style={styles.tagStrip}>
         <Pressable style={styles.plusButton} onPress={() => setModalVisible(true)}>
           <Ionicons name="add" size={wp(5)} color="#fff" />
         </Pressable>
 
-        {/* Wrap FlatList to allow fade overlay */}
-        <View style={styles.tagsList}>
+        <View style={styles.tagScroll}>
           {tags.length === 0 ? (
-            <View style={styles.tagsContainer}>
+            <View style={styles.chipRow}>
               <View style={styles.ghostTag} pointerEvents="none">
                 <Text style={styles.ghostTagText}>Create tags to organize events</Text>
               </View>
@@ -579,7 +578,7 @@ const Events = () => {
               horizontal
               keyExtractor={(item) => String(item.id)}
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.tagsContainer}
+              contentContainerStyle={styles.chipRow}
               removeClippedSubviews
               renderItem={({ item: tag }) => {
                 const isSelected = selectedTags.includes(tag.name);
@@ -606,7 +605,7 @@ const Events = () => {
               colors={["rgba(255, 255, 255, 0)", "rgba(255, 255, 255, 1)"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={styles.tagsFade}
+              style={styles.tagFade}
               pointerEvents="none"
             />
           )}

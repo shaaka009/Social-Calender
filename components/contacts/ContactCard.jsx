@@ -3,8 +3,8 @@ import { Image } from 'expo-image';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { theme } from '../../constants/theme';
-import { wp } from '../../helpers/common';
 import { getPersonAvatarColors, getPersonInitials } from '../../helpers/avatar';
+import { wp } from '../../helpers/common';
 
 const ContactCard = ({ contact, onPress }) => {
   const person = contact.target || {};
@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
     gap: wp(2),
   },
   name: {
-    fontSize: wp(4),
+    fontSize: wp(4.5),
     fontWeight: '600',
     color: theme.colors.text,
     marginBottom: wp(0.5),

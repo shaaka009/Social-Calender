@@ -20,7 +20,7 @@ const Welcome = () => {
                 Welcome to
               </Text>
               <Image
-              source={require("../assets/images/logo.svg")}
+              source={require("../assets/images/logoV2.svg")}
               style={styles.image}
               contentFit="contain"
               />
@@ -64,6 +64,7 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     marginTop: wp(30),
     gap: wp(5),
+    paddingHorizontal: wp(4),
   },
   button: {
     width: "100%",
