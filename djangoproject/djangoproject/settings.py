@@ -39,6 +39,29 @@ if DEBUG and not os.environ.get("DJANGO_ALLOWED_HOSTS"):
 # The base URL the frontend app lives at (used for password-reset deep links, etc.)
 FRONTEND_BASE_URL = os.environ.get("FRONTEND_BASE_URL", "http://localhost:8081")
 
+# Scheme for app deep links in reset emails (must match app.json "scheme", e.g. socialcalendar)
+PASSWORD_RESET_APP_SCHEME = os.environ.get("PASSWORD_RESET_APP_SCHEME", "socialcalendar")
+
+# Origins trusted for CSRF (needed for the Django admin login over HTTPS on a
+# custom domain). Comma-separated, e.g. "https://api.join-social.com".
+_csrf_trusted = os.environ.get("CSRF_TRUSTED_ORIGINS")
+if _csrf_trusted:
+    CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_trusted.split(",") if o.strip()]
+
+# Production hardening (skipped in local dev where DEBUG=True).
+if not DEBUG:
+    # Render terminates TLS at its proxy and forwards the original scheme here.
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    USE_X_FORWARDED_HOST = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    # Redirect http -> https. Can be disabled via env if it interferes with a
+    # platform health check that probes over plain HTTP.
+    SECURE_SSL_REDIRECT = os.environ.get("SECURE_SSL_REDIRECT", "True").lower() in ("true", "1", "yes")
+    SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", "31536000"))  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+
 
 # Application definition
 
@@ -56,6 +79,9 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # WhiteNoise serves static files (e.g. Django admin) in production; must sit
+    # directly after SecurityMiddleware.
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -103,8 +129,13 @@ if _database_url:
             "PASSWORD": _parsed.password,
             "HOST": _parsed.hostname,
             "PORT": _parsed.port or 5432,
+            # Reuse connections across requests (Render Postgres).
+            "CONN_MAX_AGE": 600,
         }
     }
+    # Require SSL for remote databases (Render); skip for a local Postgres.
+    if _parsed.hostname not in ("localhost", "127.0.0.1"):
+        DATABASES["default"]["OPTIONS"] = {"sslmode": "require"}
 else:
     DATABASES = {
         "default": {
@@ -151,7 +182,21 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
+# WhiteNoise: compressed, hashed static files served by the app itself.
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
+
 # Media files (User uploads)
+# NOTE: In production (DEBUG=False) Django does NOT serve /media/, and Render's
+# filesystem is ephemeral, so uploaded profile pictures will not persist or be
+# served. Before launch, move media to a Render persistent disk or S3-compatible
+# storage (see progress-txt/TODO-for-launch.md, Phase 1).
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 

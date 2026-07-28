@@ -1,0 +1,55 @@
+# Render Blueprint for the Social Calendar Django backend.
+# Deploy via Render dashboard -> "New +" -> "Blueprint" and point it at this repo.
+# Secrets marked `sync: false` must be filled in the Render dashboard after the
+# first apply (they are intentionally not stored in git).
+
+databases:
+  - name: social-calendar-db
+    databaseName: social_calendar
+    user: social_calendar
+    plan: free
+
+services:
+  - type: web
+    name: social-calendar-api
+    runtime: python
+    plan: free
+    buildCommand: "./build.sh"
+    startCommand: "cd djangoproject && gunicorn djangoproject.wsgi:application --bind 0.0.0.0:$PORT"
+    healthCheckPath: /admin/login/
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.4"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: social-calendar-db
+          property: connectionString
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_DEBUG
+        value: "False"
+      # Must include the auto-assigned <service>.onrender.com host AND your custom
+      # API domain, e.g. "api.join-social.com,social-calendar-api.onrender.com"
+      - key: DJANGO_ALLOWED_HOSTS
+        sync: false
+      # e.g. "https://join-social.com"
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      # e.g. "https://api.join-social.com" (needed for admin login over HTTPS)
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false
+      # e.g. "https://join-social.com" (password-reset / deep-link base URL)
+      - key: FRONTEND_BASE_URL
+        sync: false
+      - key: DEFAULT_FROM_EMAIL
+        sync: false
+      - key: EMAIL_HOST
+        sync: false
+      - key: EMAIL_PORT
+        sync: false
+      - key: EMAIL_USE_TLS
+        sync: false
+      - key: EMAIL_HOST_USER
+        sync: false
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
