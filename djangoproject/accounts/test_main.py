@@ -800,6 +800,48 @@ class LoginEmailChangeFlowTests(APITestCase):
         self.assertEqual(signin_resp.status_code, status.HTTP_200_OK)
 
 
+class ChangePasswordAPITests(APITestCase):
+    def setUp(self):
+        self.user, _ = create_user_with_person("pwchange@example.com", password="OldPass123!")
+        self.url = reverse("change_password")
+        self.client.force_authenticate(self.user)
+
+    def test_change_password_requires_auth(self):
+        self.client.force_authenticate(user=None)
+        resp = self.client.post(
+            self.url,
+            {"current_password": "OldPass123!", "new_password": "NewPass456!"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_change_password_wrong_current(self):
+        resp = self.client.post(
+            self.url,
+            {"current_password": "wrong-pass", "new_password": "NewPass456!"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_change_password_same_as_old_rejected(self):
+        resp = self.client.post(
+            self.url,
+            {"current_password": "OldPass123!", "new_password": "OldPass123!"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_change_password_success(self):
+        resp = self.client.post(
+            self.url,
+            {"current_password": "OldPass123!", "new_password": "NewPass456!"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("NewPass456!"))
+
+
 class DeleteAccountAPITests(APITestCase):
     def setUp(self):
         self.user, self.person = create_user_with_person("deleteme@example.com", password="Passw0rd!")

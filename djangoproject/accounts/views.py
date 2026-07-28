@@ -1,4 +1,5 @@
 import json
+import logging
 import secrets
 import string
 
@@ -9,7 +10,8 @@ from django.db import models
 from django.db.models import Q
 from django.db import transaction
 from django.core.mail import send_mail
-from django.template.loader import render_to_string
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils import timezone
@@ -43,6 +45,8 @@ from .models import Connection, Interaction, Person, Account, Event, Tag
 from .birthday_events import build_virtual_birthday_events
 
 from .forms import UserRegistrationForm
+
+logger = logging.getLogger(__name__)
 
 
 # -------------------------------------------------
@@ -93,6 +97,35 @@ def _send_login_email_change_code(first_name, new_email, verification_code):
         send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [new_email])
     except Exception:
         pass
+
+
+def _send_password_reset_email(user, web_reset_url, app_reset_url=None):
+    """Send plain-text reset instructions (no HTML template dependency)."""
+    first = (user.first_name or "").strip() or "there"
+    parts = [
+        f"Hi {first},",
+        "",
+        "We received a request to reset your Social Calendar password.",
+        "",
+        "Open this link to choose a new password:",
+        web_reset_url,
+        "",
+    ]
+    if app_reset_url:
+        parts.extend(
+            [
+                "Using the mobile app? Open this link in the app instead:",
+                app_reset_url,
+                "",
+            ]
+        )
+    parts.append("If you did not request a password reset, you can ignore this email.")
+    send_mail(
+        "Password reset — Social Calendar",
+        "\n".join(parts),
+        settings.DEFAULT_FROM_EMAIL,
+        [user.email],
+    )
 
 
 # Create your views here.
@@ -461,67 +494,88 @@ def get_user(request):
 
 @csrf_exempt
 def password_reset(request):
-    if request.method == 'POST':
-        data = json.loads(request.body.decode('utf-8'))
-        email = data.get('email')
-        
-        try:
-            user = get_user_model().objects.get(email=email)
-            
-            # Generate token
-            token = default_token_generator.make_token(user)
-            uid = urlsafe_base64_encode(force_bytes(user.pk))
-            
-            # Build reset URL from the FRONTEND_BASE_URL env var
-            frontend_url = getattr(settings, 'FRONTEND_BASE_URL', 'http://localhost:8081')
-            reset_url = f"{frontend_url}/reset-password/{uid}/{token}"
-            
-            try:
-                subject = 'Password Reset Request'
-                message = render_to_string('password_reset_email.html', {
-                    'user': user,
-                    'reset_url': reset_url,
-                })
-                send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [email])
-            except Exception:
-                pass  # Silently handle email errors in development
-            
-            response_data = {
-                'message': 'Password reset email sent if account exists',
-            }
-            # Only expose the link directly in dev mode
-            if settings.DEBUG:
-                response_data['reset_link'] = reset_url
-            return JsonResponse(response_data)
-        except get_user_model().DoesNotExist:
-            # Return success even if email doesn't exist (for security)
-            return JsonResponse({
-                'message': 'Password reset email sent if account exists'
-            })
-    
-    return JsonResponse({'message': 'Method not allowed'}, status=405)
+    if request.method != "POST":
+        return JsonResponse({"message": "Method not allowed"}, status=405)
+
+    try:
+        data = json.loads(request.body.decode("utf-8") or "{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"message": "Invalid JSON"}, status=400)
+
+    email = (data.get("email") or "").strip().lower()
+    if not email:
+        return JsonResponse({"message": "Email is required"}, status=400)
+
+    User = get_user_model()
+    try:
+        user = User.objects.get(email__iexact=email)
+    except User.DoesNotExist:
+        return JsonResponse({"message": "Password reset email sent if account exists"})
+
+    token = default_token_generator.make_token(user)
+    uid = urlsafe_base64_encode(force_bytes(user.pk))
+
+    frontend_url = getattr(settings, "FRONTEND_BASE_URL", "http://localhost:8081").rstrip("/")
+    web_reset_url = f"{frontend_url}/reset-password/{uid}/{token}"
+
+    scheme = getattr(settings, "PASSWORD_RESET_APP_SCHEME", "") or ""
+    app_reset_url = f"{scheme}://reset-password/{uid}/{token}" if scheme else None
+    # In DEBUG, expose the in-app deep link so simulators/devices open Expo, not the web URL.
+    dev_reset_link = app_reset_url or web_reset_url
+
+    generic_ok = {"message": "Password reset email sent if account exists"}
+
+    try:
+        _send_password_reset_email(user, web_reset_url, app_reset_url)
+    except Exception:
+        logger.exception("Password reset email failed for user_id=%s", user.pk)
+        if settings.DEBUG:
+            out = dict(generic_ok)
+            out["reset_link"] = dev_reset_link
+            out["email_error"] = True
+            return JsonResponse(out)
+        return JsonResponse(generic_ok)
+
+    response_data = dict(generic_ok)
+    if settings.DEBUG:
+        response_data["reset_link"] = dev_reset_link
+    return JsonResponse(response_data)
 
 @csrf_exempt
 def password_reset_confirm(request, uid, token):
-    if request.method == 'POST':
-        data = json.loads(request.body.decode('utf-8'))
-        new_password = data.get('password')
-        
-        try:
-            user_id = force_str(urlsafe_base64_decode(uid))
-            user = get_user_model().objects.get(pk=user_id)
-            
-            if default_token_generator.check_token(user, token):
-                user.set_password(new_password)
-                user.save()
-                return JsonResponse({'message': 'Password reset successful'})
-            else:
-                return JsonResponse({'message': 'Invalid token'}, status=400)
-                
-        except (ValueError, get_user_model().DoesNotExist):
-            return JsonResponse({'message': 'Invalid request'}, status=400)
-    
-    return JsonResponse({'message': 'Method not allowed'}, status=405)
+    if request.method != "POST":
+        return JsonResponse({"message": "Method not allowed"}, status=405)
+
+    try:
+        data = json.loads(request.body.decode("utf-8") or "{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"message": "Invalid JSON"}, status=400)
+
+    new_password = data.get("password")
+    if not new_password or not isinstance(new_password, str):
+        return JsonResponse({"message": "Password is required."}, status=400)
+
+    User = get_user_model()
+    try:
+        user_id = force_str(urlsafe_base64_decode(uid))
+        user = User.objects.get(pk=user_id)
+    except (ValueError, TypeError, OverflowError, User.DoesNotExist):
+        return JsonResponse({"message": "Invalid request"}, status=400)
+
+    if not default_token_generator.check_token(user, token):
+        return JsonResponse(
+            {"message": "Invalid or expired reset link. Please request a new one."},
+            status=400,
+        )
+
+    try:
+        validate_password(new_password, user=user)
+    except DjangoValidationError as exc:
+        return JsonResponse({"message": " ".join(exc.messages)}, status=400)
+
+    user.set_password(new_password)
+    user.save()
+    return JsonResponse({"message": "Password reset successful"})
 
 # =========================================================================
 # API VIEWS (class based)
@@ -861,6 +915,48 @@ class UserProfileAPIView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+class ChangePasswordAPIView(APIView):
+    """Update password for the authenticated user (settings flow)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        current_password = (request.data.get("current_password") or "").strip()
+        new_password = request.data.get("new_password")
+        new_password = new_password.strip() if isinstance(new_password, str) else ""
+
+        if not current_password or not new_password:
+            return Response(
+                {"success": False, "message": "Current password and new password are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not user.check_password(current_password):
+            return Response(
+                {"success": False, "message": "Current password is incorrect."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if user.check_password(new_password):
+            return Response(
+                {"success": False, "message": "New password must be different from your current password."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            validate_password(new_password, user=user)
+        except DjangoValidationError as exc:
+            return Response(
+                {"success": False, "message": " ".join(exc.messages)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.set_password(new_password)
+        user.save(update_fields=["password"])
+        return Response(
+            {"success": True, "message": "Your password has been updated."},
+            status=status.HTTP_200_OK,
+        )
 
 
 class DeleteAccountAPIView(APIView):

@@ -26,5 +26,6 @@ urlpatterns = [
     path("password-reset/<str:uid>/<str:token>/", views.password_reset_confirm, name="password_reset_confirm"),
     path("dashboard/", views.DashboardAPIView.as_view(), name="dashboard"),
     path("profile/", views.UserProfileAPIView.as_view(), name="user_profile"),
+    path("account/change-password/", views.ChangePasswordAPIView.as_view(), name="change_password"),
     path("account/delete/", views.DeleteAccountAPIView.as_view(), name="delete_account"),
 ] + router.urls

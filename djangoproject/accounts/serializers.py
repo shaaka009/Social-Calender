@@ -2,6 +2,7 @@ import json
 from datetime import date
 
 from django.contrib.auth.models import User
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import serializers
 from .models import (
@@ -438,7 +439,9 @@ class EventSerializer(serializers.ModelSerializer):
         ).exclude(
             status=Connection.DECLINED
         ).values_list("target_id", flat=True)
-        return Person.objects.filter(id__in=people_ids).filter(id__in=connection_target_ids)
+        return Person.objects.filter(id__in=people_ids).filter(
+            Q(id__in=connection_target_ids) | Q(id=owner_person.id)
+        )
 
     def _resolve_tags(self, tag_ids):
         owner_person = self._get_owner_person()
