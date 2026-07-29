@@ -8,9 +8,11 @@ import ScreenWrapper from '../../components/ScreenWrapper';
 import { theme } from '../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../helpers/api';
 import { wp } from '../../helpers/common';
+import { useSubmitGuard } from '../../helpers/useSubmitGuard';
 
 const ContactRequestsScreen = () => {
   const queryClient = useQueryClient();
+  const { isSubmitting, run } = useSubmitGuard();
   
   // Get current user data
   const { data: currentUser } = useQuery({
@@ -38,7 +40,7 @@ const ContactRequestsScreen = () => {
     enabled: Boolean(currentUser?.success)
   });
 
-  const handleAccept = useCallback(async (contactId) => {
+  const handleAccept = useCallback((contactId) => run(async () => {
     try {
       await apiFetch(`${ENDPOINTS.CONNECTIONS}${contactId}/accept/`, {
         method: 'POST'
@@ -47,9 +49,9 @@ const ContactRequestsScreen = () => {
     } catch (err) {
       Alert.alert('Error', err.message || 'Failed to accept request');
     }
-  }, [queryClient]);
+  }), [queryClient, run]);
 
-  const handleDecline = useCallback(async (contactId) => {
+  const handleDecline = useCallback((contactId) => run(async () => {
     try {
       await apiFetch(`${ENDPOINTS.CONNECTIONS}${contactId}/decline/`, {
         method: 'POST'
@@ -58,7 +60,7 @@ const ContactRequestsScreen = () => {
     } catch (err) {
       Alert.alert('Error', err.message || 'Failed to decline request');
     }
-  }, [queryClient]);
+  }), [queryClient, run]);
 
   const renderRequest = useCallback(({ item: contact }) => (
     <View style={styles.requestCard}>
@@ -74,16 +76,18 @@ const ContactRequestsScreen = () => {
           title="Accept"
           onPress={() => handleAccept(contact.id)}
           style={styles.actionButton}
+          disabled={isSubmitting}
         />
         <CustomButton
           title="Decline"
           variant="outline"
           onPress={() => handleDecline(contact.id)}
           style={styles.actionButton}
+          disabled={isSubmitting}
         />
       </View>
     </View>
-  ), [handleAccept, handleDecline]);
+  ), [handleAccept, handleDecline, isSubmitting]);
 
   return (
     <ScreenWrapper>

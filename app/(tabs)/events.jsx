@@ -15,6 +15,7 @@ import { theme } from '../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../helpers/api';
 import { parseDateLocal, wp } from '../../helpers/common';
 import { tagStripStyles } from '../../helpers/tagStripStyles';
+import { useSubmitGuard } from '../../helpers/useSubmitGuard';
 import { useCreateTag, useTags } from '../../helpers/useTags';
 
 const getStart = (e) => (
@@ -118,6 +119,8 @@ const Events = () => {
 
   const { data: tags = [] } = useTags();
   const createTagMutation = useCreateTag();
+  const { isSubmitting: isCreatingTag, run: runCreateTag } = useSubmitGuard();
+  const { isSubmitting: isBulkDeleting, run: runBulkDelete } = useSubmitGuard();
 
   const COLOR_OPTIONS = TAG_COLOR_OPTIONS;
   const [modalVisible, setModalVisible] = useState(false);
@@ -126,7 +129,6 @@ const Events = () => {
   const [selectedEventIds, setSelectedEventIds] = useState(() => new Set());
   const [bulkDeleteModalVisible, setBulkDeleteModalVisible] = useState(false);
   const [bulkDeleteTargetIds, setBulkDeleteTargetIds] = useState([]);
-  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [tagEditVisible, setTagEditVisible] = useState(false);
   const [tagEditTarget, setTagEditTarget] = useState(null);
 
@@ -379,17 +381,15 @@ const Events = () => {
   const handleExitSelectionMode = useCallback(() => {
     setBulkDeleteModalVisible(false);
     setBulkDeleteTargetIds([]);
-    setIsBulkDeleting(false);
     setSelectedEventIds(new Set());
     setIsSelectionMode(false);
   }, []);
 
-  const handleBulkDelete = useCallback(async () => {
+  const handleBulkDelete = useCallback(() => {
     const idsToDelete = [...modalTargetIds];
-    if (idsToDelete.length === 0 || isBulkDeleting) return;
+    if (idsToDelete.length === 0) return;
 
-    setIsBulkDeleting(true);
-    try {
+    runBulkDelete(async () => {
       const results = await Promise.allSettled(
         idsToDelete.map((id) => apiFetch(`${ENDPOINTS.EVENTS}${id}/`, { method: 'DELETE' }))
       );
@@ -447,10 +447,8 @@ const Events = () => {
       setBulkDeleteModalVisible(false);
       setBulkDeleteTargetIds([]);
       setIsSelectionMode(true);
-    } finally {
-      setIsBulkDeleting(false);
-    }
-  }, [handleExitSelectionMode, isBulkDeleting, modalTargetIds, queryClient]);
+    });
+  }, [handleExitSelectionMode, modalTargetIds, queryClient, runBulkDelete]);
 
   const openBulkDeleteModal = useCallback(() => {
     const targetIds = [...selectedEventIds];
@@ -654,15 +652,17 @@ const Events = () => {
                 style={styles.modalBtn}
                 onPress={() => {
                   if (!newTag.name.trim()) return;
-                  createTagMutation.mutate(newTag, {
-                    onSuccess: () => {
-                      setModalVisible(false);
-                      setNewTag({ name: '', color: COLOR_OPTIONS[0] });
-                    },
+                  runCreateTag(async () => {
+                    await createTagMutation.mutateAsync(newTag);
+                    setModalVisible(false);
+                    setNewTag({ name: '', color: COLOR_OPTIONS[0] });
                   });
                 }}
+                disabled={isCreatingTag}
               >
-                <Text style={styles.saveText}>Save</Text>
+                <Text style={[styles.saveText, isCreatingTag && { opacity: 0.5 }]}>
+                  {isCreatingTag ? 'Saving…' : 'Save'}
+                </Text>
               </Pressable>
             </View>
           </View>

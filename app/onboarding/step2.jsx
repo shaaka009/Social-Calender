@@ -103,6 +103,7 @@ const OnboardingStep2 = () => {
               title="Continue"
               onPress={handleContinue}
               style={styles.button}
+              disabled={isLoading}
             />
             <CustomButton
               title="Skip for now"

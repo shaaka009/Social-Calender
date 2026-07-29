@@ -14,9 +14,11 @@ import { theme } from "../../constants/theme";
 import { ENDPOINTS } from "../../helpers/api";
 import { wp } from "../../helpers/common";
 import useLoading from "../../helpers/useLoading";
+import { useOneShot } from "../../helpers/useSubmitGuard";
 
 const SignUp = () => {
   const { isLoading, withLoading } = useLoading();
+  const goOnce = useOneShot();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -63,10 +65,12 @@ const SignUp = () => {
           return;
         }
 
-        router.replace({
-          pathname: "/onboarding/verify-email",
-          params: { email: email.trim().toLowerCase() },
-        });
+        goOnce(() =>
+          router.replace({
+            pathname: "/onboarding/verify-email",
+            params: { email: email.trim().toLowerCase() },
+          })
+        );
       } catch (err) {
         setError("Network error or server is not responding");
       }
@@ -131,6 +135,7 @@ const SignUp = () => {
                 title="Create Account"
                 onPress={handleSignUp}
                 style={styles.button}
+                disabled={isLoading}
               />
             </View>
           </View>

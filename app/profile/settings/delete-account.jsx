@@ -10,22 +10,23 @@ import { theme } from "../../../constants/theme";
 import { ENDPOINTS, apiFetch } from "../../../helpers/api";
 import { clearTokens } from "../../../helpers/auth";
 import { wp } from "../../../helpers/common";
+import { useOneShot, useSubmitGuard } from "../../../helpers/useSubmitGuard";
 
 const DeleteAccountScreen = () => {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { isSubmitting, run } = useSubmitGuard();
+  const goOnce = useOneShot();
   const [password, setPassword] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const handleDelete = async () => {
+  const handleDelete = () => run(async () => {
     setError("");
     if (!password) {
       setError("Please enter your password.");
       return;
     }
 
-    setIsLoading(true);
     try {
       await apiFetch(ENDPOINTS.DELETE_ACCOUNT, {
         method: "DELETE",
@@ -33,16 +34,14 @@ const DeleteAccountScreen = () => {
       });
       await clearTokens();
       queryClient.clear();
-      router.replace("/welcome");
+      goOnce(() => router.replace("/welcome"));
     } catch (err) {
       setError(err.message || "Failed to delete account.");
-    } finally {
-      setIsLoading(false);
     }
-  };
+  });
 
   return (
-    <LoadingState isLoading={isLoading} subtle={true}>
+    <LoadingState isLoading={isSubmitting} subtle={true}>
       <ScreenWrapper>
         <View style={styles.container}>
           <Text style={styles.title}>Delete Account</Text>
@@ -60,12 +59,13 @@ const DeleteAccountScreen = () => {
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-          <CustomButton title="Delete Account" onPress={handleDelete} />
+          <CustomButton title="Delete Account" onPress={handleDelete} disabled={isSubmitting} />
           <CustomButton
             title="Cancel"
-            onPress={() => router.back()}
+            onPress={() => goOnce(() => router.back())}
             style={styles.cancelButton}
             textStyle={styles.cancelText}
+            disabled={isSubmitting}
           />
         </View>
       </ScreenWrapper>

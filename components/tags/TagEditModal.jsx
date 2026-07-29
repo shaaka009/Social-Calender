@@ -12,6 +12,7 @@ import {
 import { theme } from "../../constants/theme";
 import { TAG_COLOR_OPTIONS } from "../../constants/tagColors";
 import { wp } from "../../helpers/common";
+import { useSubmitGuard } from "../../helpers/useSubmitGuard";
 import { useDeleteTag, useUpdateTag } from "../../helpers/useTags";
 import TagFormFields from "./TagFormFields";
 
@@ -23,6 +24,7 @@ const TagEditModal = ({ visible, tag, onClose, onAfterChange }) => {
   const [color, setColor] = useState(TAG_COLOR_OPTIONS[0]);
   const updateMutation = useUpdateTag();
   const deleteMutation = useDeleteTag();
+  const { isSubmitting, run } = useSubmitGuard();
 
   const cardScale = useRef(new Animated.Value(1)).current;
   const cardOpacity = useRef(new Animated.Value(1)).current;
@@ -49,7 +51,7 @@ const TagEditModal = ({ visible, tag, onClose, onAfterChange }) => {
     }
   }, [visible, tag]);
 
-  const handleSave = async () => {
+  const handleSave = () => run(async () => {
     if (!tag?.id || !name.trim()) return;
     try {
       const data = await updateMutation.mutateAsync({
@@ -63,7 +65,7 @@ const TagEditModal = ({ visible, tag, onClose, onAfterChange }) => {
       const detail = e?.data?.name?.[0] || e?.data?.detail || e?.message || "Could not save tag.";
       Alert.alert("Could not save", typeof detail === "string" ? detail : "Invalid request.");
     }
-  };
+  });
 
   const handleDelete = () => {
     if (!tag?.id) return;
@@ -75,7 +77,7 @@ const TagEditModal = ({ visible, tag, onClose, onAfterChange }) => {
         {
           text: "Delete",
           style: "destructive",
-          onPress: async () => {
+          onPress: () => run(async () => {
             try {
               await deleteMutation.mutateAsync(tag.id);
               onAfterChange?.(null);
@@ -83,13 +85,13 @@ const TagEditModal = ({ visible, tag, onClose, onAfterChange }) => {
             } catch (err) {
               Alert.alert("Could not delete", err?.message || "Something went wrong.");
             }
-          },
+          }),
         },
       ]
     );
   };
 
-  const busy = updateMutation.isPending || deleteMutation.isPending;
+  const busy = updateMutation.isPending || deleteMutation.isPending || isSubmitting;
 
   const cardAnimatedStyle = {
     opacity: cardOpacity,

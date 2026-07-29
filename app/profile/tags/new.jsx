@@ -7,31 +7,34 @@ import ScreenWrapper from "../../../components/ScreenWrapper";
 import { TAG_COLOR_OPTIONS } from "../../../constants/tagColors";
 import { theme } from "../../../constants/theme";
 import { wp } from "../../../helpers/common";
+import { useOneShot, useSubmitGuard } from "../../../helpers/useSubmitGuard";
 import { useCreateTag } from "../../../helpers/useTags";
 
 const NewTagScreen = () => {
   const router = useRouter();
   const createMutation = useCreateTag();
+  const { isSubmitting, run } = useSubmitGuard();
+  const goOnce = useOneShot();
   const [name, setName] = useState("");
   const [color, setColor] = useState(TAG_COLOR_OPTIONS[0]);
 
-  const handleSave = async () => {
+  const handleSave = () => run(async () => {
     if (!name.trim()) return;
     try {
       await createMutation.mutateAsync({ name: name.trim(), color });
-      router.back();
+      goOnce(() => router.back());
     } catch (e) {
       const detail = e?.data?.name?.[0] || e?.data?.detail || e?.message || "Could not create tag.";
       Alert.alert("Could not create tag", typeof detail === "string" ? detail : "Invalid request.");
     }
-  };
+  });
 
-  const busy = createMutation.isPending;
+  const busy = createMutation.isPending || isSubmitting;
 
   return (
     <ScreenWrapper>
       <View style={styles.headerRow}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()} accessibilityLabel="Go back">
+        <TouchableOpacity style={styles.backButton} onPress={() => goOnce(() => router.back())} disabled={busy} accessibilityLabel="Go back">
           <Ionicons name="chevron-back" size={wp(7)} color={theme.colors.text} />
         </TouchableOpacity>
         <Text style={styles.title}>New tag</Text>

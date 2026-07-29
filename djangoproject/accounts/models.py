@@ -1,9 +1,27 @@
+import logging
+
 from django.db import models
+from django.db.models.signals import pre_delete
+from django.dispatch import receiver
 from django.contrib.auth import get_user_model
 
 from .image_utils import resize_profile_picture
 
 User = get_user_model()
+
+logger = logging.getLogger(__name__)
+
+
+def _safe_delete_storage_file(field_file):
+    """Delete a FileField/ImageField from storage without raising."""
+    if not field_file or not getattr(field_file, "name", None):
+        return
+    try:
+        field_file.delete(save=False)
+    except Exception:
+        logger.warning(
+            "Failed to delete storage file %s", field_file.name, exc_info=True
+        )
 
 
 # ---------------------------------------------------
@@ -155,9 +173,34 @@ class Person(models.Model):
     def save(self, *args, **kwargs):
         # Resize/re-encode only freshly uploaded images (uncommitted files),
         # so routine saves that don't touch the picture stay cheap.
-        if self.profile_picture and not getattr(self.profile_picture, "_committed", True):
+        # Also remove the previous storage object on replace OR clear, otherwise
+        # old avatars pile up in R2 forever.
+        old_picture = None
+        previous_picture = None
+        if self.pk:
+            try:
+                previous_picture = type(self).objects.get(pk=self.pk).profile_picture
+            except type(self).DoesNotExist:
+                previous_picture = None
+
+        is_new_upload = bool(
+            self.profile_picture and not getattr(self.profile_picture, "_committed", True)
+        )
+        if is_new_upload:
             resize_profile_picture(self.profile_picture)
+            old_picture = previous_picture
+        elif previous_picture and not self.profile_picture:
+            # Explicit clear (profile_picture set to None / empty).
+            old_picture = previous_picture
+
         super().save(*args, **kwargs)
+
+        # Delete the now-orphaned previous image. Guarded so a storage/network
+        # hiccup during cleanup never fails an otherwise-successful save.
+        if old_picture and old_picture.name:
+            new_name = self.profile_picture.name if self.profile_picture else None
+            if old_picture.name != new_name:
+                _safe_delete_storage_file(old_picture)
 
     def __str__(self):
         name = f"{self.first_name} {self.last_name}".strip()
@@ -167,6 +210,16 @@ class Person(models.Model):
     @property
     def is_app_user(self):
         return hasattr(self, "account")
+
+
+@receiver(pre_delete, sender=Person)
+def _delete_person_profile_picture_from_storage(sender, instance, **kwargs):
+    """Remove the avatar from R2/local storage when a Person row is deleted.
+
+    Fires for both instance.delete() and queryset.delete() (e.g. account
+    deletion cascading through manual contacts), so we don't leave orphans.
+    """
+    _safe_delete_storage_file(instance.profile_picture)
 
 
 # ---------------------------------------------------

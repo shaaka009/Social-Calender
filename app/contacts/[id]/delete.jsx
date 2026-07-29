@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useState } from 'react';
+import React from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import Toast from 'react-native-root-toast';
 import CustomButton from '../../../components/CustomButton';
@@ -11,16 +11,17 @@ import { theme } from '../../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../../helpers/api';
 import { wp } from '../../../helpers/common';
 import useConnection from '../../../helpers/useConnection';
+import { useOneShot, useSubmitGuard } from '../../../helpers/useSubmitGuard';
 
 const DeleteContactScreen = () => {
   const { id } = useLocalSearchParams();
   const { data: contact, isLoading } = useConnection(id);
   const person = contact?.target || {};
   const queryClient = useQueryClient();
-  const [isDeleting, setIsDeleting] = useState(false);
+  const { isSubmitting, run } = useSubmitGuard();
+  const goOnce = useOneShot();
 
-  const handleDelete = async () => {
-    setIsDeleting(true);
+  const handleDelete = () => run(async () => {
     try {
       await apiFetch(`${ENDPOINTS.CONNECTIONS}${id}/`, {
         method: 'DELETE',
@@ -44,12 +45,11 @@ const DeleteContactScreen = () => {
       });
 
       // Navigate back to contacts list immediately
-      router.replace('/contacts');
+      goOnce(() => router.replace('/contacts'));
     } catch (error) {
       Alert.alert('Error', error.message || 'Failed to delete contact');
-      setIsDeleting(false);
     }
-  };
+  });
 
   if (isLoading || !contact) {
     return <LoadingState />;
@@ -109,16 +109,16 @@ const DeleteContactScreen = () => {
           <CustomButton
             title="Cancel"
             variant="outline"
-            onPress={() => router.back()}
+            onPress={() => goOnce(() => router.back())}
             style={styles.button}
-            disabled={isDeleting}
+            disabled={isSubmitting}
           />
           <CustomButton
-            title={isDeleting ? "Deleting..." : "Delete"}
+            title={isSubmitting ? "Deleting..." : "Delete"}
             variant="danger"
             onPress={handleDelete}
             style={styles.button}
-            disabled={isDeleting}
+            disabled={isSubmitting}
           />
         </View>
       </View>

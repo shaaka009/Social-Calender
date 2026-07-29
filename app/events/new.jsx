@@ -15,11 +15,14 @@ import { ENDPOINTS, apiFetch } from '../../helpers/api';
 import { getPersonAvatarColors, getPersonInitials } from '../../helpers/avatar';
 import { wp } from '../../helpers/common';
 import useContacts from '../../helpers/useContacts';
+import { useOneShot, useSubmitGuard } from '../../helpers/useSubmitGuard';
 import { useCreateTag, useTags } from '../../helpers/useTags';
 
 const AddEventScreen = () => {
   const queryClient = useQueryClient();
-  const [isLoading, setIsLoading] = useState(false);
+  const { isSubmitting, run } = useSubmitGuard();
+  const { isSubmitting: isCreatingTag, run: runCreateTag } = useSubmitGuard();
+  const goOnce = useOneShot();
   const [searchQuery, setSearchQuery] = useState('');
   const [showContacts, setShowContacts] = useState(false);
 
@@ -121,13 +124,12 @@ const AddEventScreen = () => {
     );
   }, [form.people_ids, togglePersonSelection]);
 
-  const handleSave = async () => {
+  const handleSave = () => run(async () => {
     if (!form.title.trim()) {
       Alert.alert('Error', 'Please enter a title for the event');
       return;
     }
 
-    setIsLoading(true);
     try {
       const format = (d)=>{
         if (!d) return null;
@@ -161,13 +163,11 @@ const AddEventScreen = () => {
       queryClient.invalidateQueries(['dashboard']);
 
       // Navigate back
-      router.back();
+      goOnce(() => router.back());
     } catch (error) {
       Alert.alert('Error', error.message || 'Failed to create event');
-    } finally {
-      setIsLoading(false);
     }
-  };
+  });
 
   return (
     <ScreenWrapper>
@@ -175,7 +175,8 @@ const AddEventScreen = () => {
       <View style={styles.header}>
         <Pressable 
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={() => goOnce(() => router.back())}
+          disabled={isSubmitting}
         >
           <Text style={styles.backButtonText}>←</Text>
           <Text style={styles.backButtonLabel}>Back</Text>
@@ -185,10 +186,10 @@ const AddEventScreen = () => {
 
         <Pressable 
           onPress={handleSave}
-          disabled={isLoading}
+          disabled={isSubmitting}
           style={styles.saveButtonHeader}
         >
-          <Text style={styles.saveButtonHeaderText}>{isLoading ? 'Saving...' : 'Save'}</Text>
+          <Text style={styles.saveButtonHeaderText}>{isSubmitting ? 'Saving...' : 'Save'}</Text>
         </Pressable>
       </View>
 
@@ -327,22 +328,24 @@ const AddEventScreen = () => {
                     style={styles.modalBtn}
                     onPress={() => {
                       if (!newTag.name.trim()) return;
-                      createTagMutation.mutate(newTag, {
-                        onSuccess: (newTagData) => {
-                          setModalVisible(false);
-                          setNewTag({ name: '', color: COLOR_OPTIONS[0] });
-                          // Add the new tag to the selected tags
-                          if (newTagData?.id) {
-                            setForm(prev => ({
-                              ...prev,
-                              tag_ids: [...prev.tag_ids, newTagData.id]
-                            }));
-                          }
-                        },
+                      runCreateTag(async () => {
+                        const newTagData = await createTagMutation.mutateAsync(newTag);
+                        setModalVisible(false);
+                        setNewTag({ name: '', color: COLOR_OPTIONS[0] });
+                        // Add the new tag to the selected tags
+                        if (newTagData?.id) {
+                          setForm(prev => ({
+                            ...prev,
+                            tag_ids: [...prev.tag_ids, newTagData.id]
+                          }));
+                        }
                       });
                     }}
+                    disabled={isCreatingTag}
                   >
-                    <Text style={styles.saveText}>Save</Text>
+                    <Text style={[styles.saveText, isCreatingTag && { opacity: 0.5 }]}>
+                      {isCreatingTag ? 'Saving…' : 'Save'}
+                    </Text>
                   </Pressable>
                 </View>
               </View>

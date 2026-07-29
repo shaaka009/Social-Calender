@@ -8,6 +8,7 @@ import { theme } from "../../../constants/theme";
 import { ENDPOINTS, apiFetch } from "../../../helpers/api";
 import { clearTokens } from "../../../helpers/auth";
 import { wp } from "../../../helpers/common";
+import { useOneShot, useSubmitGuard } from "../../../helpers/useSubmitGuard";
 
 const SETTINGS_OPTIONS = [
   { key: "account", label: "Account", icon: "person-circle-outline", route: "/profile/settings/account" },
@@ -18,6 +19,8 @@ const SettingsScreen = () => {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
+  const { isSubmitting: isSigningOut, run: runSignOut } = useSubmitGuard();
+  const goOnce = useOneShot();
 
   const filteredOptions = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -26,20 +29,23 @@ const SettingsScreen = () => {
   }, [searchQuery]);
 
   const handleSignOut = () => {
+    if (isSigningOut) return;
     Alert.alert("Sign Out", "Are you sure you want to sign out?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Sign Out",
         style: "destructive",
-        onPress: async () => {
-          try {
-            await apiFetch(ENDPOINTS.SIGN_OUT, { method: "POST" }).catch(() => {});
-          } finally {
-            await clearTokens();
-            await queryClient.cancelQueries();
-            queryClient.clear();
-            router.replace("/welcome");
-          }
+        onPress: () => {
+          runSignOut(async () => {
+            try {
+              await apiFetch(ENDPOINTS.SIGN_OUT, { method: "POST" }).catch(() => {});
+            } finally {
+              await clearTokens();
+              await queryClient.cancelQueries();
+              queryClient.clear();
+              goOnce(() => router.replace("/welcome"));
+            }
+          });
         },
       },
     ]);
@@ -102,9 +108,9 @@ const SettingsScreen = () => {
         )}
         ListFooterComponent={
           <View style={styles.footerActions}>
-            <TouchableOpacity style={styles.subtleAction} onPress={handleSignOut}>
+            <TouchableOpacity style={styles.subtleAction} onPress={handleSignOut} disabled={isSigningOut}>
               <Ionicons name="log-out-outline" size={wp(4.8)} color={theme.colors.error} />
-              <Text style={styles.signOutText}>Sign Out</Text>
+              <Text style={styles.signOutText}>{isSigningOut ? "Signing Out…" : "Sign Out"}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.deleteAction} onPress={handleDeleteAccount}>

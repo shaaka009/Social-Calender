@@ -16,13 +16,16 @@ import { ENDPOINTS, apiFetch } from '../../../helpers/api';
 import { getPersonAvatarColors, getPersonInitials } from '../../../helpers/avatar';
 import { parseDateLocal, wp } from '../../../helpers/common';
 import useContacts from '../../../helpers/useContacts';
+import { useOneShot, useSubmitGuard } from '../../../helpers/useSubmitGuard';
 import { useCreateTag, useTags } from '../../../helpers/useTags';
 
 const EditEventScreen = () => {
   const { id } = useLocalSearchParams();
   const eventId = Array.isArray(id) ? id[0] : id;
   const queryClient = useQueryClient();
-  const [isSaving, setIsSaving] = useState(false);
+  const { isSubmitting, run } = useSubmitGuard();
+  const { isSubmitting: isCreatingTag, run: runCreateTag } = useSubmitGuard();
+  const goOnce = useOneShot();
 
   // Form state (declare BEFORE using in displayedContacts)
   const [formData, setFormData] = useState({
@@ -142,7 +145,7 @@ const EditEventScreen = () => {
     }
   }, [event]);
 
-  const handleSave = async () => {
+  const handleSave = () => run(async () => {
     if (!formData.title.trim()) {
       Toast.show('Please enter a title', {
         duration: Toast.durations.LONG,
@@ -152,7 +155,6 @@ const EditEventScreen = () => {
       return;
     }
 
-    setIsSaving(true);
     try {
       // Prepare data for API
       const format = (d) => {
@@ -191,17 +193,15 @@ const EditEventScreen = () => {
       queryClient.invalidateQueries(['dashboard']);
 
       // Navigate back
-      router.back();
+      goOnce(() => router.back());
     } catch (error) {
       Toast.show(error.message || 'Failed to update event', {
         duration: Toast.durations.LONG,
         position: Toast.positions.BOTTOM,
         backgroundColor: theme.colors.error,
       });
-    } finally {
-      setIsSaving(false);
     }
-  };
+  });
 
   if (isLoading || !event) {
     return <LoadingState />;
@@ -214,15 +214,16 @@ const EditEventScreen = () => {
         <CustomButton
           title="Cancel"
           variant="text"
-          onPress={() => router.back()}
+          onPress={() => goOnce(() => router.back())}
+          disabled={isSubmitting}
           style={styles.headerButton}
         />
         <Text style={styles.title}>Edit Event</Text>
         <CustomButton
-          title="Save"
+          title={isSubmitting ? "Saving..." : "Save"}
           variant="text"
           onPress={handleSave}
-          disabled={isSaving}
+          disabled={isSubmitting}
           style={styles.headerButton}
         />
       </View>
@@ -358,22 +359,24 @@ const EditEventScreen = () => {
                     style={styles.modalBtn}
                     onPress={() => {
                       if (!newTag.name.trim()) return;
-                      createTagMutation.mutate(newTag, {
-                        onSuccess: (newTagData) => {
-                          setModalVisible(false);
-                          setNewTag({ name: '', color: COLOR_OPTIONS[0] });
-                          // Add the new tag to the selected tags
-                          if (newTagData?.id) {
-                            setFormData(prev => ({
-                              ...prev,
-                              tag_ids: [...prev.tag_ids, newTagData.id]
-                            }));
-                          }
-                        },
+                      runCreateTag(async () => {
+                        const newTagData = await createTagMutation.mutateAsync(newTag);
+                        setModalVisible(false);
+                        setNewTag({ name: '', color: COLOR_OPTIONS[0] });
+                        // Add the new tag to the selected tags
+                        if (newTagData?.id) {
+                          setFormData(prev => ({
+                            ...prev,
+                            tag_ids: [...prev.tag_ids, newTagData.id]
+                          }));
+                        }
                       });
                     }}
+                    disabled={isCreatingTag}
                   >
-                    <Text style={styles.saveText}>Save</Text>
+                    <Text style={[styles.saveText, isCreatingTag && { opacity: 0.5 }]}>
+                      {isCreatingTag ? 'Saving…' : 'Save'}
+                    </Text>
                   </Pressable>
                 </View>
               </View>

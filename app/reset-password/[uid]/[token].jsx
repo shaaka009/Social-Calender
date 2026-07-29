@@ -13,6 +13,7 @@ import { theme } from "../../../constants/theme";
 import { ENDPOINTS } from "../../../helpers/api";
 import { wp } from "../../../helpers/common";
 import useLoading from "../../../helpers/useLoading";
+import { useOneShot } from "../../../helpers/useSubmitGuard";
 
 function firstParam(value) {
   if (value == null) return '';
@@ -21,6 +22,7 @@ function firstParam(value) {
 
 const ResetPassword = () => {
   const { isLoading, withLoading } = useLoading();
+  const goOnce = useOneShot();
   const params = useLocalSearchParams();
   const uid = firstParam(params.uid);
   const token = firstParam(params.token);
@@ -87,7 +89,7 @@ const ResetPassword = () => {
             </Text>
             <CustomButton
               title="Sign In"
-              onPress={() => router.replace("/(auth)/signin")}
+              onPress={() => goOnce(() => router.replace("/(auth)/signin"))}
               style={styles.button}
             />
           </View>
@@ -129,6 +131,7 @@ const ResetPassword = () => {
                 title="Reset Password"
                 onPress={handleSubmit}
                 style={styles.button}
+                disabled={isLoading}
               />
             </View>
           </View>

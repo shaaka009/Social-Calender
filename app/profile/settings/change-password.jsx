@@ -7,17 +7,20 @@ import LoadingState from "../../../components/LoadingState";
 import ScreenWrapper from "../../../components/ScreenWrapper";
 import { theme } from "../../../constants/theme";
 import { wp } from "../../../helpers/common";
+import { useOneShot, useSubmitGuard } from "../../../helpers/useSubmitGuard";
 import { useChangePasswordMutation } from "../../../helpers/useProfile";
 
 const ChangePasswordScreen = () => {
   const router = useRouter();
   const mutation = useChangePasswordMutation();
+  const { isSubmitting, run } = useSubmitGuard();
+  const goOnce = useOneShot();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => run(async () => {
     setError("");
     if (!currentPassword || !newPassword || !confirmPassword) {
       setError("Please fill in all fields.");
@@ -33,12 +36,12 @@ const ChangePasswordScreen = () => {
         new_password: newPassword,
       });
       Alert.alert("Success", result?.message || "Your password has been updated.", [
-        { text: "OK", onPress: () => router.back() },
+        { text: "OK", onPress: () => goOnce(() => router.back()) },
       ]);
     } catch (err) {
       setError(err.message || "Could not update password.");
     }
-  };
+  });
 
   return (
     <LoadingState isLoading={mutation.isPending} subtle={true}>
@@ -73,12 +76,13 @@ const ChangePasswordScreen = () => {
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-          <CustomButton title="Update Password" onPress={handleSubmit} />
+          <CustomButton title="Update Password" onPress={handleSubmit} disabled={isSubmitting} />
           <CustomButton
             title="Cancel"
-            onPress={() => router.back()}
+            onPress={() => goOnce(() => router.back())}
             style={styles.cancelButton}
             textStyle={styles.cancelText}
+            disabled={isSubmitting}
           />
         </View>
       </ScreenWrapper>

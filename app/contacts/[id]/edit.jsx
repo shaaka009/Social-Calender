@@ -15,6 +15,7 @@ import { TAG_COLOR_OPTIONS } from '../../../constants/tagColors';
 import { theme } from '../../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../../helpers/api';
 import { formatDateLocal, parseDateLocal, wp } from '../../../helpers/common';
+import { useOneShot, useSubmitGuard } from '../../../helpers/useSubmitGuard';
 import useConnection from '../../../helpers/useConnection';
 import { useCreateTag, useTags } from '../../../helpers/useTags';
 
@@ -29,7 +30,9 @@ const EditContactScreen = () => {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
   const queryClient = useQueryClient();
-  const [isSaving, setIsSaving] = useState(false);
+  const { isSubmitting, run } = useSubmitGuard();
+  const { isSubmitting: isCreatingTag, run: runCreateTag } = useSubmitGuard();
+  const goOnce = useOneShot();
   const { data: tagsList = [] } = useTags();
   const createTagMutation = useCreateTag();
   const [modalVisible, setModalVisible] = useState(false);
@@ -110,8 +113,7 @@ const EditContactScreen = () => {
     }
   };
 
-  const handleSave = async () => {
-    setIsSaving(true);
+  const handleSave = () => run(async () => {
     try {
       // Build payload from formData and contactRows similar to profile edit logic
       const payload = { ...formData };
@@ -207,16 +209,14 @@ const EditContactScreen = () => {
       queryClient.invalidateQueries(['connections']);
       queryClient.invalidateQueries(['connection', id]);
 
-      // Navigate back
-      setTimeout(() => {
-        router.back();
-      }, 500);
+      // Navigate back (keep the guard active during the toast delay so a
+      // second tap can't fire another PATCH before we leave the screen).
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      goOnce(() => router.back());
     } catch (error) {
       Alert.alert('Error', error.message || 'Failed to update contact');
-    } finally {
-      setIsSaving(false);
     }
-  };
+  });
 
   if (isLoading || !contact) {
     return <LoadingState />;
@@ -233,13 +233,12 @@ const EditContactScreen = () => {
 
   const handleSaveTag = () => {
     if (!newTag.name.trim()) return;
-    createTagMutation.mutate(newTag, {
-      onSuccess: (data) => {
-        setModalVisible(false);
-        setNewTag({ name: '', color: '#ff8c00' });
-        // auto-select
-        toggleTag(data.name);
-      },
+    runCreateTag(async () => {
+      const data = await createTagMutation.mutateAsync(newTag);
+      setModalVisible(false);
+      setNewTag({ name: '', color: '#ff8c00' });
+      // auto-select
+      toggleTag(data.name);
     });
   };
 
@@ -247,13 +246,13 @@ const EditContactScreen = () => {
     <ScreenWrapper>
       {/* Custom Header – mirrors profile edit header */}
       <View style={styles.header}>
-        <Pressable style={styles.backButton} onPress={() => router.back()}>
+        <Pressable style={styles.backButton} onPress={() => goOnce(() => router.back())} disabled={isSubmitting}>
           <Ionicons name="arrow-back" size={wp(5)} color={theme.colors.primary} />
           <Text style={styles.backButtonLabel}>Cancel</Text>
         </Pressable>
         <Text style={styles.headerTitle}>Edit Contact</Text>
-        <Pressable style={styles.saveButtonHeader} onPress={handleSave} disabled={isSaving}>
-          <Text style={styles.saveButtonHeaderText}>{isSaving ? 'Saving…' : 'Save'}</Text>
+        <Pressable style={styles.saveButtonHeader} onPress={handleSave} disabled={isSubmitting}>
+          <Text style={styles.saveButtonHeaderText}>{isSubmitting ? 'Saving…' : 'Save'}</Text>
         </Pressable>
       </View>
 
@@ -484,8 +483,12 @@ const EditContactScreen = () => {
                   ))}
                 </View>
                 <View style={styles.modalActions}>
-                  <TouchableOpacity style={styles.modalBtn} onPress={()=>setModalVisible(false)}><Text style={styles.cancelText}>Cancel</Text></TouchableOpacity>
-                  <TouchableOpacity style={styles.modalBtn} onPress={handleSaveTag}><Text style={styles.saveText}>Save</Text></TouchableOpacity>
+                  <TouchableOpacity style={styles.modalBtn} onPress={()=>setModalVisible(false)} disabled={isCreatingTag}><Text style={styles.cancelText}>Cancel</Text></TouchableOpacity>
+                  <TouchableOpacity style={styles.modalBtn} onPress={handleSaveTag} disabled={isCreatingTag}>
+                    <Text style={[styles.saveText, isCreatingTag && { opacity: 0.5 }]}>
+                      {isCreatingTag ? 'Saving…' : 'Save'}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             </View>

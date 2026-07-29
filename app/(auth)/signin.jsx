@@ -16,10 +16,12 @@ import { ENDPOINTS } from "../../helpers/api";
 import { storeTokens } from "../../helpers/auth";
 import { wp } from "../../helpers/common";
 import useLoading from "../../helpers/useLoading";
+import { useOneShot } from "../../helpers/useSubmitGuard";
 
 const SignIn = () => {
   const queryClient = useQueryClient();
   const { isLoading, withLoading } = useLoading();
+  const goOnce = useOneShot();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -48,10 +50,12 @@ const SignIn = () => {
 
         if (!response.ok) {
           if (data.requires_verification) {
-            router.replace({
-              pathname: "/onboarding/verify-email",
-              params: { email: email.trim().toLowerCase() },
-            });
+            goOnce(() =>
+              router.replace({
+                pathname: "/onboarding/verify-email",
+                params: { email: email.trim().toLowerCase() },
+              })
+            );
             return;
           }
           throw new Error(data.message || "Login failed");
@@ -62,7 +66,7 @@ const SignIn = () => {
         queryClient.clear();
 
         // Login successful
-        router.replace("/home");
+        goOnce(() => router.replace("/home"));
       } catch (err) {
         setError(err.message || "Invalid email or password");
       }
@@ -110,6 +114,7 @@ const SignIn = () => {
                 title="Sign In"
                 onPress={handleSignIn}
                 style={styles.button}
+                disabled={isLoading}
               />
             </View>
           </View>

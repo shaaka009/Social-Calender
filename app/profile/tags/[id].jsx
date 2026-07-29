@@ -16,6 +16,7 @@ import ScreenWrapper from "../../../components/ScreenWrapper";
 import { TAG_COLOR_OPTIONS } from "../../../constants/tagColors";
 import { theme } from "../../../constants/theme";
 import { wp } from "../../../helpers/common";
+import { useOneShot, useSubmitGuard } from "../../../helpers/useSubmitGuard";
 import { useDeleteTag, useTags, useUpdateTag } from "../../../helpers/useTags";
 
 const EditTagScreen = () => {
@@ -37,6 +38,8 @@ const EditTagScreen = () => {
   const [color, setColor] = useState(TAG_COLOR_OPTIONS[0]);
   const updateMutation = useUpdateTag();
   const deleteMutation = useDeleteTag();
+  const { isSubmitting, run } = useSubmitGuard();
+  const goOnce = useOneShot();
 
   useEffect(() => {
     if (tag) {
@@ -45,7 +48,7 @@ const EditTagScreen = () => {
     }
   }, [tag]);
 
-  const handleSave = async () => {
+  const handleSave = () => run(async () => {
     if (!tagId || !name.trim()) return;
     try {
       await updateMutation.mutateAsync({
@@ -53,12 +56,12 @@ const EditTagScreen = () => {
         name: name.trim(),
         color,
       });
-      router.back();
+      goOnce(() => router.back());
     } catch (e) {
       const detail = e?.data?.name?.[0] || e?.data?.detail || e?.message || "Could not save tag.";
       Alert.alert("Could not save", typeof detail === "string" ? detail : "Invalid request.");
     }
-  };
+  });
 
   const handleDelete = () => {
     if (!tagId) return;
@@ -70,20 +73,20 @@ const EditTagScreen = () => {
         {
           text: "Delete",
           style: "destructive",
-          onPress: async () => {
+          onPress: () => run(async () => {
             try {
               await deleteMutation.mutateAsync(tagId);
-              router.back();
+              goOnce(() => router.back());
             } catch (err) {
               Alert.alert("Could not delete", err?.message || "Something went wrong.");
             }
-          },
+          }),
         },
       ]
     );
   };
 
-  const busy = updateMutation.isPending || deleteMutation.isPending;
+  const busy = updateMutation.isPending || deleteMutation.isPending || isSubmitting;
 
   if (!tagId) {
     return (
@@ -105,7 +108,7 @@ const EditTagScreen = () => {
     return (
       <ScreenWrapper>
         <View style={styles.headerRow}>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.backButton} onPress={() => goOnce(() => router.back())}>
             <Ionicons name="chevron-back" size={wp(7)} color={theme.colors.text} />
           </TouchableOpacity>
         </View>
@@ -117,7 +120,7 @@ const EditTagScreen = () => {
   return (
     <ScreenWrapper>
       <View style={styles.headerRow}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()} accessibilityLabel="Go back">
+        <TouchableOpacity style={styles.backButton} onPress={() => goOnce(() => router.back())} disabled={busy} accessibilityLabel="Go back">
           <Ionicons name="chevron-back" size={wp(7)} color={theme.colors.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Edit tag</Text>

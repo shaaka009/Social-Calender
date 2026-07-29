@@ -12,6 +12,7 @@ import ScreenWrapper from '../../components/ScreenWrapper';
 import { theme } from '../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../helpers/api';
 import { formatDateLocal, parseDateLocal, wp } from '../../helpers/common';
+import { useOneShot, useSubmitGuard } from '../../helpers/useSubmitGuard';
 import { useCreateTag, useTags } from '../../helpers/useTags';
 
 const AddContactScreen = () => {
@@ -61,10 +62,21 @@ const AddContactScreen = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [newTag, setNewTag] = useState({ name: '', color: COLOR_OPTIONS[0] });
 
-  const [loading, setLoading] = useState(false);
+  const { isSubmitting, run } = useSubmitGuard();
+  const { isSubmitting: isCreatingTag, run: runCreateTag } = useSubmitGuard();
+  const goOnce = useOneShot();
   const [errors, ] = useState({});
   const handleChange = (key, value) => {
     setForm(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleSaveTag = () => {
+    if (!newTag.name.trim()) return;
+    runCreateTag(async () => {
+      await createTagMutation.mutateAsync(newTag);
+      setModalVisible(false);
+      setNewTag({ name: '', color: COLOR_OPTIONS[0] });
+    });
   };
 
   const handleImagePick = async () => {
@@ -88,7 +100,7 @@ const AddContactScreen = () => {
     }
   };
 
-  const handleAddContact = useCallback(async (personId) => {
+  const handleAddContact = useCallback((personId) => run(async () => {
     const id = Number(personId);
     if (personId == null || Number.isNaN(id) || id <= 0) {
       Alert.alert('Error', 'Could not resolve this user. Pull to refresh or update the app.');
@@ -101,7 +113,7 @@ const AddContactScreen = () => {
         body: JSON.stringify({ target_person_id: id }),
       });
       Alert.alert('Success', 'Contact request sent!');
-      router.replace('/contacts');
+      goOnce(() => router.replace('/contacts'));
     } catch (err) {
       Alert.alert(
         'Error',
@@ -110,15 +122,14 @@ const AddContactScreen = () => {
           : err.message || 'Failed to add contact'
       );
     }
-  }, []);
+  }), [run, goOnce]);
 
-  const handleManualSubmit = async () => {
+  const handleManualSubmit = () => run(async () => {
     if (!form.first_name.trim()) {
       Alert.alert('Error', 'First name is required');
       return;
     }
 
-    setLoading(true);
     try {
       // Build payload from form + contact rows
       const payload = { ...form };
@@ -170,13 +181,11 @@ const AddContactScreen = () => {
         method: 'POST',
         body,
       });
-      router.replace('/contacts');
+      goOnce(() => router.replace('/contacts'));
     } catch (err) {
       Alert.alert('Error', err.message || 'Failed to save contact');
-    } finally {
-      setLoading(false);
     }
-  };
+  });
 
   const renderSearchResults = () => {
     if (!searchQuery.trim()) {
@@ -226,6 +235,7 @@ const AddContactScreen = () => {
           <CustomButton
             title="Add Contact"
             onPress={() => handleAddContact(user.person_id)}
+            disabled={isSubmitting}
           />
         )}
         
@@ -246,15 +256,16 @@ const AddContactScreen = () => {
       <View style={styles.header}>
         <Pressable 
           style={styles.backButton} 
-          onPress={() => router.back()}
+          onPress={() => goOnce(() => router.back())}
+          disabled={isSubmitting}
         >
           <Text style={styles.backButtonText}>←</Text>
           <Text style={styles.backButtonLabel}>Back</Text>
         </Pressable>
         <Text style={styles.headerTitle}>Add Contact</Text>
         {showManualForm ? (
-          <Pressable onPress={handleManualSubmit} disabled={loading} style={styles.saveButtonHeader}>
-            <Text style={styles.saveButtonHeaderText}>{loading ? 'Saving...' : 'Save'}</Text>
+          <Pressable onPress={handleManualSubmit} disabled={isSubmitting} style={styles.saveButtonHeader}>
+            <Text style={styles.saveButtonHeaderText}>{isSubmitting ? 'Saving...' : 'Save'}</Text>
           </Pressable>
         ) : (
           <View style={styles.backButton} />
@@ -432,17 +443,12 @@ const AddContactScreen = () => {
                     </Pressable>
                     <Pressable
                       style={styles.modalBtn}
-                      onPress={() => {
-                        if (!newTag.name.trim()) return;
-                        createTagMutation.mutate(newTag, {
-                          onSuccess: () => {
-                            setModalVisible(false);
-                            setNewTag({ name: '', color: COLOR_OPTIONS[0] });
-                          },
-                        });
-                      }}
+                      onPress={handleSaveTag}
+                      disabled={isCreatingTag}
                     >
-                      <Text style={styles.saveText}>Save</Text>
+                      <Text style={[styles.saveText, isCreatingTag && { opacity: 0.5 }]}>
+                        {isCreatingTag ? 'Saving…' : 'Save'}
+                      </Text>
                     </Pressable>
                   </View>
                 </View>

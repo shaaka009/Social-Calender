@@ -3,7 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useState } from "react";
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import CustomInput from "../../components/CustomInput";
 import LoadingState from "../../components/LoadingState";
@@ -13,30 +13,19 @@ import { theme } from "../../constants/theme";
 import { getPersonAvatarColors, getPersonInitials } from "../../helpers/avatar";
 import { formatDateLocal, parseDateLocal, wp } from "../../helpers/common";
 import useProfile, { useUpdateProfileMutation } from "../../helpers/useProfile";
+import { useOneShot, useSubmitGuard } from "../../helpers/useSubmitGuard";
 
 const EditProfileScreen = () => {
   const router = useRouter();
   const { data, isLoading, isError } = useProfile();
   const updateMutation = useUpdateProfileMutation();
+  const { isSubmitting, run } = useSubmitGuard();
+  const goOnce = useOneShot();
 
   const navigation = useNavigation();
   useLayoutEffect(() => {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
-
-  // Guards against double-taps. `isSubmittingRef` blocks a second save from
-  // firing before React re-renders (isPending state updates are async, so two
-  // taps in the same tick could otherwise both start a request). `hasLeftRef`
-  // makes navigation idempotent so spamming Back/Save can't call router.back()
-  // multiple times and crash when the screen finally unmounts.
-  const isSubmittingRef = useRef(false);
-  const hasLeftRef = useRef(false);
-
-  const safeGoBack = () => {
-    if (hasLeftRef.current) return;
-    hasLeftRef.current = true;
-    router.back();
-  };
 
   const [form, setForm] = useState({
     first_name: "",
@@ -122,11 +111,7 @@ const EditProfileScreen = () => {
     }
   };
 
-  const handleSave = async () => {
-    // Ignore taps while a save is already in flight (prevents duplicate R2 uploads).
-    if (isSubmittingRef.current || updateMutation.isPending) return;
-    isSubmittingRef.current = true;
-
+  const handleSave = () => run(async () => {
     // build payload from form and contactRows
     const payload = { ...form };
     contactRows.forEach(({ type, value }) => {
@@ -174,13 +159,11 @@ const EditProfileScreen = () => {
     try {
       await updateMutation.mutateAsync(requestPayload);
       Alert.alert("Success", "Profile updated successfully");
-      safeGoBack();
+      goOnce(() => router.back());
     } catch (error) {
       Alert.alert("Error", "Failed to update profile");
-    } finally {
-      isSubmittingRef.current = false;
     }
-  };
+  });
 
   if (isLoading) return <LoadingState />;
   if (isError) return <LoadingState message="Failed to load profile" />;
@@ -189,17 +172,17 @@ const EditProfileScreen = () => {
     <ScreenWrapper bg={theme.colors.background}>
       {/* Header */}
       <View style={styles.header}>
-        <Pressable style={styles.backButton} onPress={safeGoBack} disabled={updateMutation.isPending}>
+        <Pressable style={styles.backButton} onPress={() => goOnce(() => router.back())} disabled={isSubmitting}>
           <Text style={styles.backButtonText}>←</Text>
           <Text style={styles.backButtonLabel}>Back</Text>
         </Pressable>
         <Text style={styles.headerTitle}>Edit Profile</Text>
         <Pressable
-          style={[styles.saveButtonHeader, updateMutation.isPending && styles.saveButtonHeaderDisabled]}
+          style={[styles.saveButtonHeader, isSubmitting && styles.saveButtonHeaderDisabled]}
           onPress={handleSave}
-          disabled={updateMutation.isPending}
+          disabled={isSubmitting}
         >
-          <Text style={styles.saveButtonHeaderText}>{updateMutation.isPending ? "Saving…" : "Save"}</Text>
+          <Text style={styles.saveButtonHeaderText}>{isSubmitting ? "Saving…" : "Save"}</Text>
         </Pressable>
       </View>
 

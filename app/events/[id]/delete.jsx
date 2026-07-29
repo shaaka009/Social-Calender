@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useState } from 'react';
+import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Toast from 'react-native-root-toast';
 import CustomButton from '../../../components/CustomButton';
@@ -9,12 +9,14 @@ import ScreenWrapper from '../../../components/ScreenWrapper';
 import { theme } from '../../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../../helpers/api';
 import { wp } from '../../../helpers/common';
+import { useOneShot, useSubmitGuard } from '../../../helpers/useSubmitGuard';
 
 const DeleteEventScreen = () => {
   const { id } = useLocalSearchParams();
   const eventId = Array.isArray(id) ? id[0] : id;
   const queryClient = useQueryClient();
-  const [isDeleting, setIsDeleting] = useState(false);
+  const { isSubmitting, run } = useSubmitGuard();
+  const goOnce = useOneShot();
 
   // Fetch event data
   const { data: event, isLoading } = useQuery({
@@ -24,8 +26,7 @@ const DeleteEventScreen = () => {
     staleTime: 60 * 1000,
   });
 
-  const handleDelete = async () => {
-    setIsDeleting(true);
+  const handleDelete = () => run(async () => {
     try {
       await apiFetch(`${ENDPOINTS.EVENTS}${eventId}/`, {
         method: 'DELETE',
@@ -43,16 +44,15 @@ const DeleteEventScreen = () => {
       queryClient.invalidateQueries(['dashboard']);
 
       // Navigate to events list
-      router.replace('/events');
+      goOnce(() => router.replace('/events'));
     } catch (error) {
       Toast.show(error.message || 'Failed to delete event', {
         duration: Toast.durations.LONG,
         position: Toast.positions.BOTTOM,
         backgroundColor: theme.colors.error,
       });
-      setIsDeleting(false);
     }
-  };
+  });
 
   if (isLoading || !event) {
     return <LoadingState />;
@@ -71,15 +71,15 @@ const DeleteEventScreen = () => {
             <CustomButton
               title="Cancel"
               variant="outline"
-              onPress={() => router.back()}
+              onPress={() => goOnce(() => router.back())}
               style={styles.button}
-              disabled={isDeleting}
+              disabled={isSubmitting}
             />
             <CustomButton
-              title={isDeleting ? "Deleting..." : "Delete"}
+              title={isSubmitting ? "Deleting..." : "Delete"}
               onPress={handleDelete}
               style={[styles.button, styles.deleteButton]}
-              disabled={isDeleting}
+              disabled={isSubmitting}
             />
           </View>
         </View>

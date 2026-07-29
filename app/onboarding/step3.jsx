@@ -15,9 +15,11 @@ import { theme } from "../../constants/theme";
 import { ENDPOINTS, apiFetch } from "../../helpers/api";
 import { wp } from "../../helpers/common";
 import useLoading from "../../helpers/useLoading";
+import { useOneShot } from "../../helpers/useSubmitGuard";
 
 const OnboardingStep3 = () => {
   const { isLoading, withLoading } = useLoading();
+  const goOnce = useOneShot();
   const params = useLocalSearchParams();
 
   const saveOnboardingData = async () => {
@@ -103,7 +105,7 @@ const OnboardingStep3 = () => {
       const saved = await saveOnboardingData();
       if (saved) {
         // Redirect to main app
-        router.replace("/(tabs)");
+        goOnce(() => router.replace("/(tabs)"));
       } else {
         Alert.alert(
           "Error",
@@ -111,7 +113,7 @@ const OnboardingStep3 = () => {
           [
             {
               text: "Continue Anyway",
-              onPress: () => router.replace("/(tabs)"),
+              onPress: () => goOnce(() => router.replace("/(tabs)")),
             },
           ]
         );
@@ -191,6 +193,7 @@ const OnboardingStep3 = () => {
               title="Get Started"
               onPress={handleGetStarted}
               style={styles.button}
+              disabled={isLoading}
             />
           </View>
         </View>

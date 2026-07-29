@@ -13,6 +13,7 @@ import { wp } from '../../helpers/common';
 import { tagStripStyles } from '../../helpers/tagStripStyles';
 import useContactRequests from '../../helpers/useContactRequests';
 import useContacts from '../../helpers/useContacts';
+import { useSubmitGuard } from '../../helpers/useSubmitGuard';
 import { useCreateTag, useTags } from '../../helpers/useTags';
 
 const Contacts = () => {
@@ -27,6 +28,7 @@ const Contacts = () => {
   const { data: contacts = [] } = useContacts();
   const { data: tags = [] } = useTags();
   const createTagMutation = useCreateTag();
+  const { isSubmitting: isCreatingTag, run: runCreateTag } = useSubmitGuard();
   const { pendingCount } = useContactRequests();
 
   const allTags = tags;
@@ -67,13 +69,12 @@ const Contacts = () => {
 
   const handleSaveTag = useCallback(() => {
     if (!newTag.name.trim()) return;
-    createTagMutation.mutate(newTag, {
-      onSuccess: () => {
-        setModalVisible(false);
-        setNewTag({ name: '', color: COLOR_OPTIONS[0] });
-      },
+    runCreateTag(async () => {
+      await createTagMutation.mutateAsync(newTag);
+      setModalVisible(false);
+      setNewTag({ name: '', color: COLOR_OPTIONS[0] });
     });
-  }, [COLOR_OPTIONS, createTagMutation, newTag]);
+  }, [COLOR_OPTIONS, createTagMutation, newTag, runCreateTag]);
 
   const handleTagFilterAfterEdit = useCallback(
     (updated) => {
@@ -175,8 +176,11 @@ const Contacts = () => {
               <Pressable
                 style={styles.modalBtn}
                 onPress={handleSaveTag}
+                disabled={isCreatingTag}
               >
-                <Text style={styles.saveText}>Save</Text>
+                <Text style={[styles.saveText, isCreatingTag && { opacity: 0.5 }]}>
+                  {isCreatingTag ? 'Saving…' : 'Save'}
+                </Text>
               </Pressable>
             </View>
           </View>
@@ -193,7 +197,7 @@ const Contacts = () => {
         onAfterChange={handleTagFilterAfterEdit}
       />
     </View>
-  ), [COLOR_OPTIONS, allTags, handleSaveTag, handleTagFilterAfterEdit, modalVisible, newTag.color, newTag.name, selectedTags, tagEditTarget, tagEditVisible]);
+  ), [COLOR_OPTIONS, allTags, handleSaveTag, handleTagFilterAfterEdit, isCreatingTag, modalVisible, newTag.color, newTag.name, selectedTags, tagEditTarget, tagEditVisible]);
 
   return (
     <ScreenWrapper>

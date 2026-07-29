@@ -7,6 +7,7 @@ import LoadingState from "../../components/LoadingState";
 import ScreenWrapper from "../../components/ScreenWrapper";
 import { theme } from "../../constants/theme";
 import { wp } from "../../helpers/common";
+import { useOneShot, useSubmitGuard } from "../../helpers/useSubmitGuard";
 import useProfile, {
   useRequestLoginEmailChangeMutation,
   useVerifyLoginEmailChangeMutation,
@@ -17,6 +18,8 @@ const ChangeLoginEmailScreen = () => {
   const { data } = useProfile();
   const requestMutation = useRequestLoginEmailChangeMutation();
   const verifyMutation = useVerifyLoginEmailChangeMutation();
+  const { isSubmitting, run } = useSubmitGuard();
+  const goOnce = useOneShot();
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newLoginEmail, setNewLoginEmail] = useState("");
@@ -26,7 +29,7 @@ const ChangeLoginEmailScreen = () => {
 
   const isLoading = requestMutation.isPending || verifyMutation.isPending;
 
-  const handleRequestCode = async () => {
+  const handleRequestCode = () => run(async () => {
     setError("");
     if (!currentPassword || !newLoginEmail) {
       setError("Please enter your current password and new login email.");
@@ -42,9 +45,9 @@ const ChangeLoginEmailScreen = () => {
     } catch (err) {
       setError(err.message || "Failed to send verification code.");
     }
-  };
+  });
 
-  const handleVerifyCode = async () => {
+  const handleVerifyCode = () => run(async () => {
     setError("");
     if (!/^\d{6}$/.test(code)) {
       setError("Please enter a valid 6-digit code.");
@@ -53,11 +56,11 @@ const ChangeLoginEmailScreen = () => {
     try {
       const result = await verifyMutation.mutateAsync({ code });
       Alert.alert("Success", result?.message || "Login email updated.");
-      router.back();
+      goOnce(() => router.back());
     } catch (err) {
       setError(err.message || "Failed to verify code.");
     }
-  };
+  });
 
   return (
     <LoadingState isLoading={isLoading} subtle={true}>
@@ -84,7 +87,7 @@ const ChangeLoginEmailScreen = () => {
                 keyboardType="email-address"
               />
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
-              <CustomButton title="Send Verification Code" onPress={handleRequestCode} />
+              <CustomButton title="Send Verification Code" onPress={handleRequestCode} disabled={isSubmitting} />
             </View>
           ) : (
             <View style={styles.form}>
@@ -96,12 +99,13 @@ const ChangeLoginEmailScreen = () => {
                 keyboardType="number-pad"
               />
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
-              <CustomButton title="Verify and Update Login Email" onPress={handleVerifyCode} />
+              <CustomButton title="Verify and Update Login Email" onPress={handleVerifyCode} disabled={isSubmitting} />
               <CustomButton
                 title="Resend Code"
                 onPress={handleRequestCode}
                 style={styles.secondaryButton}
                 textStyle={styles.secondaryText}
+                disabled={isSubmitting}
               />
             </View>
           )}

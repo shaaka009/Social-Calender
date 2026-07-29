@@ -11,10 +11,12 @@ import { ENDPOINTS } from "../../helpers/api";
 import { storeTokens } from "../../helpers/auth";
 import { wp } from "../../helpers/common";
 import useLoading from "../../helpers/useLoading";
+import { useOneShot } from "../../helpers/useSubmitGuard";
 
 const VerifyEmail = () => {
   const queryClient = useQueryClient();
   const { isLoading, withLoading } = useLoading();
+  const goOnce = useOneShot();
   const params = useLocalSearchParams();
   const email = typeof params.email === "string" ? params.email.trim().toLowerCase() : "";
   const [code, setCode] = useState("");
@@ -81,7 +83,7 @@ const VerifyEmail = () => {
 
         await storeTokens(data.tokens);
         queryClient.clear();
-        router.replace("/onboarding/step1");
+        goOnce(() => router.replace("/onboarding/step1"));
       } catch (err) {
         setError(err.message || "Unable to continue");
       }
@@ -122,18 +124,20 @@ const VerifyEmail = () => {
                 title="Verify Code"
                 onPress={handleContinue}
                 style={styles.button}
+                disabled={isLoading}
               />
               <CustomButton
                 title="Resend Code"
                 onPress={handleResend}
                 style={styles.secondaryButton}
                 textStyle={styles.secondaryButtonText}
+                disabled={isLoading}
               />
             </View>
           </View>
 
           <View style={styles.bottomContainer}>
-            <TouchableOpacity onPress={() => router.replace("/(auth)/signin")}>
+            <TouchableOpacity onPress={() => goOnce(() => router.replace("/(auth)/signin"))} disabled={isLoading}>
               <Text style={styles.linkText}>Back to Sign In</Text>
             </TouchableOpacity>
           </View>

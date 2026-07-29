@@ -188,6 +188,7 @@ const ForgotPassword = () => {
                 title="Send Reset Link"
                 onPress={handleSubmit}
                 style={styles.button}
+                disabled={isLoading}
               />
             </View>
           </View>
