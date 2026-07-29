@@ -32,6 +32,12 @@ SECRET_KEY = os.environ.get(
 DEBUG = os.environ.get("DJANGO_DEBUG", "True").lower() in ("true", "1", "yes")
 
 ALLOWED_HOSTS = [h.strip() for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
+# Render injects the service's own external hostname; always trust it so the
+# platform health check and the default *.onrender.com URL work even if
+# DJANGO_ALLOWED_HOSTS isn't set perfectly by hand.
+_render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
+if _render_host and _render_host not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(_render_host)
 if DEBUG and not os.environ.get("DJANGO_ALLOWED_HOSTS"):
     # Dev convenience for physical-device testing on local network.
     ALLOWED_HOSTS.append("*")
@@ -55,9 +61,12 @@ if not DEBUG:
     USE_X_FORWARDED_HOST = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    # Redirect http -> https. Can be disabled via env if it interferes with a
-    # platform health check that probes over plain HTTP.
-    SECURE_SSL_REDIRECT = os.environ.get("SECURE_SSL_REDIRECT", "True").lower() in ("true", "1", "yes")
+    # Default OFF: Render (and similar PaaS) already redirect HTTP->HTTPS at the
+    # edge, and an app-level redirect breaks the platform's plain-HTTP internal
+    # health check (it returns a 301). Opt back in with SECURE_SSL_REDIRECT=True
+    # only if your host does not enforce HTTPS. HSTS below still forces HTTPS in
+    # browsers regardless.
+    SECURE_SSL_REDIRECT = os.environ.get("SECURE_SSL_REDIRECT", "False").lower() in ("true", "1", "yes")
     SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", "31536000"))  # 1 year
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
