@@ -113,16 +113,18 @@ def _send_password_reset_email(user, web_reset_url, app_reset_url=None):
         "",
         "Then sign in to the Social Calendar app with your new password.",
         "",
+        "If you did not request a password reset, you can ignore this email.",
     ]
-    if app_reset_url:
+    # App-scheme links only help once a native build + Universal Links are set up.
+    # Keep them out of production emails for now so users aren't sent a dead link.
+    if app_reset_url and settings.DEBUG:
         parts.extend(
             [
-                "(Optional) If you have an installed build of the app that supports deep links:",
-                app_reset_url,
                 "",
+                "(Dev) In-app deep link:",
+                app_reset_url,
             ]
         )
-    parts.append("If you did not request a password reset, you can ignore this email.")
     send_mail(
         "Password reset — Social Calendar",
         "\n".join(parts),

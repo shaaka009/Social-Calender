@@ -1,29 +1,31 @@
 # join-social.com website
 
-Static site for Cloudflare Pages: landing, privacy, terms, support, and
-deep-link `.well-known` files.
+Static site deployed via Cloudflare Workers + Static Assets (from repo `website/`).
 
-## Deploy (Cloudflare Pages)
+## Production branch
 
-1. Cloudflare dashboard → **Workers & Pages** → **Create** → **Pages** →
-   **Connect to Git** (this repo) **or** **Upload assets**.
-2. If Git-connected:
-   - Project name: `join-social`
-   - Production branch: your main/working branch
-   - **Build command:** leave empty
-   - **Build output directory:** `website`
-3. After the first deploy succeeds: **Custom domains** → add `join-social.com`
-   and `www.join-social.com` (Cloudflare will offer to create DNS records).
-4. In DNS for `join-social.com`, ensure:
-   - Apex / `www` point at the Pages project (Cloudflare usually sets these)
-   - Do **not** put the API on this project — `api` is a separate CNAME to Render
+Use **`main`**. Build settings:
+
+- **Path / root directory:** `/website`
+- **Build command:** empty
+- **Deploy command:** `npx wrangler deploy`
+- **Env:** `SKIP_DEPENDENCY_INSTALL=true` (optional; avoids installing Expo/Django)
+
+Do **not** add a `_redirects` rule that maps `/reset-password/*` → `index.html` — Cloudflare rejects that as an infinite loop.
+
+## Password reset
+
+Emails link to:
+
+`https://join-social.com/reset.html?uid=...&token=...`
+
+That page POSTs to `https://api.join-social.com/api/password-reset/<uid>/<token>/`.
+Ensure Render has `FRONTEND_BASE_URL=https://join-social.com` (CORS falls back to this if `CORS_ALLOWED_ORIGINS` is unset).
 
 ## Apple App Site Association
 
-`/.well-known/apple-app-site-association` currently has placeholder `TEAMID`.
-Replace `TEAMID` with your Apple Team ID before Universal Links will verify
-(after you have an Apple Developer account). Custom scheme
-`socialcalendar://` still works without this.
+`/.well-known/apple-app-site-association` still has placeholder `TEAMID`.
+Replace before Universal Links will verify (after Apple Developer account).
 
 ## Local preview
 

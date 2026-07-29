@@ -265,14 +265,20 @@ SIMPLE_JWT = {
 # CORS
 # ---------------------------------------------------------------------------
 # In production, set CORS_ALLOWED_ORIGINS as a comma-separated env var.
+# If unset but FRONTEND_BASE_URL is set, allow that origin so the hosted
+# reset.html form (and future web surfaces) can call the API.
 
 _cors_origins = os.environ.get("CORS_ALLOWED_ORIGINS")
+_frontend_origin = (os.environ.get("FRONTEND_BASE_URL") or "").rstrip("/")
 
 if _cors_origins:
     CORS_ALLOW_ALL_ORIGINS = False
-    CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_origins.split(",")]
+    CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_origins.split(",") if o.strip()]
+elif _frontend_origin.startswith("http"):
+    CORS_ALLOW_ALL_ORIGINS = False
+    CORS_ALLOWED_ORIGINS = [_frontend_origin]
 else:
-    CORS_ALLOW_ALL_ORIGINS = True  # dev only
+    CORS_ALLOW_ALL_ORIGINS = True  # local/dev only
 
 CORS_ALLOW_CREDENTIALS = True
 

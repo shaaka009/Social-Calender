@@ -82,22 +82,38 @@ const ForgotPassword = () => {
   const openDevResetInApp = (url) => {
     try {
       const parsed = new URL(url);
+
+      // Custom scheme: socialcalendar://reset-password/<uid>/<token>
       if (
-        parsed.protocol !== "socialcalendar:" ||
-        parsed.hostname !== "reset-password"
+        parsed.protocol === "socialcalendar:" &&
+        parsed.hostname === "reset-password"
       ) {
-        return false;
+        const segs = parsed.pathname.replace(/^\//, "").split("/").filter(Boolean);
+        if (segs.length < 2) return false;
+        const uid = decodeURIComponent(segs[0]);
+        const token = decodeURIComponent(segs.slice(1).join("/"));
+        if (!uid || !token) return false;
+        router.push({
+          pathname: "/reset-password/[uid]/[token]",
+          params: { uid, token },
+        });
+        return true;
       }
-      const segs = parsed.pathname.replace(/^\//, "").split("/").filter(Boolean);
-      if (segs.length < 2) return false;
-      const uid = decodeURIComponent(segs[0]);
-      const token = decodeURIComponent(segs.slice(1).join("/"));
-      if (!uid || !token) return false;
-      router.push({
-        pathname: "/reset-password/[uid]/[token]",
-        params: { uid, token },
-      });
-      return true;
+
+      // Hosted web reset: https://join-social.com/reset.html?uid=&token=
+      // (and /reset after Cloudflare html handling). Open in the system browser.
+      const isWebReset =
+        /^https?:$/i.test(parsed.protocol) &&
+        (/\/reset\.html$/i.test(parsed.pathname) ||
+          /\/reset\/?$/i.test(parsed.pathname)) &&
+        parsed.searchParams.get("uid") &&
+        parsed.searchParams.get("token");
+      if (isWebReset) {
+        Linking.openURL(url);
+        return true;
+      }
+
+      return false;
     } catch {
       return false;
     }

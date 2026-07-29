@@ -97,14 +97,16 @@ in `settings.py` — local dev still uses the filesystem. Remaining setup:
 
 ### Phase 2 — DNS / domain wiring
 
-**Providers locked:** Porkbun (registrar) → Cloudflare DNS; landing on Cloudflare Pages; email via Resend.
+**Providers locked:** Porkbun (registrar) → Cloudflare DNS; landing on Cloudflare Workers static assets; email via Resend HTTPS API.
 
 - [x] Add `join-social.com` as a Cloudflare zone; point Porkbun nameservers → Cloudflare (**Active**)
 - [ ] Finish `join-social.net` Cloudflare zone (Active) → 301 redirect to `join-social.com`
-- [ ] Point `api.join-social.com` (CNAME) at the Render service; add it as a custom domain in Render (TLS auto-provisions)
-- [ ] Deploy `website/` to Cloudflare Pages; attach custom domain `join-social.com` (+ `www`)
-- [ ] Update Render env: `DJANGO_ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, `FRONTEND_BASE_URL`
-- [ ] Set `EXPO_PUBLIC_API_URL=https://api.join-social.com` in the frontend `.env` (after API custom domain is green)
+- [x] Point `api.join-social.com` (CNAME) at the Render service; custom domain live
+- [x] Deploy `website/` to Cloudflare (Workers + static assets); apex serves Social Calendar
+- [x] Password reset web page at `https://join-social.com/reset.html`
+- [ ] Confirm Render + Cloudflare **production branch = `main`** (repo consolidated)
+- [x] Set `EXPO_PUBLIC_API_URL=https://api.join-social.com` in the frontend `.env`
+- [x] Resend domain verified + emails via HTTPS API (SMTP blocked on Render free)
 
 ### Phase 3 — Deep links (password-reset emails open the app)
 
@@ -112,12 +114,13 @@ in `settings.py` — local dev still uses the filesystem. Remaining setup:
 - [ ] Host `https://join-social.com/.well-known/assetlinks.json` (Android, package `com.socialcalendar.app` + SHA-256 cert fingerprint from EAS)
 - [ ] Add to `app.json` iOS: `"associatedDomains": ["applinks:join-social.com"]`
 - [ ] Add to `app.json` Android `intentFilters`: an `autoVerify` https filter for `join-social.com` (in addition to the existing `socialcalendar` scheme)
-- [ ] Verify reset flow end-to-end: request reset → email link (`https://join-social.com/reset-password/<uid>/<token>`) opens the app
+- [ ] Verify reset flow end-to-end: request reset → email link (`https://join-social.com/reset.html?uid=...&token=...`) opens the web form → sign in in the app
 
 ### Phase 4 — Privacy / legal / store prerequisites
 
-- [ ] Write + host **privacy policy** at `https://join-social.com/privacy`
-- [ ] Create **support** page/email at `https://join-social.com/support` (or `support@join-social.com`)
+- [x] Write + host **privacy policy** at `https://join-social.com/privacy`
+- [x] Create **support** page at `https://join-social.com/support` (Email Routing for `support@` optional)
+- [x] Host **terms** at `https://join-social.com/terms`
 - [ ] Create Apple Developer account + App Store Connect app record (get Team ID + ASC App ID)
 - [ ] Fill `eas.json` submit section with real `appleId`, `ascAppId`, `appleTeamId`
 
