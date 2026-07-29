@@ -3,7 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import React, { useEffect, useLayoutEffect, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import CustomInput from "../../components/CustomInput";
 import LoadingState from "../../components/LoadingState";
@@ -23,6 +23,20 @@ const EditProfileScreen = () => {
   useLayoutEffect(() => {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
+
+  // Guards against double-taps. `isSubmittingRef` blocks a second save from
+  // firing before React re-renders (isPending state updates are async, so two
+  // taps in the same tick could otherwise both start a request). `hasLeftRef`
+  // makes navigation idempotent so spamming Back/Save can't call router.back()
+  // multiple times and crash when the screen finally unmounts.
+  const isSubmittingRef = useRef(false);
+  const hasLeftRef = useRef(false);
+
+  const safeGoBack = () => {
+    if (hasLeftRef.current) return;
+    hasLeftRef.current = true;
+    router.back();
+  };
 
   const [form, setForm] = useState({
     first_name: "",
@@ -109,6 +123,10 @@ const EditProfileScreen = () => {
   };
 
   const handleSave = async () => {
+    // Ignore taps while a save is already in flight (prevents duplicate R2 uploads).
+    if (isSubmittingRef.current || updateMutation.isPending) return;
+    isSubmittingRef.current = true;
+
     // build payload from form and contactRows
     const payload = { ...form };
     contactRows.forEach(({ type, value }) => {
@@ -156,9 +174,11 @@ const EditProfileScreen = () => {
     try {
       await updateMutation.mutateAsync(requestPayload);
       Alert.alert("Success", "Profile updated successfully");
-      router.back();
+      safeGoBack();
     } catch (error) {
       Alert.alert("Error", "Failed to update profile");
+    } finally {
+      isSubmittingRef.current = false;
     }
   };
 
@@ -169,13 +189,17 @@ const EditProfileScreen = () => {
     <ScreenWrapper bg={theme.colors.background}>
       {/* Header */}
       <View style={styles.header}>
-        <Pressable style={styles.backButton} onPress={() => router.back()}>
+        <Pressable style={styles.backButton} onPress={safeGoBack} disabled={updateMutation.isPending}>
           <Text style={styles.backButtonText}>←</Text>
           <Text style={styles.backButtonLabel}>Back</Text>
         </Pressable>
         <Text style={styles.headerTitle}>Edit Profile</Text>
-        <Pressable style={styles.saveButtonHeader} onPress={handleSave} disabled={updateMutation.isLoading}>
-          <Text style={styles.saveButtonHeaderText}>{updateMutation.isLoading ? "Saving…" : "Save"}</Text>
+        <Pressable
+          style={[styles.saveButtonHeader, updateMutation.isPending && styles.saveButtonHeaderDisabled]}
+          onPress={handleSave}
+          disabled={updateMutation.isPending}
+        >
+          <Text style={styles.saveButtonHeaderText}>{updateMutation.isPending ? "Saving…" : "Save"}</Text>
         </Pressable>
       </View>
 
@@ -351,6 +375,9 @@ const styles = StyleSheet.create({
   saveButtonHeader: {
     paddingHorizontal: wp(3),
     paddingVertical: wp(1),
+  },
+  saveButtonHeaderDisabled: {
+    opacity: 0.5,
   },
   saveButtonHeaderText: {
     color: theme.colors.primary,
