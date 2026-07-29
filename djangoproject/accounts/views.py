@@ -14,6 +14,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from urllib.parse import urlencode
 from django.utils import timezone
 from django.conf import settings
 from django.http import JsonResponse
@@ -107,14 +108,16 @@ def _send_password_reset_email(user, web_reset_url, app_reset_url=None):
         "",
         "We received a request to reset your Social Calendar password.",
         "",
-        "Open this link to choose a new password:",
+        "Open this link in your browser to choose a new password:",
         web_reset_url,
+        "",
+        "Then sign in to the Social Calendar app with your new password.",
         "",
     ]
     if app_reset_url:
         parts.extend(
             [
-                "Using the mobile app? Open this link in the app instead:",
+                "(Optional) If you have an installed build of the app that supports deep links:",
                 app_reset_url,
                 "",
             ]
@@ -516,7 +519,8 @@ def password_reset(request):
     uid = urlsafe_base64_encode(force_bytes(user.pk))
 
     frontend_url = getattr(settings, "FRONTEND_BASE_URL", "http://localhost:8081").rstrip("/")
-    web_reset_url = f"{frontend_url}/reset-password/{uid}/{token}"
+    # Query-param URL hits a static page on join-social.com (no dynamic routing needed).
+    web_reset_url = f"{frontend_url}/reset.html?{urlencode({'uid': uid, 'token': token})}"
 
     scheme = getattr(settings, "PASSWORD_RESET_APP_SCHEME", "") or ""
     app_reset_url = f"{scheme}://reset-password/{uid}/{token}" if scheme else None
