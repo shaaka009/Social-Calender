@@ -1,0 +1,7 @@
+# Cloudflare Workers + Static Assets (replaces the old separate "Pages" create flow).
+# Serves the files in ./website at join-social.com after you attach a custom domain.
+name = "join-social"
+compatibility_date = "2026-07-29"
+
+[assets]
+directory = "./website"
