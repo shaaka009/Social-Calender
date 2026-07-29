@@ -65,7 +65,16 @@ const ForgotPassword = () => {
           );
         }
       } catch (err) {
-        setError(err.message || "Something went wrong");
+        const msg = err?.message || "Something went wrong";
+        if (
+          msg === "Network request failed" ||
+          msg.toLowerCase().includes("network") ||
+          msg.toLowerCase().includes("failed to fetch")
+        ) {
+          setError("Could not reach the server. Please try again in a moment.");
+        } else {
+          setError(msg);
+        }
       }
     });
   };

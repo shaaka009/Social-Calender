@@ -300,19 +300,32 @@ CORS_ALLOW_HEADERS = [
 # ---------------------------------------------------------------------------
 # Email
 # ---------------------------------------------------------------------------
-# In production, set EMAIL_HOST / EMAIL_HOST_USER / EMAIL_HOST_PASSWORD env vars.
+# Prefer Resend's HTTPS API (django-anymail). Render's free tier blocks outbound
+# SMTP ports (25/465/587), so EMAIL_HOST SMTP will hang there. Fall back to SMTP
+# only when no Resend key is present (e.g. paid hosts), else console backend.
+#
+# Set RESEND_API_KEY=re_...  (or EMAIL_HOST=smtp.resend.com + EMAIL_HOST_PASSWORD=re_...)
 
-_email_host = os.environ.get("EMAIL_HOST")
+_resend_api_key = os.environ.get("RESEND_API_KEY") or ""
+_email_host = os.environ.get("EMAIL_HOST") or ""
+if not _resend_api_key and "resend" in _email_host.lower():
+    # Allow reusing the key already pasted as EMAIL_HOST_PASSWORD for Resend SMTP.
+    _resend_api_key = os.environ.get("EMAIL_HOST_PASSWORD") or ""
 
-if _email_host:
-    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+if _resend_api_key:
+    INSTALLED_APPS.append("anymail")
+    EMAIL_BACKEND = "anymail.backends.resend.EmailBackend"
+    ANYMAIL = {"RESEND_API_KEY": _resend_api_key}
+elif _email_host:
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
     EMAIL_HOST = _email_host
     EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
     EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True").lower() in ("true", "1")
     EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
     EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+    EMAIL_TIMEOUT = int(os.environ.get("EMAIL_TIMEOUT", "15"))
 else:
-    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@socialcalendar.com")
 
