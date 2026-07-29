@@ -181,17 +181,31 @@ export const apiFetch = async (url, options = {}, _retried = false) => {
     if (text) {
       try {
         data = JSON.parse(text);
-      } catch (error) {
-        console.error('Failed to parse JSON response:', error);
-        throw new Error('Invalid JSON response from server');
+      } catch {
+        // Non-JSON body (e.g. an HTML 500/502 error page from the server or a
+        // proxy). Don't crash on the parse — keep the raw text so we can still
+        // surface a meaningful error with the real HTTP status below.
+        data = null;
       }
     }
 
     if (!response.ok) {
-      const message = data?.message || data?.detail || 'Network request failed';
+      const message =
+        data?.message ||
+        data?.detail ||
+        (response.status >= 500
+          ? 'Something went wrong on our end. Please try again.'
+          : 'Request failed. Please try again.');
       const error = new Error(message);
       error.status = response.status;
       error.data = data;
+      throw error;
+    }
+
+    // Response was OK but the body wasn't valid JSON — genuinely unexpected.
+    if (text && data === null) {
+      const error = new Error('Invalid JSON response from server');
+      error.status = response.status;
       throw error;
     }
 

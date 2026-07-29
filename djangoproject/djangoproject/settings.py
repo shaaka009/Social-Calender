@@ -204,8 +204,16 @@ if _use_object_storage:
     AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
     AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
     AWS_STORAGE_BUCKET_NAME = os.environ.get("AWS_STORAGE_BUCKET_NAME")
-    # R2: https://<account_id>.r2.cloudflarestorage.com
-    AWS_S3_ENDPOINT_URL = os.environ.get("AWS_S3_ENDPOINT_URL")
+    # R2 account endpoint, e.g. https://<account_id>.r2.cloudflarestorage.com
+    # Cloudflare's dashboard shows this WITH the bucket path appended; boto3 wants
+    # the account endpoint only, so strip any path/bucket suffix defensively.
+    _raw_endpoint = os.environ.get("AWS_S3_ENDPOINT_URL") or ""
+    if _raw_endpoint:
+        import urllib.parse as _urlparse
+        _ep = _urlparse.urlparse(_raw_endpoint)
+        AWS_S3_ENDPOINT_URL = f"{_ep.scheme}://{_ep.netloc}" if (_ep.scheme and _ep.netloc) else _raw_endpoint
+    else:
+        AWS_S3_ENDPOINT_URL = None
     AWS_S3_REGION_NAME = os.environ.get("AWS_S3_REGION_NAME", "auto")
     AWS_S3_SIGNATURE_VERSION = "s3v4"
     AWS_S3_ADDRESSING_STYLE = "path"  # safest for R2's account-scoped endpoint
@@ -307,3 +315,25 @@ else:
     EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@socialcalendar.com")
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+# With DEBUG=False, Django's default config sends 500 tracebacks to the (unset)
+# admin-email handler and NOT to the console, so production errors are invisible
+# in the platform logs. Route everything to stdout so Render/hosting captures it.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {"format": "[{levelname}] {asctime} {name}: {message}", "style": "{"},
+    },
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "formatter": "verbose"},
+    },
+    "root": {"handlers": ["console"], "level": "INFO"},
+    "loggers": {
+        # Full tracebacks for unhandled 500s.
+        "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+    },
+}
