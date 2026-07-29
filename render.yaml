@@ -53,3 +53,14 @@ services:
         sync: false
       - key: EMAIL_HOST_PASSWORD
         sync: false
+      # Cloudflare R2 (private bucket, signed URLs) for user-uploaded media.
+      - key: AWS_STORAGE_BUCKET_NAME
+        sync: false
+      - key: AWS_S3_ENDPOINT_URL
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_S3_REGION_NAME
+        value: auto

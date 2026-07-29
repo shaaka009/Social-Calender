@@ -67,7 +67,23 @@ Code/config is ready (`render.yaml`, `build.sh`, gunicorn, whitenoise). Remainin
   - [ ] (`DJANGO_SECRET_KEY` auto-generated, `DATABASE_URL` auto-wired, `DJANGO_DEBUG=False` preset by the blueprint)
 - [ ] First deploy runs `build.sh` (migrate + collectstatic) automatically — watch the logs
 - [ ] Smoke-test the API against the `.onrender.com` URL (e.g. `/admin/login/`, a signup/signin round-trip)
-- [ ] **Media storage decision (blocker for profile pics):** in production `DEBUG=False` Django does **not** serve `/media/`, and Render's disk is ephemeral. Choose Render persistent disk (+ a way to serve `/media/`) or S3-compatible storage (`django-storages` + `boto3`). Flagged in `settings.py`.
+
+#### Media storage — ✅ code done (Cloudflare R2, private + signed URLs)
+
+Decided: private S3-compatible bucket via `django-storages` + `boto3`, served
+through short-lived signed URLs, with resize-on-upload for profile pics (chosen
+to also support the future "photos attached to connections" feature). Env-gated
+in `settings.py` — local dev still uses the filesystem. Remaining setup:
+
+- [ ] Create a **Cloudflare R2 bucket** (private) + an **R2 API token** (Object Read & Write, scoped to the bucket)
+- [ ] Note the account's S3 endpoint: `https://<account_id>.r2.cloudflarestorage.com`
+- [ ] Set these env vars on Render (already scaffolded in `render.yaml`):
+  - [ ] `AWS_STORAGE_BUCKET_NAME`
+  - [ ] `AWS_S3_ENDPOINT_URL` = the R2 endpoint above
+  - [ ] `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` = the R2 token's Access Key ID / Secret
+  - [ ] `AWS_S3_REGION_NAME=auto` (preset in `render.yaml`)
+- [ ] Upload a profile picture end-to-end against R2 and confirm the signed URL renders in the app
+- [ ] (Future) `ConnectionPhoto` model + gallery UI — foundation is ready (private bucket, signed URLs, resize helper reusable for thumbnails)
 
 ### Phase 2 — DNS / domain wiring
 

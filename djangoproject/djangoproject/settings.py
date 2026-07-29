@@ -182,21 +182,44 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
+# ---------------------------------------------------------------------------
+# Media storage
+# ---------------------------------------------------------------------------
+# When object-storage env vars are set (production), user uploads (profile
+# pictures now, connection photos later) go to a PRIVATE S3-compatible bucket
+# (Cloudflare R2) and are served via short-lived signed URLs. With no env vars
+# (local dev), uploads fall back to the local filesystem.
+_use_object_storage = bool(os.environ.get("AWS_STORAGE_BUCKET_NAME"))
+
+if _use_object_storage:
+    AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
+    AWS_STORAGE_BUCKET_NAME = os.environ.get("AWS_STORAGE_BUCKET_NAME")
+    # R2: https://<account_id>.r2.cloudflarestorage.com
+    AWS_S3_ENDPOINT_URL = os.environ.get("AWS_S3_ENDPOINT_URL")
+    AWS_S3_REGION_NAME = os.environ.get("AWS_S3_REGION_NAME", "auto")
+    AWS_S3_SIGNATURE_VERSION = "s3v4"
+    AWS_S3_ADDRESSING_STYLE = "path"  # safest for R2's account-scoped endpoint
+    AWS_DEFAULT_ACL = None            # R2 has no ACLs; objects stay private
+    AWS_QUERYSTRING_AUTH = True       # hand out signed, expiring URLs
+    AWS_QUERYSTRING_EXPIRE = int(os.environ.get("AWS_QUERYSTRING_EXPIRE", str(60 * 60 * 6)))  # 6h
+    AWS_S3_FILE_OVERWRITE = False     # never clobber an existing key
+    _default_storage = {"BACKEND": "storages.backends.s3.S3Storage"}
+else:
+    _default_storage = {"BACKEND": "django.core.files.storage.FileSystemStorage"}
+
 # WhiteNoise: compressed, hashed static files served by the app itself.
 STORAGES = {
-    "default": {
-        "BACKEND": "django.core.files.storage.FileSystemStorage",
-    },
+    "default": _default_storage,
     "staticfiles": {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },
 }
 
 # Media files (User uploads)
-# NOTE: In production (DEBUG=False) Django does NOT serve /media/, and Render's
-# filesystem is ephemeral, so uploaded profile pictures will not persist or be
-# served. Before launch, move media to a Render persistent disk or S3-compatible
-# storage (see progress-txt/TODO-for-launch.md, Phase 1).
+# In production these are served from private object storage (see the media
+# storage section above); MEDIA_URL/MEDIA_ROOT are only used by the local
+# filesystem fallback in development.
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 

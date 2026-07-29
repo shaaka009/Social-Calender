@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 
+from .image_utils import resize_profile_picture
+
 User = get_user_model()
 
 
@@ -149,6 +151,13 @@ class Person(models.Model):
 
     class Meta:
         ordering = ["first_name", "last_name"]
+
+    def save(self, *args, **kwargs):
+        # Resize/re-encode only freshly uploaded images (uncommitted files),
+        # so routine saves that don't touch the picture stay cheap.
+        if self.profile_picture and not getattr(self.profile_picture, "_committed", True):
+            resize_profile_picture(self.profile_picture)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         name = f"{self.first_name} {self.last_name}".strip()
