@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reset Password — Social Calendar</title>
+    <meta name="description" content="Choose a new Social Calendar password." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Source+Sans+3:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+    <style>
+      .reset-card {
+        max-width: 26rem;
+        margin: 1rem 0 2rem;
+        padding: 1.5rem;
+        border: 1px solid var(--line);
+        border-radius: 1rem;
+        background: rgba(255, 255, 255, 0.72);
+      }
+      .reset-card label {
+        display: block;
+        font-size: 0.9rem;
+        font-weight: 600;
+        margin: 0.85rem 0 0.35rem;
+        color: var(--ink-soft);
+      }
+      .reset-card input {
+        width: 100%;
+        padding: 0.7rem 0.85rem;
+        border: 1px solid var(--line);
+        border-radius: 0.65rem;
+        font: inherit;
+        background: #fff;
+      }
+      .reset-card button[type="submit"] {
+        margin-top: 1.25rem;
+        width: 100%;
+        border: 0;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 600;
+      }
+      .status {
+        margin-top: 0.85rem;
+        font-size: 0.95rem;
+      }
+      .status.error {
+        color: #b42318;
+      }
+      .status.ok {
+        color: #027a48;
+      }
+      .app-link {
+        display: inline-block;
+        margin-top: 1rem;
+        font-size: 0.95rem;
+      }
+      .muted {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="site-header">
+        <a class="brand" href="/">Social Calendar</a>
+        <nav class="nav" aria-label="Primary">
+          <a href="/support">Support</a>
+        </nav>
+      </header>
+
+      <main class="page">
+        <h1>Reset password</h1>
+        <p class="lede">Choose a new password for your Social Calendar account.</p>
+
+        <div class="reset-card" id="formCard">
+          <form id="resetForm">
+            <label for="password">New password</label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              autocomplete="new-password"
+              minlength="8"
+              required
+            />
+            <label for="confirm">Confirm password</label>
+            <input
+              id="confirm"
+              name="confirm"
+              type="password"
+              autocomplete="new-password"
+              minlength="8"
+              required
+            />
+            <button class="btn btn-primary" type="submit" id="submitBtn">
+              Update password
+            </button>
+            <p class="status" id="status" role="status" aria-live="polite"></p>
+          </form>
+          <p class="muted">
+            Have the app installed?
+            <a class="app-link" id="openApp" href="#">Open in Social Calendar</a>
+          </p>
+        </div>
+
+        <div class="reset-card" id="doneCard" hidden>
+          <p class="status ok">Your password was updated. You can sign in with the new password in the app.</p>
+          <p><a href="https://join-social.com/">Back to join-social.com</a></p>
+        </div>
+
+        <div class="reset-card" id="badLinkCard" hidden>
+          <p class="status error">
+            This reset link is missing information or is invalid. Request a new one from the app
+            (Forgot password).
+          </p>
+          <p><a href="/support">Contact support</a></p>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      (function () {
+        var API = "https://api.join-social.com/api/password-reset";
+        var params = new URLSearchParams(window.location.search);
+        var uid = params.get("uid");
+        var token = params.get("token");
+
+        if (!uid || !token) {
+          var match = window.location.pathname.match(
+            /^\/reset-password\/([^/]+)\/([^/]+)\/?$/
+          );
+          if (match) {
+            uid = decodeURIComponent(match[1]);
+            token = decodeURIComponent(match[2]);
+          }
+        }
+
+        var formCard = document.getElementById("formCard");
+        var doneCard = document.getElementById("doneCard");
+        var badLinkCard = document.getElementById("badLinkCard");
+        var openApp = document.getElementById("openApp");
+        var statusEl = document.getElementById("status");
+        var submitBtn = document.getElementById("submitBtn");
+
+        if (!uid || !token) {
+          formCard.hidden = true;
+          badLinkCard.hidden = false;
+          return;
+        }
+
+        openApp.href =
+          "socialcalendar://reset-password/" +
+          encodeURIComponent(uid) +
+          "/" +
+          encodeURIComponent(token);
+
+        document.getElementById("resetForm").addEventListener("submit", async function (e) {
+          e.preventDefault();
+          statusEl.textContent = "";
+          statusEl.className = "status";
+
+          var password = document.getElementById("password").value;
+          var confirm = document.getElementById("confirm").value;
+          if (password !== confirm) {
+            statusEl.textContent = "Passwords do not match.";
+            statusEl.className = "status error";
+            return;
+          }
+
+          submitBtn.disabled = true;
+          submitBtn.textContent = "Updating…";
+          try {
+            var res = await fetch(
+              API +
+                "/" +
+                encodeURIComponent(uid) +
+                "/" +
+                encodeURIComponent(token) +
+                "/",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ password: password }),
+              }
+            );
+            var raw = await res.text();
+            var data = {};
+            try {
+              data = raw ? JSON.parse(raw) : {};
+            } catch (_) {}
+            if (!res.ok) {
+              throw new Error(data.message || "Could not reset password.");
+            }
+            formCard.hidden = true;
+            doneCard.hidden = false;
+          } catch (err) {
+            statusEl.textContent = err.message || "Something went wrong.";
+            statusEl.className = "status error";
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Update password";
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>

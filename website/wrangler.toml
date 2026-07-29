@@ -1,0 +1,6 @@
+# Static site for join-social.com (Cloudflare Workers + Static Assets).
+name = "join-social"
+compatibility_date = "2026-07-29"
+
+[assets]
+directory = "."
