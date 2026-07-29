@@ -11,9 +11,11 @@ import CustomInput from '../../../components/CustomInput';
 import LoadingState from '../../../components/LoadingState';
 import MonthDayYearPicker from '../../../components/MonthDayYearPicker';
 import ScreenWrapper from '../../../components/ScreenWrapper';
+import { TAG_COLOR_OPTIONS } from '../../../constants/tagColors';
 import { theme } from '../../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../../helpers/api';
 import { formatDateLocal, parseDateLocal, wp } from '../../../helpers/common';
+import { useOneShot, useSubmitGuard } from '../../../helpers/useSubmitGuard';
 import useConnection from '../../../helpers/useConnection';
 import { useCreateTag, useTags } from '../../../helpers/useTags';
 
@@ -28,7 +30,14 @@ const EditContactScreen = () => {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
   const queryClient = useQueryClient();
-  const [isSaving, setIsSaving] = useState(false);
+  const { isSubmitting, run } = useSubmitGuard();
+  const { isSubmitting: isCreatingTag, run: runCreateTag } = useSubmitGuard();
+  const goOnce = useOneShot();
+  const { data: tagsList = [] } = useTags();
+  const createTagMutation = useCreateTag();
+  const [modalVisible, setModalVisible] = useState(false);
+  const COLOR_OPTIONS = TAG_COLOR_OPTIONS;
+  const [newTag, setNewTag] = useState({ name: '', color: COLOR_OPTIONS[0] });
   
   // Form state
   const [formData, setFormData] = useState({
@@ -66,7 +75,7 @@ const EditContactScreen = () => {
         // Use parseDateLocal to construct the date in local timezone to avoid off-by-one errors
         birthday: person.birthday ? parseDateLocal(person.birthday) : null,
         no_contact_threshold: contact.no_contact_threshold,
-        notes: person.notes || '',
+        notes: contact.notes || person.notes || '',
         tags: contact.tags || [],
         profile_picture: person.profile_picture_url || person.profile_picture || null,
       });
@@ -85,8 +94,13 @@ const EditContactScreen = () => {
   // Image picker for manual contacts
   const handleImagePick = async () => {
     try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permission required', 'Please allow photo library access to choose a contact photo.');
+        return;
+      }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
@@ -94,13 +108,12 @@ const EditContactScreen = () => {
       if (!result.canceled) {
         setFormData(prev => ({ ...prev, profile_picture: result.assets[0].uri }));
       }
-    } catch (e) {
+    } catch (_error) {
       Alert.alert('Error', 'Failed to pick image');
     }
   };
 
-  const handleSave = async () => {
-    setIsSaving(true);
+  const handleSave = () => run(async () => {
     try {
       // Build payload from formData and contactRows similar to profile edit logic
       const payload = { ...formData };
@@ -131,7 +144,9 @@ const EditContactScreen = () => {
           : formData.birthday
         : null;
 
-      const hasLocalImage = formData.profile_picture && formData.profile_picture.startsWith('file://');
+      const hasLocalImage = typeof formData.profile_picture === 'string' && (
+        formData.profile_picture.startsWith('file://') || formData.profile_picture.startsWith('content://')
+      );
 
       let requestBody = null;
       let headers = {};
@@ -157,15 +172,15 @@ const EditContactScreen = () => {
           type: 'image/jpeg',
         });
         requestBody = fd;
-        headers['Content-Type'] = 'multipart/form-data';
       } else {
-        if (!formData.profile_picture) delete payload.profile_picture;
+        delete payload.profile_picture;
         requestBody = JSON.stringify(payload);
         headers['Content-Type'] = 'application/json';
       }
 
       if (isAppUser) {
-        const { first_name, last_name, email, phone, birthday, notes, tags, ...editableFields } = payload;
+        // App-user profile fields are read-only, but connection-level fields (e.g. tags) should still be saved.
+        const { first_name, last_name, email, phone, birthday, ...editableFields } = payload;
         await apiFetch(`${ENDPOINTS.CONNECTIONS}${id}/`, {
           method: 'PATCH',
           body: hasLocalImage ? requestBody : JSON.stringify(editableFields),
@@ -194,26 +209,18 @@ const EditContactScreen = () => {
       queryClient.invalidateQueries(['connections']);
       queryClient.invalidateQueries(['connection', id]);
 
-      // Navigate back
-      setTimeout(() => {
-        router.back();
-      }, 500);
+      // Navigate back (keep the guard active during the toast delay so a
+      // second tap can't fire another PATCH before we leave the screen).
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      goOnce(() => router.back());
     } catch (error) {
       Alert.alert('Error', error.message || 'Failed to update contact');
-    } finally {
-      setIsSaving(false);
     }
-  };
+  });
 
   if (isLoading || !contact) {
     return <LoadingState />;
   }
-
-  const { data: tagsList = [] } = useTags();
-  const createTagMutation = useCreateTag();
-  const [modalVisible, setModalVisible] = useState(false);
-  const COLOR_OPTIONS = ['#ff8c00', '#ff4d4f', '#40a9ff', '#52c41a', '#faad14', '#722ed1', '#13c2c2'];
-  const [newTag, setNewTag] = useState({ name: '', color: COLOR_OPTIONS[0] });
 
   const toggleTag = (tag) => {
     setFormData((prev) => ({
@@ -226,13 +233,12 @@ const EditContactScreen = () => {
 
   const handleSaveTag = () => {
     if (!newTag.name.trim()) return;
-    createTagMutation.mutate(newTag, {
-      onSuccess: (data) => {
-        setModalVisible(false);
-        setNewTag({ name: '', color: '#ff8c00' });
-        // auto-select
-        toggleTag(data.name);
-      },
+    runCreateTag(async () => {
+      const data = await createTagMutation.mutateAsync(newTag);
+      setModalVisible(false);
+      setNewTag({ name: '', color: '#ff8c00' });
+      // auto-select
+      toggleTag(data.name);
     });
   };
 
@@ -240,17 +246,22 @@ const EditContactScreen = () => {
     <ScreenWrapper>
       {/* Custom Header – mirrors profile edit header */}
       <View style={styles.header}>
-        <Pressable style={styles.backButton} onPress={() => router.back()}>
+        <Pressable style={styles.backButton} onPress={() => goOnce(() => router.back())} disabled={isSubmitting}>
           <Ionicons name="arrow-back" size={wp(5)} color={theme.colors.primary} />
           <Text style={styles.backButtonLabel}>Cancel</Text>
         </Pressable>
         <Text style={styles.headerTitle}>Edit Contact</Text>
-        <Pressable style={styles.saveButtonHeader} onPress={handleSave} disabled={isSaving}>
-          <Text style={styles.saveButtonHeaderText}>{isSaving ? 'Saving…' : 'Save'}</Text>
+        <Pressable style={styles.saveButtonHeader} onPress={handleSave} disabled={isSubmitting}>
+          <Text style={styles.saveButtonHeaderText}>{isSubmitting ? 'Saving…' : 'Save'}</Text>
         </Pressable>
       </View>
 
-      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
         {isAppUser ? (
           // App User Contact - Show profile info as read-only
           <View style={styles.section}>
@@ -472,8 +483,12 @@ const EditContactScreen = () => {
                   ))}
                 </View>
                 <View style={styles.modalActions}>
-                  <TouchableOpacity style={styles.modalBtn} onPress={()=>setModalVisible(false)}><Text style={styles.cancelText}>Cancel</Text></TouchableOpacity>
-                  <TouchableOpacity style={styles.modalBtn} onPress={handleSaveTag}><Text style={styles.saveText}>Save</Text></TouchableOpacity>
+                  <TouchableOpacity style={styles.modalBtn} onPress={()=>setModalVisible(false)} disabled={isCreatingTag}><Text style={styles.cancelText}>Cancel</Text></TouchableOpacity>
+                  <TouchableOpacity style={styles.modalBtn} onPress={handleSaveTag} disabled={isCreatingTag}>
+                    <Text style={[styles.saveText, isCreatingTag && { opacity: 0.5 }]}>
+                      {isCreatingTag ? 'Saving…' : 'Save'}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             </View>
@@ -591,7 +606,7 @@ const styles = StyleSheet.create({
   },
   datePickerContainer: {
     backgroundColor: theme.colors.card,
-    borderRadius: theme.roundness,
+    borderRadius: theme.radius.md,
     padding: wp(4),
     marginTop: wp(2),
   },

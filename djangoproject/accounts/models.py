@@ -1,11 +1,31 @@
+import logging
+
 from django.db import models
+from django.db.models.signals import pre_delete
+from django.dispatch import receiver
 from django.contrib.auth import get_user_model
+
+from .image_utils import resize_profile_picture
 
 User = get_user_model()
 
+logger = logging.getLogger(__name__)
+
+
+def _safe_delete_storage_file(field_file):
+    """Delete a FileField/ImageField from storage without raising."""
+    if not field_file or not getattr(field_file, "name", None):
+        return
+    try:
+        field_file.delete(save=False)
+    except Exception:
+        logger.warning(
+            "Failed to delete storage file %s", field_file.name, exc_info=True
+        )
+
 
 # ---------------------------------------------------
-# Event & Notification (legacy, still used by dashboard)
+# Event & Notification
 # ---------------------------------------------------
 class Event(models.Model):
     BIRTHDAY = "birthday"
@@ -65,6 +85,10 @@ class Event(models.Model):
         if self.end_date and self.end_date < self.start_date:
             raise ValidationError({"end_date": "End date cannot be before start date."})
 
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
     class Meta:
         ordering = ["start_date"]
 
@@ -93,7 +117,7 @@ class Notification(models.Model):
         blank=True,
         on_delete=models.CASCADE,
         related_name='notifications_related',
-    )  # Replaces contact_id
+    )
     date = models.DateField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -113,6 +137,7 @@ class Person(models.Model):
     first_name = models.CharField(max_length=100, blank=True, null=True)
     last_name = models.CharField(max_length=100, blank=True, null=True)
     organization = models.CharField(max_length=255, blank=True, help_text="Organization/company name shared with contacts.")
+    contact_email = models.EmailField(blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
     phone = models.CharField(max_length=30, blank=True)
     # Home city / region the Person decides to share (not editable by other users)
@@ -145,14 +170,56 @@ class Person(models.Model):
     class Meta:
         ordering = ["first_name", "last_name"]
 
+    def save(self, *args, **kwargs):
+        # Resize/re-encode only freshly uploaded images (uncommitted files),
+        # so routine saves that don't touch the picture stay cheap.
+        # Also remove the previous storage object on replace OR clear, otherwise
+        # old avatars pile up in R2 forever.
+        old_picture = None
+        previous_picture = None
+        if self.pk:
+            try:
+                previous_picture = type(self).objects.get(pk=self.pk).profile_picture
+            except type(self).DoesNotExist:
+                previous_picture = None
+
+        is_new_upload = bool(
+            self.profile_picture and not getattr(self.profile_picture, "_committed", True)
+        )
+        if is_new_upload:
+            resize_profile_picture(self.profile_picture)
+            old_picture = previous_picture
+        elif previous_picture and not self.profile_picture:
+            # Explicit clear (profile_picture set to None / empty).
+            old_picture = previous_picture
+
+        super().save(*args, **kwargs)
+
+        # Delete the now-orphaned previous image. Guarded so a storage/network
+        # hiccup during cleanup never fails an otherwise-successful save.
+        if old_picture and old_picture.name:
+            new_name = self.profile_picture.name if self.profile_picture else None
+            if old_picture.name != new_name:
+                _safe_delete_storage_file(old_picture)
+
     def __str__(self):
         name = f"{self.first_name} {self.last_name}".strip()
-        return name or self.email or f"Person {self.id}"
+        return name or self.contact_email or self.email or f"Person {self.id}"
 
     # Convenience for UI – do we have a full app account?
     @property
     def is_app_user(self):
         return hasattr(self, "account")
+
+
+@receiver(pre_delete, sender=Person)
+def _delete_person_profile_picture_from_storage(sender, instance, **kwargs):
+    """Remove the avatar from R2/local storage when a Person row is deleted.
+
+    Fires for both instance.delete() and queryset.delete() (e.g. account
+    deletion cascading through manual contacts), so we don't leave orphans.
+    """
+    _safe_delete_storage_file(instance.profile_picture)
 
 
 # ---------------------------------------------------
@@ -198,6 +265,11 @@ class Account(models.Model):
         on_delete=models.CASCADE,
         related_name="account",
     )
+    verification_code = models.CharField(max_length=6, blank=True, default="")
+    verification_code_expires_at = models.DateTimeField(null=True, blank=True)
+    pending_login_email = models.EmailField(blank=True, null=True)
+    login_email_change_code = models.CharField(max_length=6, blank=True, default="")
+    login_email_change_code_expires_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return str(self.user)
@@ -233,6 +305,7 @@ class Connection(models.Model):
     # Per-connection nickname and organisation labels – fully controlled by the owner
     nickname = models.CharField(max_length=100, blank=True, help_text="Personal nickname for this contact (owner-specific)")
     organization = models.CharField(max_length=255, blank=True, help_text="Organization label shown in this owner\'s contact list.")
+    notes = models.TextField(blank=True, help_text="Private notes about this contact, scoped to the connection owner.")
     last_contact_date = models.DateField(null=True, blank=True, help_text="Date of the most recent interaction")
     no_contact_threshold = models.IntegerField(
         null=True,

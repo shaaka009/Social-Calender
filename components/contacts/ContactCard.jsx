@@ -3,18 +3,21 @@ import { Image } from 'expo-image';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { theme } from '../../constants/theme';
+import { getPersonAvatarColors, getPersonInitials } from '../../helpers/avatar';
 import { wp } from '../../helpers/common';
 
 const ContactCard = ({ contact, onPress }) => {
   const person = contact.target || {};
   const daysSinceContact = contact.last_contact_date ? Math.floor((new Date() - new Date(contact.last_contact_date)) / (1000 * 60 * 60 * 24)) : null;
+  const avatarColors = getPersonAvatarColors(person);
+  const initials = getPersonInitials(person);
 
   return (
     <TouchableOpacity 
       style={styles.container}
       onPress={() => onPress(contact)}
     >
-      <View style={styles.avatarContainer}>
+      <View style={[styles.avatarContainer, !person.profile_picture_url && { backgroundColor: avatarColors.bg }]}>
         {person.profile_picture_url ? (
           <Image
             source={{ uri: person.profile_picture_url }}
@@ -22,8 +25,8 @@ const ContactCard = ({ contact, onPress }) => {
             contentFit="cover"
           />
         ) : (
-          <Text style={styles.avatarText}>
-            {person.first_name?.[0]}{person.last_name?.[0]}
+          <Text style={[styles.avatarText, { color: avatarColors.fg }]}>
+            {initials}
           </Text>
         )}
       </View>
@@ -80,7 +83,7 @@ const styles = StyleSheet.create({
     width: wp(10),
     height: wp(10),
     borderRadius: wp(5),
-    backgroundColor: theme.colors.primary,
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: wp(3),
@@ -104,7 +107,7 @@ const styles = StyleSheet.create({
     gap: wp(2),
   },
   name: {
-    fontSize: wp(4),
+    fontSize: wp(4.5),
     fontWeight: '600',
     color: theme.colors.text,
     marginBottom: wp(0.5),

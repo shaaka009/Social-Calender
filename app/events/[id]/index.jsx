@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { Ionicons } from '@expo/vector-icons';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -13,13 +14,53 @@ import useContacts from '../../../helpers/useContacts';
 
 const EventDetailsScreen = () => {
   const { id } = useLocalSearchParams();
+  const eventId = Array.isArray(id) ? id[0] : id;
+  const queryClient = useQueryClient();
+  const isVirtualBirthdayEvent = eventId?.startsWith('virtual-birthday-');
+
+  const getCachedEventById = React.useCallback((targetEventId) => {
+    if (!targetEventId) return null;
+    const normalizedTargetId = String(targetEventId);
+
+    const eventsCache = queryClient.getQueryData(['events']);
+    if (Array.isArray(eventsCache)) {
+      const fromEvents = eventsCache.find((candidate) => String(candidate.id) === normalizedTargetId);
+      if (fromEvents) return fromEvents;
+    }
+
+    const dashboardCache = queryClient.getQueryData(['dashboard']);
+    const dashboardEvents = dashboardCache?.events;
+    if (Array.isArray(dashboardEvents)) {
+      const fromDashboard = dashboardEvents.find((candidate) => String(candidate.id) === normalizedTargetId);
+      if (fromDashboard) return fromDashboard;
+    }
+
+    return null;
+  }, [queryClient]);
+
   const { data: event, isLoading } = useQuery({
-    queryKey: ['event', id],
-    queryFn: () => apiFetch(`${ENDPOINTS.EVENTS}${id}/`),
+    queryKey: ['event', eventId],
+    queryFn: async () => {
+      const cachedEvent = getCachedEventById(eventId);
+      if (cachedEvent) {
+        return cachedEvent;
+      }
+
+      if (isVirtualBirthdayEvent) {
+        const events = await apiFetch(ENDPOINTS.EVENTS);
+        queryClient.setQueryData(['events'], events);
+        return events.find((candidate) => String(candidate.id) === String(eventId)) || null;
+      }
+      return apiFetch(`${ENDPOINTS.EVENTS}${eventId}/`);
+    },
+    enabled: Boolean(eventId),
+    staleTime: 60 * 1000,
   });
 
   // Fetch user's contacts to resolve connection IDs for associated people
-  const { data: contacts = [] } = useContacts();
+  const { data: contacts = [] } = useContacts({
+    enabled: Boolean(event?.people?.length),
+  });
 
   // Helper: map of personId -> connectionId
   const connectionByPersonId = React.useMemo(() => {
@@ -62,15 +103,24 @@ const EventDetailsScreen = () => {
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.title}>Event Details</Text>
-        <CustomButton
-          title="Edit"
-          variant="text"
-          onPress={() => router.push(`/events/${id}/edit`)}
-          style={styles.backBtn}
-        />
+        {!event.is_virtual ? (
+          <CustomButton
+            title="Edit"
+            variant="text"
+            onPress={() => router.push(`/events/${eventId}/edit`)}
+            style={styles.backBtn}
+          />
+        ) : (
+          <View style={styles.backBtn} />
+        )}
       </View>
 
-      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
         {/* Event Title */}
         <Text style={styles.eventTitle}>{event.title}</Text>
         {/* Event Type Badge */}
@@ -78,12 +128,19 @@ const EventDetailsScreen = () => {
           styles.badge,
           { backgroundColor: theme.colors.primary + '20' }
         ]}>
-          <Text style={[
-            styles.badgeText,
-            { color: theme.colors.primary }
-          ]}>
-            {EVENT_TYPES.find(t=>t.value===event.type)?.emoji || '📅'} {EVENT_TYPES.find(t=>t.value===event.type)?.label || 'Event'}
-          </Text>
+          <View style={styles.badgeContent}>
+            <Ionicons 
+              name={EVENT_TYPES.find(t=>t.value===event.type)?.icon || 'calendar-outline'} 
+              size={wp(4.5)} 
+              color={theme.colors.primary}
+            />
+            <Text style={[
+              styles.badgeText,
+              { color: theme.colors.primary }
+            ]}>
+              {EVENT_TYPES.find(t=>t.value===event.type)?.label || 'Event'}
+            </Text>
+          </View>
         </View>
 
         {/* Basic Info */}
@@ -106,6 +163,14 @@ const EventDetailsScreen = () => {
             <Text style={styles.notes}>{event.notes}</Text>
           </View>
         )}
+
+        {event.is_virtual ? (
+          <View style={styles.section}>
+            <Text style={styles.notes}>
+              This birthday is auto-generated from the contact&apos;s birthday. Edit it from the contact profile.
+            </Text>
+          </View>
+        ) : null}
 
         {/* People */}
         {event.people?.length ? (
@@ -144,13 +209,15 @@ const EventDetailsScreen = () => {
         ) : null}
 
         {/* Delete Button */}
-        <CustomButton
-          title="Delete Event"
-          variant="text"
-          onPress={() => router.push(`/events/${id}/delete`)}
-          style={styles.deleteButton}
-          textStyle={{ color: theme.colors.danger }}
-        />
+        {!event.is_virtual ? (
+          <CustomButton
+            title="Delete Event"
+            variant="text"
+            onPress={() => router.push(`/events/${eventId}/delete`)}
+            style={styles.deleteButton}
+            textStyle={{ color: theme.colors.danger }}
+          />
+        ) : null}
       </ScrollView>
     </ScreenWrapper>
   );
@@ -196,6 +263,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: wp(4),
     paddingVertical: wp(2),
     borderRadius: wp(4),
+  },
+  badgeContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(2),
   },
   badgeText: {
     fontSize: wp(4),

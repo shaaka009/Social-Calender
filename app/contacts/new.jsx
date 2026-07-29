@@ -1,8 +1,8 @@
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import CustomButton from '../../components/CustomButton';
 import CustomInput from '../../components/CustomInput';
@@ -12,19 +12,32 @@ import ScreenWrapper from '../../components/ScreenWrapper';
 import { theme } from '../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../helpers/api';
 import { formatDateLocal, parseDateLocal, wp } from '../../helpers/common';
+import { useOneShot, useSubmitGuard } from '../../helpers/useSubmitGuard';
 import { useCreateTag, useTags } from '../../helpers/useTags';
 
 const AddContactScreen = () => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [showManualForm, setShowManualForm] = useState(false);
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery]);
+
+  const normalizedSearchQuery = useMemo(() => debouncedSearchQuery.trim(), [debouncedSearchQuery]);
   
   // User search results
-  const { data: searchResults = [], isLoading: isSearching } = useQuery({
-    queryKey: ['userSearch', searchQuery],
-    queryFn: () => searchQuery.trim() 
-      ? apiFetch(`${ENDPOINTS.USER_SEARCH}?q=${encodeURIComponent(searchQuery.trim())}`)
+  const { data: searchResults = [], isLoading: isSearching, isFetching } = useQuery({
+    queryKey: ['userSearch', normalizedSearchQuery],
+    queryFn: () => normalizedSearchQuery
+      ? apiFetch(`${ENDPOINTS.USER_SEARCH}?q=${encodeURIComponent(normalizedSearchQuery)}`)
       : [],
-    enabled: searchQuery.trim().length > 0
+    enabled: normalizedSearchQuery.length >= 2,
+    placeholderData: keepPreviousData
   });
 
   const [form, setForm] = useState({
@@ -33,6 +46,7 @@ const AddContactScreen = () => {
     email: '',
     phone: '',
     birthday: '',
+    notes: '',
     profile_picture: null,
   });
   // Contact methods table rows: {type: string, value: string}
@@ -48,16 +62,32 @@ const AddContactScreen = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [newTag, setNewTag] = useState({ name: '', color: COLOR_OPTIONS[0] });
 
-  const [loading, setLoading] = useState(false);
+  const { isSubmitting, run } = useSubmitGuard();
+  const { isSubmitting: isCreatingTag, run: runCreateTag } = useSubmitGuard();
+  const goOnce = useOneShot();
   const [errors, ] = useState({});
   const handleChange = (key, value) => {
     setForm(prev => ({ ...prev, [key]: value }));
   };
 
+  const handleSaveTag = () => {
+    if (!newTag.name.trim()) return;
+    runCreateTag(async () => {
+      await createTagMutation.mutateAsync(newTag);
+      setModalVisible(false);
+      setNewTag({ name: '', color: COLOR_OPTIONS[0] });
+    });
+  };
+
   const handleImagePick = async () => {
     try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permission required', 'Please allow photo library access to choose a contact photo.');
+        return;
+      }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
@@ -70,15 +100,20 @@ const AddContactScreen = () => {
     }
   };
 
-  const handleAddContact = useCallback(async (userId) => {
+  const handleAddContact = useCallback((personId) => run(async () => {
+    const id = Number(personId);
+    if (personId == null || Number.isNaN(id) || id <= 0) {
+      Alert.alert('Error', 'Could not resolve this user. Pull to refresh or update the app.');
+      return;
+    }
     try {
       await apiFetch(ENDPOINTS.CONNECTIONS, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target_person_id: Number(userId) }),
+        body: JSON.stringify({ target_person_id: id }),
       });
       Alert.alert('Success', 'Contact request sent!');
-      router.replace('/contacts');
+      goOnce(() => router.replace('/contacts'));
     } catch (err) {
       Alert.alert(
         'Error',
@@ -87,18 +122,20 @@ const AddContactScreen = () => {
           : err.message || 'Failed to add contact'
       );
     }
-  }, []);
+  }), [run, goOnce]);
 
-  const handleManualSubmit = async () => {
+  const handleManualSubmit = () => run(async () => {
     if (!form.first_name.trim()) {
       Alert.alert('Error', 'First name is required');
       return;
     }
 
-    setLoading(true);
     try {
       // Build payload from form + contact rows
       const payload = { ...form };
+      const hasLocalImage = typeof form.profile_picture === 'string' && (
+        form.profile_picture.startsWith('file://') || form.profile_picture.startsWith('content://')
+      );
       // Extract email/phone if present
       contactRows.forEach(({ type, value }) => {
         const key = type.trim().toLowerCase();
@@ -112,18 +149,43 @@ const AddContactScreen = () => {
       });
       if (selectedTags.length) payload.tags = selectedTags;
 
+      let body = null;
+      if (hasLocalImage) {
+        const fd = new FormData();
+        Object.entries(payload).forEach(([key, value]) => {
+          if (value === undefined || value === null) return;
+          if (key === 'profile_picture') return;
+          if (key === 'tags' && Array.isArray(value)) {
+            value.forEach(tag => fd.append('tags', tag));
+            return;
+          }
+          if (typeof value === 'object') {
+            fd.append(key, JSON.stringify(value));
+          } else {
+            fd.append(key, value.toString());
+          }
+        });
+        fd.append('profile_picture', {
+          uri: form.profile_picture,
+          name: 'profile.jpg',
+          type: 'image/jpeg',
+        });
+        body = fd;
+      } else {
+        // Avoid sending non-upload strings for image fields.
+        if (!hasLocalImage) delete payload.profile_picture;
+        body = JSON.stringify(payload);
+      }
+
       await apiFetch(ENDPOINTS.CONNECTIONS, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body,
       });
-      router.replace('/contacts');
+      goOnce(() => router.replace('/contacts'));
     } catch (err) {
       Alert.alert('Error', err.message || 'Failed to save contact');
-    } finally {
-      setLoading(false);
     }
-  };
+  });
 
   const renderSearchResults = () => {
     if (!searchQuery.trim()) {
@@ -131,6 +193,16 @@ const AddContactScreen = () => {
         <View style={styles.emptyState}>
           <Text style={styles.emptyStateText}>
             Search for users by name or email
+          </Text>
+        </View>
+      );
+    }
+
+    if (searchQuery.trim().length < 2) {
+      return (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyStateText}>
+            Enter at least 2 characters to search
           </Text>
         </View>
       );
@@ -162,7 +234,8 @@ const AddContactScreen = () => {
         {user.connection_status?.status === 'none' && (
           <CustomButton
             title="Add Contact"
-            onPress={() => handleAddContact(user.id)}
+            onPress={() => handleAddContact(user.person_id)}
+            disabled={isSubmitting}
           />
         )}
         
@@ -183,22 +256,27 @@ const AddContactScreen = () => {
       <View style={styles.header}>
         <Pressable 
           style={styles.backButton} 
-          onPress={() => router.back()}
+          onPress={() => goOnce(() => router.back())}
+          disabled={isSubmitting}
         >
           <Text style={styles.backButtonText}>←</Text>
           <Text style={styles.backButtonLabel}>Back</Text>
         </Pressable>
         <Text style={styles.headerTitle}>Add Contact</Text>
         {showManualForm ? (
-          <Pressable onPress={handleManualSubmit} disabled={loading} style={styles.saveButtonHeader}>
-            <Text style={styles.saveButtonHeaderText}>{loading ? 'Saving...' : 'Save'}</Text>
+          <Pressable onPress={handleManualSubmit} disabled={isSubmitting} style={styles.saveButtonHeader}>
+            <Text style={styles.saveButtonHeaderText}>{isSubmitting ? 'Saving...' : 'Save'}</Text>
           </Pressable>
         ) : (
           <View style={styles.backButton} />
         )}
       </View>
 
-      <ScrollView contentContainerStyle={showManualForm ? styles.containerManual : styles.container}>
+      <ScrollView
+        contentContainerStyle={showManualForm ? styles.containerManual : styles.container}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
         {!showManualForm ? (
           <>
             <CustomInput
@@ -292,6 +370,15 @@ const AddContactScreen = () => {
               onChange={(d)=>handleChange('birthday', formatDateLocal(d))}
             />
 
+            <CustomInput
+              label="Notes"
+              value={form.notes}
+              onChangeText={text => handleChange('notes', text)}
+              placeholder="Add notes about this contact"
+              multiline
+              numberOfLines={4}
+            />
+
             {/* Tags */}
             <Text style={styles.sectionLabel}>Tags</Text>
             {/* Tags Row */}
@@ -356,17 +443,12 @@ const AddContactScreen = () => {
                     </Pressable>
                     <Pressable
                       style={styles.modalBtn}
-                      onPress={() => {
-                        if (!newTag.name.trim()) return;
-                        createTagMutation.mutate(newTag, {
-                          onSuccess: () => {
-                            setModalVisible(false);
-                            setNewTag({ name: '', color: COLOR_OPTIONS[0] });
-                          },
-                        });
-                      }}
+                      onPress={handleSaveTag}
+                      disabled={isCreatingTag}
                     >
-                      <Text style={styles.saveText}>Save</Text>
+                      <Text style={[styles.saveText, isCreatingTag && { opacity: 0.5 }]}>
+                        {isCreatingTag ? 'Saving…' : 'Save'}
+                      </Text>
                     </Pressable>
                   </View>
                 </View>

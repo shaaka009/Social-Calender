@@ -1,21 +1,26 @@
 import { useNavigation } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useEffect, useLayoutEffect, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import CustomInput from "../../components/CustomInput";
 import LoadingState from "../../components/LoadingState";
 import MonthDayYearPicker from '../../components/MonthDayYearPicker';
 import ScreenWrapper from "../../components/ScreenWrapper";
 import { theme } from "../../constants/theme";
+import { getPersonAvatarColors, getPersonInitials } from "../../helpers/avatar";
 import { formatDateLocal, parseDateLocal, wp } from "../../helpers/common";
 import useProfile, { useUpdateProfileMutation } from "../../helpers/useProfile";
+import { useOneShot, useSubmitGuard } from "../../helpers/useSubmitGuard";
 
 const EditProfileScreen = () => {
   const router = useRouter();
   const { data, isLoading, isError } = useProfile();
   const updateMutation = useUpdateProfileMutation();
+  const { isSubmitting, run } = useSubmitGuard();
+  const goOnce = useOneShot();
 
   const navigation = useNavigation();
   useLayoutEffect(() => {
@@ -28,13 +33,39 @@ const EditProfileScreen = () => {
     birthday: null,
     profile_picture: null,
     location: "",
+    contact_email: "",
+  });
+  const avatarColors = getPersonAvatarColors({
+    id: data?.id,
+    email: data?.login_email || data?.email,
+    first_name: form.first_name,
+    last_name: form.last_name,
+  });
+  const initials = getPersonInitials({
+    first_name: form.first_name,
+    last_name: form.last_name,
   });
 
   // Contact rows table
   const [contactRows, setContactRows] = useState([
     { type: "Phone", value: "" },
-    { type: "Email", value: "" },
   ]);
+  const [showContactEmailInfo, setShowContactEmailInfo] = useState(false);
+  const allContactRows = React.useMemo(() => (
+    [
+      {
+        key: "contact_email",
+        type: "Contact Email",
+        value: form.contact_email || "",
+        isContactEmail: true,
+      },
+      ...contactRows.map((row, idx) => ({
+        ...row,
+        key: `contact_${idx}`,
+        contactRowIndex: idx,
+      })),
+    ]
+  ), [form.contact_email, contactRows]);
 
   useEffect(() => {
     if (data) {
@@ -44,11 +75,11 @@ const EditProfileScreen = () => {
         birthday: data.birthday || null,
         profile_picture: data.profile_picture || null,
         location: data.location || "",
+        contact_email: data.contact_email || "",
       });
 
       setContactRows([
         { type: "Phone", value: data.phone || "" },
-        { type: "Email", value: data.email || "" },
         ...(Array.isArray(data.extra_contacts) ? data.extra_contacts : []),
       ]);
     }
@@ -60,8 +91,13 @@ const EditProfileScreen = () => {
 
   const handleImagePick = async () => {
     try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Permission required", "Please allow photo library access to choose a profile photo.");
+        return;
+      }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
@@ -75,33 +111,59 @@ const EditProfileScreen = () => {
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = () => run(async () => {
     // build payload from form and contactRows
     const payload = { ...form };
     contactRows.forEach(({ type, value }) => {
       const key = type.trim().toLowerCase();
       if (!value.trim()) return;
       if (key === "phone") payload.phone = value.trim();
-      else if (key === "email") payload.email = value.trim();
       else {
         if (!payload.extra_contacts) payload.extra_contacts = [];
         payload.extra_contacts.push({ type: type.trim(), value: value.trim() });
       }
     });
 
-    // If profile_picture is null or just an existing remote URL, omit it so backend isn't sent a plain string
-    if (!form.profile_picture || (typeof form.profile_picture === 'string' && !form.profile_picture.startsWith('file://'))) {
+    const hasLocalImage =
+      typeof form.profile_picture === "string" &&
+      (form.profile_picture.startsWith("file://") ||
+        form.profile_picture.startsWith("content://"));
+
+    let requestPayload = payload;
+    if (hasLocalImage) {
+      const fd = new FormData();
+      Object.entries(payload).forEach(([key, value]) => {
+        if (value === undefined || value === null) return;
+        if (key === "profile_picture") return;
+        if (typeof value === "object") {
+          fd.append(key, JSON.stringify(value));
+        } else {
+          fd.append(key, String(value));
+        }
+      });
+      const uri = form.profile_picture;
+      const extMatch = /\.([a-zA-Z0-9]+)(\?|$)/.exec(uri);
+      const ext = extMatch ? extMatch[1].toLowerCase() : "jpg";
+      const mime =
+        ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
+      fd.append("profile_picture", {
+        uri,
+        name: `profile.${ext}`,
+        type: mime,
+      });
+      requestPayload = fd;
+    } else {
       delete payload.profile_picture;
     }
 
     try {
-      await updateMutation.mutateAsync(payload);
+      await updateMutation.mutateAsync(requestPayload);
       Alert.alert("Success", "Profile updated successfully");
-      router.back();
+      goOnce(() => router.back());
     } catch (error) {
       Alert.alert("Error", "Failed to update profile");
     }
-  };
+  });
 
   if (isLoading) return <LoadingState />;
   if (isError) return <LoadingState message="Failed to load profile" />;
@@ -110,17 +172,25 @@ const EditProfileScreen = () => {
     <ScreenWrapper bg={theme.colors.background}>
       {/* Header */}
       <View style={styles.header}>
-        <Pressable style={styles.backButton} onPress={() => router.back()}>
+        <Pressable style={styles.backButton} onPress={() => goOnce(() => router.back())} disabled={isSubmitting}>
           <Text style={styles.backButtonText}>←</Text>
           <Text style={styles.backButtonLabel}>Back</Text>
         </Pressable>
         <Text style={styles.headerTitle}>Edit Profile</Text>
-        <Pressable style={styles.saveButtonHeader} onPress={handleSave} disabled={updateMutation.isLoading}>
-          <Text style={styles.saveButtonHeaderText}>{updateMutation.isLoading ? "Saving…" : "Save"}</Text>
+        <Pressable
+          style={[styles.saveButtonHeader, isSubmitting && styles.saveButtonHeaderDisabled]}
+          onPress={handleSave}
+          disabled={isSubmitting}
+        >
+          <Text style={styles.saveButtonHeaderText}>{isSubmitting ? "Saving…" : "Save"}</Text>
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
 
         <Pressable onPress={handleImagePick} style={styles.imageContainer}>
           {form.profile_picture ? (
@@ -130,9 +200,9 @@ const EditProfileScreen = () => {
               contentFit="cover"
             />
           ) : (
-            <View style={styles.placeholderImage}>
-              <Text style={styles.placeholderText}>
-                {form.first_name?.[0]?.toUpperCase() || "?"}
+            <View style={[styles.placeholderImage, { backgroundColor: avatarColors.bg }]}>
+              <Text style={[styles.placeholderText, { color: avatarColors.fg }]}>
+                {initials}
               </Text>
             </View>
           )}
@@ -159,32 +229,50 @@ const EditProfileScreen = () => {
 
         {/* Contact Information */}
         <Text style={styles.sectionTitle}>Contact Information</Text>
-        {contactRows.map((row, idx) => (
-          <View key={idx} style={styles.contactRow}>
+        {allContactRows.map((row) => (
+          <View key={row.key} style={styles.contactRow}>
             <TextInput
-              style={[styles.contactTypeInput, idx < 2 && styles.readOnlyInput]}
+              style={[
+                styles.contactTypeInput,
+                row.isContactEmail && styles.contactEmailHeaderTextInput,
+              ]}
               value={row.type}
-              onChangeText={(text) =>
-                setContactRows((prev) => prev.map((r, i) => (i === idx ? { ...r, type: text } : r)))
-              }
-              editable={idx >= 2}
+              onChangeText={(text) => {
+                if (row.isContactEmail) return;
+                setContactRows((prev) => prev.map((r, i) => (
+                  i === row.contactRowIndex ? { ...r, type: text } : r
+                )));
+              }}
+              editable={!row.isContactEmail}
               placeholder="Type"
               placeholderTextColor={theme.colors.textLight + "90"}
             />
+            {row.isContactEmail && (
+              <Pressable onPress={() => setShowContactEmailInfo(true)} style={styles.infoIconButton}>
+                <Ionicons name="information-circle-outline" size={wp(5)} color={theme.colors.textSecondary} />
+              </Pressable>
+            )}
             <TextInput
               style={styles.contactValueInput}
               value={row.value}
-              onChangeText={(text) =>
-                setContactRows((prev) => prev.map((r, i) => (i === idx ? { ...r, value: text } : r)))
-              }
+              onChangeText={(text) => {
+                if (row.isContactEmail) {
+                  handleChange("contact_email", text);
+                  return;
+                }
+                setContactRows((prev) => prev.map((r, i) => (
+                  i === row.contactRowIndex ? { ...r, value: text } : r
+                )));
+              }}
               placeholder="Enter info"
               keyboardType={
-                row.type.toLowerCase() === "phone"
-                  ? "phone-pad"
-                  : row.type.toLowerCase() === "email"
+                row.isContactEmail
                   ? "email-address"
+                  : row.type.toLowerCase() === "phone"
+                  ? "phone-pad"
                   : "default"
               }
+              autoCapitalize={row.isContactEmail ? "none" : "sentences"}
               placeholderTextColor={theme.colors.textLight + "90"}
             />
           </View>
@@ -216,6 +304,25 @@ const EditProfileScreen = () => {
         <View style={{ height: wp(20) }} />
 
       </ScrollView>
+
+      <Modal
+        visible={showContactEmailInfo}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowContactEmailInfo(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowContactEmailInfo(false)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <Text style={styles.modalTitle}>Contact Email</Text>
+            <Text style={styles.modalBody}>
+              This is your contact email, not your login email. Changing this will not affect sign-in.
+            </Text>
+            <Pressable style={styles.modalCloseButton} onPress={() => setShowContactEmailInfo(false)}>
+              <Text style={styles.modalCloseText}>Got it</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScreenWrapper>
   );
 };
@@ -251,6 +358,9 @@ const styles = StyleSheet.create({
   saveButtonHeader: {
     paddingHorizontal: wp(3),
     paddingVertical: wp(1),
+  },
+  saveButtonHeaderDisabled: {
+    opacity: 0.5,
   },
   saveButtonHeaderText: {
     color: theme.colors.primary,
@@ -289,7 +399,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   placeholderText: {
-    color: "white",
     fontSize: wp(12),
     fontWeight: "bold",
   },
@@ -320,6 +429,56 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     marginBottom: wp(3),
   },
+  contactEmailHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: wp(1.5),
+    flex: 1,
+  },
+  contactEmailHeaderText: {
+    fontSize: wp(3.5),
+    fontWeight: "500",
+    color: theme.colors.text,
+  },
+  contactEmailHeaderTextInput: {
+    color: theme.colors.text,
+  },
+  infoIconButton: {
+    paddingVertical: wp(0.5),
+    paddingHorizontal: wp(0.5),
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "center",
+    padding: wp(6),
+  },
+  modalCard: {
+    backgroundColor: theme.colors.background,
+    borderRadius: wp(4),
+    padding: wp(5),
+    gap: wp(3),
+  },
+  modalTitle: {
+    fontSize: wp(5),
+    fontWeight: "700",
+    color: theme.colors.text,
+  },
+  modalBody: {
+    fontSize: wp(3.8),
+    lineHeight: wp(5.5),
+    color: theme.colors.textSecondary,
+  },
+  modalCloseButton: {
+    alignSelf: "flex-end",
+    paddingVertical: wp(1),
+    paddingHorizontal: wp(2),
+  },
+  modalCloseText: {
+    color: theme.colors.primary,
+    fontSize: wp(4),
+    fontWeight: "600",
+  },
   contactRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -330,18 +489,18 @@ const styles = StyleSheet.create({
   },
   contactTypeInput: {
     flex: 1,
-    fontSize: wp(4),
+    fontSize: wp(3.5),
+    fontWeight: "500",
     color: theme.colors.text,
     paddingVertical: 0,
+    textAlign: "left",
   },
   contactValueInput: {
     flex: 2,
-    fontSize: wp(4),
+    fontSize: wp(3.5),
     color: theme.colors.text,
     paddingVertical: 0,
-  },
-  readOnlyInput: {
-    color: theme.colors.textLight + "90",
+    textAlign: "right",
   },
   addContactBtn: {
     alignSelf: "center",

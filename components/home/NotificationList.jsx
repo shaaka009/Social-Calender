@@ -1,6 +1,8 @@
+import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { theme } from '../../constants/theme';
+import { getPersonAvatarColors, getPersonInitials } from '../../helpers/avatar';
 import { wp } from '../../helpers/common';
 
 const formatTimeAgo = (dateString) => {
@@ -27,15 +29,15 @@ const formatTimeAgo = (dateString) => {
   return past.toLocaleDateString();
 };
 
-const NotificationCard = ({ notification, onPress }) => {
+const NotificationCard = React.memo(({ notification, onPress }) => {
   const getIcon = () => {
     switch (notification.type) {
       case 'UPCOMING_EVENT':
-        return '🎉';
+        return 'calendar';
       case 'NO_CONTACT':
-        return '💭';
+        return 'chatbubble-ellipses-outline';
       default:
-        return '📌';
+        return 'notifications';
     }
   };
 
@@ -55,24 +57,33 @@ const NotificationCard = ({ notification, onPress }) => {
       );
     } else if (hasPerson) {
       // Show initials with colored background
-      const initials = `${person.first_name?.[0] || ''}${person.last_name?.[0] || ''}`;
+      const initials = getPersonInitials(person);
+      const avatarColors = getPersonAvatarColors(person);
       return (
-        <View style={styles.avatarContainer}>
-          <Text style={styles.avatarText}>{initials}</Text>
+        <View style={[styles.avatarContainer, { backgroundColor: avatarColors.bg }]}>
+          <Text style={[styles.avatarText, { color: avatarColors.fg }]}>{initials}</Text>
         </View>
       );
     } else {
-      // Show emoji icon for non-person notifications
-      return <Text style={styles.icon}>{getIcon()}</Text>;
+      // Show icon for non-person notifications
+      return (
+        <View style={styles.iconContainer}>
+          <Ionicons name={getIcon()} size={wp(6)} color={theme.colors.primary} />
+        </View>
+      );
     }
   };
 
+  const handlePress = React.useCallback(() => {
+    onPress(notification);
+  }, [notification, onPress]);
+
   return (
-    <TouchableOpacity style={styles.card} onPress={() => onPress(notification)}>
+    <TouchableOpacity style={styles.card} onPress={handlePress}>
       {renderAvatar()}
       <View style={styles.content}>
         <Text style={styles.message}>{notification.message}</Text>
-        {notification.type === 'NO_CONTACT' && (
+        {notification.type === 'NO_CONTACT' && notification.daysSince != null && (
           <Text style={styles.details}>
             {notification.daysSince} days since last contact
           </Text>
@@ -86,9 +97,16 @@ const NotificationCard = ({ notification, onPress }) => {
       )}
     </TouchableOpacity>
   );
-};
+});
+NotificationCard.displayName = 'NotificationCard';
 
 const NotificationList = ({ notifications = [], onNotificationPress }) => {
+  const renderNotificationItem = React.useCallback(({ item }) => (
+    <NotificationCard notification={item} onPress={onNotificationPress} />
+  ), [onNotificationPress]);
+
+  const notificationKeyExtractor = React.useCallback((item) => String(item.id), []);
+
   if (!notifications.length) {
     return (
       <View style={styles.container}>
@@ -99,21 +117,17 @@ const NotificationList = ({ notifications = [], onNotificationPress }) => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Notifications</Text>
-      <View style={styles.list}>
-        {notifications.map((notification) => (
-          <React.Fragment key={notification.id}>
-            <NotificationCard
-              notification={notification}
-              onPress={onNotificationPress}
-            />
-            {/* Add separator if not the last item */}
-            {notification.id !== notifications[notifications.length - 1].id && (
-              <View style={styles.separator} />
-            )}
-          </React.Fragment>
-        ))}
-      </View>
+      <Text style={styles.title}>
+        Notifications
+      </Text>
+      <FlatList
+        data={notifications}
+        keyExtractor={notificationKeyExtractor}
+        renderItem={renderNotificationItem}
+        scrollEnabled={false}
+        removeClippedSubviews
+        contentContainerStyle={styles.list}
+      />
     </View>
   );
 };
@@ -128,25 +142,35 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     marginBottom: wp(3),
   },
+  titleCount: {
+    fontSize: wp(4),
+    fontWeight: '400',
+    color: theme.colors.textLight,
+  },
   list: {
     gap: wp(2),
   },
   card: {
     flexDirection: 'row',
     padding: wp(4),
-    backgroundColor: theme.colors.card,
+    backgroundColor: theme.colors.primary + '15',
     borderRadius: wp(3),
     alignItems: 'flex-start',
   },
-  icon: {
-    fontSize: wp(6),
+  iconContainer: {
+    width: wp(10),
+    height: wp(10),
+    borderRadius: wp(5),
+    backgroundColor: theme.colors.primary + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginRight: wp(3),
   },
   avatarContainer: {
     width: wp(10),
     height: wp(10),
     borderRadius: wp(5),
-    backgroundColor: theme.colors.primary,
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: wp(3),
@@ -181,7 +205,7 @@ const styles = StyleSheet.create({
     paddingTop: wp(0.5),
   },
   separator: {
-    height: wp(2),
+    height: wp(0),
   },
   emptyText: {
     textAlign: 'center',

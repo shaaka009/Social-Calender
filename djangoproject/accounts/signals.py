@@ -1,6 +1,7 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 from .models import Account, Interaction, Notification, Connection
 
@@ -42,8 +43,7 @@ def check_no_contact_notification_after_interaction(sender, instance, created, *
         return  # Only process new interactions
     
     # Check both directions (actor -> target and target -> actor)
-    from datetime import date
-    today = date.today()
+    today = timezone.localdate()
     
     for person_a, person_b in ((instance.actor, instance.target), (instance.target, instance.actor)):
         # Get the connection

@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
@@ -12,11 +13,15 @@ import LoadingState from "../../components/LoadingState";
 import ScreenWrapper from "../../components/ScreenWrapper";
 import { theme } from "../../constants/theme";
 import { ENDPOINTS } from "../../helpers/api";
+import { storeTokens } from "../../helpers/auth";
 import { wp } from "../../helpers/common";
 import useLoading from "../../helpers/useLoading";
+import { useOneShot } from "../../helpers/useSubmitGuard";
 
 const SignIn = () => {
+  const queryClient = useQueryClient();
   const { isLoading, withLoading } = useLoading();
+  const goOnce = useOneShot();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -37,19 +42,31 @@ const SignIn = () => {
           },
           body: JSON.stringify({
             email,
-            password,
+            password: password,
           }),
-          credentials: "include",
         });
 
         const data = await response.json();
 
         if (!response.ok) {
+          if (data.requires_verification) {
+            goOnce(() =>
+              router.replace({
+                pathname: "/onboarding/verify-email",
+                params: { email: email.trim().toLowerCase() },
+              })
+            );
+            return;
+          }
           throw new Error(data.message || "Login failed");
         }
 
+        // Store JWT tokens
+        await storeTokens(data.tokens);
+        queryClient.clear();
+
         // Login successful
-        router.replace("/home");
+        goOnce(() => router.replace("/home"));
       } catch (err) {
         setError(err.message || "Invalid email or password");
       }
@@ -68,8 +85,8 @@ const SignIn = () => {
 
             <View style={styles.form}>
               <CustomInput
-                label="Email"
-                placeholder="Email"
+                label="Login Email"
+                placeholder="Login Email"
                 value={email}
                 onChangeText={setEmail}
                 autoCapitalize="none"
@@ -85,7 +102,7 @@ const SignIn = () => {
               />
 
               <TouchableOpacity 
-                onPress={() => router.push("forgot-password")}
+                onPress={() => router.push("/(auth)/forgot-password")}
                 style={styles.forgotPasswordContainer}
               >
                 <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
@@ -97,12 +114,13 @@ const SignIn = () => {
                 title="Sign In"
                 onPress={handleSignIn}
                 style={styles.button}
+                disabled={isLoading}
               />
             </View>
           </View>
 
           <View style={styles.bottomContainer}>
-            <TouchableOpacity onPress={() => router.push("/(auth)/signup")}>
+            <TouchableOpacity onPress={() => router.push("/onboarding/signup")}>
               <Text style={styles.linkText}>
                 Don&apos;t have an account? Sign Up
               </Text>

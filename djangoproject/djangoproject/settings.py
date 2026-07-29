@@ -11,26 +11,65 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 from pathlib import Path
+from datetime import timedelta
 import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# ---------------------------------------------------------------------------
+# Environment helpers
+# ---------------------------------------------------------------------------
+# In production set these via Render / your host's env-var UI.
+# Locally they fall back to dev-friendly defaults.
+# ---------------------------------------------------------------------------
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
+SECRET_KEY = os.environ.get(
+    "DJANGO_SECRET_KEY",
+    "django-insecure-dev-only-change-me",
+)
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-h$nor6e_ubobbzmsi0e6b-nx+lq=2tud14pzco=+)m%q2$a*zi"
+DEBUG = os.environ.get("DJANGO_DEBUG", "True").lower() in ("true", "1", "yes")
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+ALLOWED_HOSTS = [h.strip() for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
+# Render injects the service's own external hostname; always trust it so the
+# platform health check and the default *.onrender.com URL work even if
+# DJANGO_ALLOWED_HOSTS isn't set perfectly by hand.
+_render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
+if _render_host and _render_host not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(_render_host)
+if DEBUG and not os.environ.get("DJANGO_ALLOWED_HOSTS"):
+    # Dev convenience for physical-device testing on local network.
+    ALLOWED_HOSTS.append("*")
 
-ALLOWED_HOSTS = [
-    'localhost',
-    '127.0.0.1',
-    '192.168.1.153',  # Your computer's IP address
-]
+# The base URL the frontend app lives at (used for password-reset deep links, etc.)
+FRONTEND_BASE_URL = os.environ.get("FRONTEND_BASE_URL", "http://localhost:8081")
+
+# Scheme for app deep links in reset emails (must match app.json "scheme", e.g. socialcalendar)
+PASSWORD_RESET_APP_SCHEME = os.environ.get("PASSWORD_RESET_APP_SCHEME", "socialcalendar")
+
+# Origins trusted for CSRF (needed for the Django admin login over HTTPS on a
+# custom domain). Comma-separated, e.g. "https://api.join-social.com".
+_csrf_trusted = os.environ.get("CSRF_TRUSTED_ORIGINS")
+if _csrf_trusted:
+    CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_trusted.split(",") if o.strip()]
+
+# Production hardening (skipped in local dev where DEBUG=True).
+if not DEBUG:
+    # Render terminates TLS at its proxy and forwards the original scheme here.
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    USE_X_FORWARDED_HOST = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    # Default OFF: Render (and similar PaaS) already redirect HTTP->HTTPS at the
+    # edge, and an app-level redirect breaks the platform's plain-HTTP internal
+    # health check (it returns a 301). Opt back in with SECURE_SSL_REDIRECT=True
+    # only if your host does not enforce HTTPS. HSTS below still forces HTTPS in
+    # browsers regardless.
+    SECURE_SSL_REDIRECT = os.environ.get("SECURE_SSL_REDIRECT", "False").lower() in ("true", "1", "yes")
+    SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", "31536000"))  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
 
 
 # Application definition
@@ -49,6 +88,9 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # WhiteNoise serves static files (e.g. Django admin) in production; must sit
+    # directly after SecurityMiddleware.
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -81,13 +123,35 @@ WSGI_APPLICATION = "djangoproject.wsgi.application"
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
+# Use DATABASE_URL if set (Render Postgres), otherwise fall back to SQLite.
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+_database_url = os.environ.get("DATABASE_URL")
+
+if _database_url:
+    import urllib.parse
+    _parsed = urllib.parse.urlparse(_database_url)
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": _parsed.path.lstrip("/"),
+            "USER": _parsed.username,
+            "PASSWORD": _parsed.password,
+            "HOST": _parsed.hostname,
+            "PORT": _parsed.port or 5432,
+            # Reuse connections across requests (Render Postgres).
+            "CONN_MAX_AGE": 600,
+        }
     }
-}
+    # Require SSL for remote databases (Render); skip for a local Postgres.
+    if _parsed.hostname not in ("localhost", "127.0.0.1"):
+        DATABASES["default"]["OPTIONS"] = {"sslmode": "require"}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
 
 
 # Password validation
@@ -125,8 +189,54 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
 STATIC_URL = "static/"
+STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
+
+# ---------------------------------------------------------------------------
+# Media storage
+# ---------------------------------------------------------------------------
+# When object-storage env vars are set (production), user uploads (profile
+# pictures now, connection photos later) go to a PRIVATE S3-compatible bucket
+# (Cloudflare R2) and are served via short-lived signed URLs. With no env vars
+# (local dev), uploads fall back to the local filesystem.
+_use_object_storage = bool(os.environ.get("AWS_STORAGE_BUCKET_NAME"))
+
+if _use_object_storage:
+    AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
+    AWS_STORAGE_BUCKET_NAME = os.environ.get("AWS_STORAGE_BUCKET_NAME")
+    # R2 account endpoint, e.g. https://<account_id>.r2.cloudflarestorage.com
+    # Cloudflare's dashboard shows this WITH the bucket path appended; boto3 wants
+    # the account endpoint only, so strip any path/bucket suffix defensively.
+    _raw_endpoint = os.environ.get("AWS_S3_ENDPOINT_URL") or ""
+    if _raw_endpoint:
+        import urllib.parse as _urlparse
+        _ep = _urlparse.urlparse(_raw_endpoint)
+        AWS_S3_ENDPOINT_URL = f"{_ep.scheme}://{_ep.netloc}" if (_ep.scheme and _ep.netloc) else _raw_endpoint
+    else:
+        AWS_S3_ENDPOINT_URL = None
+    AWS_S3_REGION_NAME = os.environ.get("AWS_S3_REGION_NAME", "auto")
+    AWS_S3_SIGNATURE_VERSION = "s3v4"
+    AWS_S3_ADDRESSING_STYLE = "path"  # safest for R2's account-scoped endpoint
+    AWS_DEFAULT_ACL = None            # R2 has no ACLs; objects stay private
+    AWS_QUERYSTRING_AUTH = True       # hand out signed, expiring URLs
+    AWS_QUERYSTRING_EXPIRE = int(os.environ.get("AWS_QUERYSTRING_EXPIRE", str(60 * 60 * 6)))  # 6h
+    AWS_S3_FILE_OVERWRITE = False     # never clobber an existing key
+    _default_storage = {"BACKEND": "storages.backends.s3.S3Storage"}
+else:
+    _default_storage = {"BACKEND": "django.core.files.storage.FileSystemStorage"}
+
+# WhiteNoise: compressed, hashed static files served by the app itself.
+STORAGES = {
+    "default": _default_storage,
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 # Media files (User uploads)
+# In production these are served from private object storage (see the media
+# storage section above); MEDIA_URL/MEDIA_ROOT are only used by the local
+# filesystem fallback in development.
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
@@ -135,17 +245,42 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# CORS settings
-CORS_ALLOW_ALL_ORIGINS = True  # Only for development
-CORS_ALLOW_CREDENTIALS = True
+# Django REST Framework
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+}
 
-# Comment out specific origins for now since we're allowing all origins
-# CORS_ALLOWED_ORIGINS = [
-#     "http://localhost:8081",
-#     "http://127.0.0.1:8081",
-#     "exp://127.0.0.1:8081",
-#     "exp://localhost:8081",
-# ]
+# SimpleJWT settings
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,       # Issue new refresh token on each refresh
+    'BLACKLIST_AFTER_ROTATION': False,    # Enable if you add the blacklist app
+    'AUTH_HEADER_TYPES': ('Bearer',),
+}
+
+# ---------------------------------------------------------------------------
+# CORS
+# ---------------------------------------------------------------------------
+# In production, set CORS_ALLOWED_ORIGINS as a comma-separated env var.
+# If unset but FRONTEND_BASE_URL is set, allow that origin so the hosted
+# reset.html form (and future web surfaces) can call the API.
+
+_cors_origins = os.environ.get("CORS_ALLOWED_ORIGINS")
+_frontend_origin = (os.environ.get("FRONTEND_BASE_URL") or "").rstrip("/")
+
+if _cors_origins:
+    CORS_ALLOW_ALL_ORIGINS = False
+    CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_origins.split(",") if o.strip()]
+elif _frontend_origin.startswith("http"):
+    CORS_ALLOW_ALL_ORIGINS = False
+    CORS_ALLOWED_ORIGINS = [_frontend_origin]
+else:
+    CORS_ALLOW_ALL_ORIGINS = True  # local/dev only
+
+CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOW_METHODS = [
     'DELETE',
@@ -168,13 +303,56 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
-# Email settings
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # For development
-DEFAULT_FROM_EMAIL = 'noreply@socialcalendar.com'
+# ---------------------------------------------------------------------------
+# Email
+# ---------------------------------------------------------------------------
+# Prefer Resend's HTTPS API (django-anymail). Render's free tier blocks outbound
+# SMTP ports (25/465/587), so EMAIL_HOST SMTP will hang there. Fall back to SMTP
+# only when no Resend key is present (e.g. paid hosts), else console backend.
+#
+# Set RESEND_API_KEY=re_...  (or EMAIL_HOST=smtp.resend.com + EMAIL_HOST_PASSWORD=re_...)
 
-# For production, uncomment and configure these settings:
-# EMAIL_HOST = 'smtp.gmail.com'
-# EMAIL_PORT = 587
-# EMAIL_USE_TLS = True
-# EMAIL_HOST_USER = 'your-email@gmail.com'
-# EMAIL_HOST_PASSWORD = 'your-app-specific-password'
+_resend_api_key = os.environ.get("RESEND_API_KEY") or ""
+_email_host = os.environ.get("EMAIL_HOST") or ""
+if not _resend_api_key and "resend" in _email_host.lower():
+    # Allow reusing the key already pasted as EMAIL_HOST_PASSWORD for Resend SMTP.
+    _resend_api_key = os.environ.get("EMAIL_HOST_PASSWORD") or ""
+
+if _resend_api_key:
+    INSTALLED_APPS.append("anymail")
+    EMAIL_BACKEND = "anymail.backends.resend.EmailBackend"
+    ANYMAIL = {"RESEND_API_KEY": _resend_api_key}
+elif _email_host:
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    EMAIL_HOST = _email_host
+    EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+    EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True").lower() in ("true", "1")
+    EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+    EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+    EMAIL_TIMEOUT = int(os.environ.get("EMAIL_TIMEOUT", "15"))
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@socialcalendar.com")
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+# With DEBUG=False, Django's default config sends 500 tracebacks to the (unset)
+# admin-email handler and NOT to the console, so production errors are invisible
+# in the platform logs. Route everything to stdout so Render/hosting captures it.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {"format": "[{levelname}] {asctime} {name}: {message}", "style": "{"},
+    },
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "formatter": "verbose"},
+    },
+    "root": {"handlers": ["console"], "level": "INFO"},
+    "loggers": {
+        # Full tracebacks for unhandled 500s.
+        "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+    },
+}

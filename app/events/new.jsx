@@ -1,22 +1,28 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import React, { useRef, useState } from 'react';
-import { Alert, Animated, Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { Alert, Animated, Dimensions, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Toast from 'react-native-root-toast';
 import CustomInput from '../../components/CustomInput';
 import DateRangePicker from '../../components/DateRangePicker';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import { EVENT_TYPES } from '../../constants/eventTypes';
+import { TAG_COLOR_OPTIONS } from '../../constants/tagColors';
 import { theme } from '../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../helpers/api';
+import { getPersonAvatarColors, getPersonInitials } from '../../helpers/avatar';
 import { wp } from '../../helpers/common';
+import useContacts from '../../helpers/useContacts';
+import { useOneShot, useSubmitGuard } from '../../helpers/useSubmitGuard';
 import { useCreateTag, useTags } from '../../helpers/useTags';
 
 const AddEventScreen = () => {
   const queryClient = useQueryClient();
-  const [isLoading, setIsLoading] = useState(false);
+  const { isSubmitting, run } = useSubmitGuard();
+  const { isSubmitting: isCreatingTag, run: runCreateTag } = useSubmitGuard();
+  const goOnce = useOneShot();
   const [searchQuery, setSearchQuery] = useState('');
   const [showContacts, setShowContacts] = useState(false);
 
@@ -54,7 +60,7 @@ const AddEventScreen = () => {
     }).start(() => setTypeSheetVisible(false));
   };
 
-  const COLOR_OPTIONS = ['#ff8c00', '#ff4d4f', '#40a9ff', '#52c41a', '#faad14', '#722ed1', '#13c2c2'];
+  const COLOR_OPTIONS = TAG_COLOR_OPTIONS;
 
   // Get tags for selection
   const { data: tags = [] } = useTags();
@@ -63,25 +69,67 @@ const AddEventScreen = () => {
   const [newTag, setNewTag] = useState({ name: '', color: COLOR_OPTIONS[0] });
 
   // Get contacts for selection
-  const { data: contacts = [] } = useQuery({
-    queryKey: ['connections'],
-    queryFn: () => apiFetch(ENDPOINTS.CONNECTIONS),
-  });
+  const { data: contacts = [] } = useContacts();
 
   // Filter contacts based on search
-  const filteredContacts = contacts.filter(conn => {
+  const filteredContacts = useMemo(() => contacts.filter((conn) => {
     const searchLower = searchQuery.toLowerCase();
-    const name = `${conn.target.first_name} ${conn.target.last_name}`.toLowerCase();
+    const firstName = conn.target?.first_name || '';
+    const lastName = conn.target?.last_name || '';
+    const name = `${firstName} ${lastName}`.toLowerCase();
     return !searchQuery || name.includes(searchLower);
-  });
+  }), [contacts, searchQuery]);
+  const displayedContacts = useMemo(
+    () => (
+      showContacts
+        ? filteredContacts
+        : contacts.filter((conn) => form.people_ids.includes(conn.target.id))
+    ),
+    [contacts, filteredContacts, form.people_ids, showContacts]
+  );
 
-  const handleSave = async () => {
+  const togglePersonSelection = useCallback((personId, currentlySelected) => {
+    setForm((prev) => ({
+      ...prev,
+      people_ids: currentlySelected
+        ? prev.people_ids.filter((id) => id !== personId)
+        : [...prev.people_ids, personId],
+    }));
+  }, []);
+
+  const renderContactItem = useCallback(({ item: conn }) => {
+    const selected = form.people_ids.includes(conn.target.id);
+    const person = conn.target;
+    const avatarColors = getPersonAvatarColors(person);
+    const initials = getPersonInitials(person);
+    return (
+      <TouchableOpacity
+        style={styles.gridItem}
+        onPress={() => togglePersonSelection(conn.target.id, selected)}
+      >
+        <View style={styles.avatarWrapper}>
+          {person.profile_picture_url ? (
+            <Image source={{ uri: person.profile_picture_url }} style={styles.gridAvatar} />
+          ) : (
+            <View style={[styles.gridAvatar, styles.gridAvatarPlaceholder, { backgroundColor: avatarColors.bg }]}>
+              <Text style={[styles.gridAvatarText, { color: avatarColors.fg }]}>{initials}</Text>
+            </View>
+          )}
+          {selected && (
+            <Ionicons name="checkmark-circle" size={wp(6)} color={theme.colors.success} style={styles.checkIcon} />
+          )}
+        </View>
+        <Text style={styles.gridName} numberOfLines={1}>{person.first_name}</Text>
+      </TouchableOpacity>
+    );
+  }, [form.people_ids, togglePersonSelection]);
+
+  const handleSave = () => run(async () => {
     if (!form.title.trim()) {
       Alert.alert('Error', 'Please enter a title for the event');
       return;
     }
 
-    setIsLoading(true);
     try {
       const format = (d)=>{
         if (!d) return null;
@@ -115,13 +163,11 @@ const AddEventScreen = () => {
       queryClient.invalidateQueries(['dashboard']);
 
       // Navigate back
-      router.back();
+      goOnce(() => router.back());
     } catch (error) {
       Alert.alert('Error', error.message || 'Failed to create event');
-    } finally {
-      setIsLoading(false);
     }
-  };
+  });
 
   return (
     <ScreenWrapper>
@@ -129,7 +175,8 @@ const AddEventScreen = () => {
       <View style={styles.header}>
         <Pressable 
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={() => goOnce(() => router.back())}
+          disabled={isSubmitting}
         >
           <Text style={styles.backButtonText}>←</Text>
           <Text style={styles.backButtonLabel}>Back</Text>
@@ -139,14 +186,19 @@ const AddEventScreen = () => {
 
         <Pressable 
           onPress={handleSave}
-          disabled={isLoading}
+          disabled={isSubmitting}
           style={styles.saveButtonHeader}
         >
-          <Text style={styles.saveButtonHeaderText}>{isLoading ? 'Saving...' : 'Save'}</Text>
+          <Text style={styles.saveButtonHeaderText}>{isSubmitting ? 'Saving...' : 'Save'}</Text>
         </Pressable>
       </View>
 
-      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
         {/* Basic Info */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Event Details</Text>
@@ -189,36 +241,18 @@ const AddEventScreen = () => {
             onFocus={()=>setShowContacts(true)}
           />
 
-          {showContacts && (
+          {(showContacts || form.people_ids.length > 0) && (
             <View style={styles.gridContainer}>
-              {filteredContacts.map(conn=>{
-                const selected = form.people_ids.includes(conn.target.id);
-                const person = conn.target;
-                return (
-                  <TouchableOpacity
-                    key={conn.id}
-                    style={styles.gridItem}
-                    onPress={()=>setForm(prev=>({
-                      ...prev,
-                      people_ids: selected ? prev.people_ids.filter(id=>id!==conn.target.id) : [...prev.people_ids, conn.target.id]
-                    }))}
-                  >
-                    <View style={styles.avatarWrapper}>
-                      {person.profile_picture_url ? (
-                        <Image source={{uri: person.profile_picture_url}} style={styles.gridAvatar} />
-                      ) : (
-                        <View style={[styles.gridAvatar, styles.gridAvatarPlaceholder]}>
-                          <Text style={styles.gridAvatarText}>{person.first_name?.[0]}{person.last_name?.[0]}</Text>
-                        </View>
-                      )}
-                      {selected && (
-                        <Ionicons name="checkmark-circle" size={wp(6)} color={theme.colors.primary} style={styles.checkIcon}/>
-                      )}
-                    </View>
-                    <Text style={styles.gridName} numberOfLines={1}>{person.first_name}</Text>
-                  </TouchableOpacity>
-                );
-              })}
+              <FlatList
+                data={displayedContacts}
+                keyExtractor={(item) => item.id.toString()}
+                renderItem={renderContactItem}
+                numColumns={3}
+                scrollEnabled={false}
+                columnWrapperStyle={styles.gridRow}
+                initialNumToRender={9}
+                removeClippedSubviews
+              />
             </View>
           )}
         </View>
@@ -233,10 +267,11 @@ const AddEventScreen = () => {
               <Ionicons name="add" size={wp(6)} color="#fff" />
             </Pressable>
 
-            <ScrollView 
-              horizontal 
+            <ScrollView
+              horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.tagsContainer}
+              keyboardShouldPersistTaps="handled"
             >
               {tags.map(tag => (
                 <Pressable
@@ -293,20 +328,24 @@ const AddEventScreen = () => {
                     style={styles.modalBtn}
                     onPress={() => {
                       if (!newTag.name.trim()) return;
-                      createTagMutation.mutate(newTag, {
-                        onSuccess: (newTagData) => {
-                          setModalVisible(false);
-                          setNewTag({ name: '', color: COLOR_OPTIONS[0] });
-                          // Add the new tag to the selected tags
+                      runCreateTag(async () => {
+                        const newTagData = await createTagMutation.mutateAsync(newTag);
+                        setModalVisible(false);
+                        setNewTag({ name: '', color: COLOR_OPTIONS[0] });
+                        // Add the new tag to the selected tags
+                        if (newTagData?.id) {
                           setForm(prev => ({
                             ...prev,
                             tag_ids: [...prev.tag_ids, newTagData.id]
                           }));
-                        },
+                        }
                       });
                     }}
+                    disabled={isCreatingTag}
                   >
-                    <Text style={styles.saveText}>Save</Text>
+                    <Text style={[styles.saveText, isCreatingTag && { opacity: 0.5 }]}>
+                      {isCreatingTag ? 'Saving…' : 'Save'}
+                    </Text>
                   </Pressable>
                 </View>
               </View>
@@ -349,7 +388,10 @@ const AddEventScreen = () => {
                 closeTypeSheet();
               }}
             >
-              <Text style={[styles.sheetOptionText, form.type===type.value && styles.sheetOptionTextSelected]}>{`${type.emoji}  ${type.label}`}</Text>
+              <View style={styles.sheetOptionContent}>
+                <Ionicons name={type.icon} size={wp(5)} color={form.type === type.value ? theme.colors.primary : theme.colors.text} />
+                <Text style={[styles.sheetOptionText, form.type===type.value && styles.sheetOptionTextSelected]}>{type.label}</Text>
+              </View>
             </TouchableOpacity>
           ))}
         </Animated.View>
@@ -454,7 +496,7 @@ const styles = StyleSheet.create({
   },
   datePickerContainer: {
     backgroundColor: theme.colors.card,
-    borderRadius: theme.roundness,
+    borderRadius: theme.radius.md,
     padding: wp(4),
     marginTop: wp(2),
   },
@@ -608,6 +650,11 @@ const styles = StyleSheet.create({
   sheetOption:{
     paddingVertical: wp(3),
   },
+  sheetOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(3),
+  },
   sheetOptionText:{
     fontSize: wp(4.5),
     color: theme.colors.text,
@@ -617,10 +664,13 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
   },
   gridContainer:{
-    flexDirection:'row',
-    flexWrap:'wrap',
-    gap: wp(4),
+    width: '100%',
     marginTop: wp(3),
+  },
+  gridRow: {
+    justifyContent: 'space-between',
+    gap: wp(3),
+    marginBottom: wp(4),
   },
   gridItem:{
     width: '30%',

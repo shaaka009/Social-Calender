@@ -20,6 +20,40 @@ export const useUpdateProfileMutation = () => {
   });
 };
 
+export const useRequestLoginEmailChangeMutation = () => {
+  return useMutation({
+    mutationFn: ({ current_password, new_email }) =>
+      apiFetch(ENDPOINTS.REQUEST_LOGIN_EMAIL_CHANGE, {
+        method: "POST",
+        body: JSON.stringify({ current_password, new_email }),
+      }),
+  });
+};
+
+export const useVerifyLoginEmailChangeMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ code }) =>
+      apiFetch(ENDPOINTS.VERIFY_LOGIN_EMAIL_CHANGE, {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
+    },
+  });
+};
+
+export const useChangePasswordMutation = () => {
+  return useMutation({
+    mutationFn: ({ current_password, new_password }) =>
+      apiFetch(ENDPOINTS.CHANGE_PASSWORD, {
+        method: "POST",
+        body: JSON.stringify({ current_password, new_password }),
+      }),
+  });
+};
+
 const useProfile = () => {
   return useQuery({
     queryKey: ["profile"],

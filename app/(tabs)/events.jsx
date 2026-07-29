@@ -1,75 +1,52 @@
 import { Ionicons } from '@expo/vector-icons';
-import SegmentedControl from '@react-native-segmented-control/segmented-control';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import CustomButton from '../../components/CustomButton';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, FlatList, Modal, PanResponder, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import Toast from 'react-native-root-toast';
+import EventCard from '../../components/events/EventCard';
 import LoadingState from '../../components/LoadingState';
 import ScreenWrapper from '../../components/ScreenWrapper';
+import AnimatedTagFilterChip from '../../components/tags/AnimatedTagFilterChip';
+import TagEditModal from '../../components/tags/TagEditModal';
+import { TAG_COLOR_OPTIONS } from '../../constants/tagColors';
 import { theme } from '../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../helpers/api';
-import { wp } from '../../helpers/common';
+import { parseDateLocal, wp } from '../../helpers/common';
+import { tagStripStyles } from '../../helpers/tagStripStyles';
+import { useSubmitGuard } from '../../helpers/useSubmitGuard';
 import { useCreateTag, useTags } from '../../helpers/useTags';
 
-// Helper utils for new date fields parsed in local timezone to avoid off-by-one issues
-const parseLocalDate = (isoStr) => {
-  if (!isoStr) return new Date();
-  const [y, m, d] = isoStr.split('-').map(Number);
-  return new Date(y, m - 1, d);
+const getStart = (e) => (
+  parseDateLocal(e?.start_date || e?.date) || new Date(0)
+);
+const getEnd = (e) => (
+  parseDateLocal(e?.end_date || e?.start_date || e?.date) || getStart(e)
+);
+const getStartOfDay = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+const getEndOfWeek = (date) => {
+  const start = getStartOfDay(date);
+  const day = start.getDay();
+  return new Date(start.getFullYear(), start.getMonth(), start.getDate() + (6 - day));
 };
-
-const getStart = (e) => parseLocalDate(e.start_date || e.date);
-const getEnd = (e) => e.end_date ? parseLocalDate(e.end_date) : getStart(e);
-const sameDay = (d1,d2)=> d1.toDateString() === d2.toDateString();
-const formatRange = (e)=>{
-  const s = getStart(e);
-  const en = getEnd(e);
-  return sameDay(s,en)
-    ? s.toLocaleDateString()
-    : `${s.toLocaleDateString()} – ${en.toLocaleDateString()}`;
-};
-
-const EventCard = ({ event }) => {
-  const isToday = getStart(event).toDateString() === new Date().toDateString();
-
-  return (
-    <Pressable 
-      style={({ pressed }) => [
-        styles.eventCard,
-        isToday && styles.eventCardToday,
-        pressed && styles.eventCardPressed,
-      ]}
-      onPress={() => router.push(`/events/${event.id}`)}
-    >
-      <View style={styles.eventHeader}>
-        <Text style={styles.eventTitle}>{event.display_title || event.title}</Text>
-        <Text style={styles.eventType}>
-          {event.type === 'birthday' ? '🎂' : '📅'}
-        </Text>
-      </View>
-      <Text style={styles.eventDate}>
-        {formatRange(event)}
-      </Text>
-      {event.person && (
-        <Text style={styles.eventPerson}>
-          {event.person.first_name} {event.person.last_name}
-        </Text>
-      )}
-      {event.notes && (
-        <Text style={styles.eventNotes} numberOfLines={2}>
-          {event.notes}
-        </Text>
-      )}
-    </Pressable>
-  );
+const getEndOfMonth = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0);
+const formatMonthDay = (date) => date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+const formatMonthDayRange = (event) => {
+  const start = getStart(event);
+  const end = getEnd(event);
+  if (start.toDateString() === end.toDateString()) {
+    return formatMonthDay(start);
+  }
+  return `${formatMonthDay(start)} - ${formatMonthDay(end)}`;
 };
 
 const Events = () => {
+  const queryClient = useQueryClient();
   const { data: events = [], isLoading } = useQuery({
     queryKey: ['events'],
     queryFn: () => apiFetch(ENDPOINTS.EVENTS),
+    staleTime: 60 * 1000,
   });
 
   /* --------------------------------------------------
@@ -77,19 +54,83 @@ const Events = () => {
    * -------------------------------------------------- */
   const [selectedIndex, setSelectedIndex] = useState(0);
   const eventTypes = ['Upcoming', 'Past'];
+  const [pagerWidth, setPagerWidth] = useState(0);
+  const pagerTranslateX = useRef(new Animated.Value(0)).current;
+  const dragStartTranslateX = useRef(0);
+  const clampTranslateX = useCallback((value) => {
+    if (!pagerWidth) return 0;
+    const minX = -(eventTypes.length - 1) * pagerWidth;
+    return Math.max(minX, Math.min(0, value));
+  }, [eventTypes.length, pagerWidth]);
+  const snapToIndex = useCallback((index) => {
+    if (!pagerWidth) return;
+    const clampedIndex = Math.max(0, Math.min(eventTypes.length - 1, index));
+    Animated.spring(pagerTranslateX, {
+      toValue: -clampedIndex * pagerWidth,
+      useNativeDriver: true,
+      damping: 22,
+      stiffness: 240,
+      mass: 0.8,
+    }).start();
+    if (clampedIndex !== selectedIndex) {
+      setSelectedIndex(clampedIndex);
+    }
+  }, [eventTypes.length, pagerTranslateX, pagerWidth, selectedIndex]);
+
+  const panResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_, gesture) => (
+      pagerWidth > 0
+      && Math.abs(gesture.dx) > 10
+      && Math.abs(gesture.dx) > Math.abs(gesture.dy) + 4
+    ),
+    onPanResponderGrant: () => {
+      pagerTranslateX.stopAnimation((value) => {
+        dragStartTranslateX.current = value;
+      });
+    },
+    onPanResponderMove: (_, gesture) => {
+      const nextTranslateX = clampTranslateX(dragStartTranslateX.current + gesture.dx);
+      pagerTranslateX.setValue(nextTranslateX);
+    },
+    onPanResponderRelease: (_, gesture) => {
+      if (!pagerWidth) return;
+      const projectedTranslateX = clampTranslateX(
+        dragStartTranslateX.current + gesture.dx + (gesture.vx * 35)
+      );
+      const rawIndex = -projectedTranslateX / pagerWidth;
+      const nextIndex = Math.max(0, Math.min(eventTypes.length - 1, Math.round(rawIndex)));
+      snapToIndex(nextIndex);
+    },
+    onPanResponderTerminate: () => {
+      snapToIndex(selectedIndex);
+    },
+  }), [clampTranslateX, eventTypes.length, pagerTranslateX, pagerWidth, selectedIndex, snapToIndex]);
+
+  useEffect(() => {
+    if (!pagerWidth) return;
+    snapToIndex(selectedIndex);
+  }, [pagerWidth, selectedIndex, snapToIndex]);
 
   /* --------------------------------------------------
    * Tag filtering (event types)
    * -------------------------------------------------- */
   const [selectedTags, setSelectedTags] = useState([]);
-  const [filterModalVisible, setFilterModalVisible] = useState(false);
 
   const { data: tags = [] } = useTags();
   const createTagMutation = useCreateTag();
+  const { isSubmitting: isCreatingTag, run: runCreateTag } = useSubmitGuard();
+  const { isSubmitting: isBulkDeleting, run: runBulkDelete } = useSubmitGuard();
 
-  const COLOR_OPTIONS = ['#ff8c00', '#ff4d4f', '#40a9ff', '#52c41a', '#faad14', '#722ed1', '#13c2c2'];
+  const COLOR_OPTIONS = TAG_COLOR_OPTIONS;
   const [modalVisible, setModalVisible] = useState(false);
   const [newTag, setNewTag] = useState({ name: '', color: COLOR_OPTIONS[0] });
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedEventIds, setSelectedEventIds] = useState(() => new Set());
+  const [bulkDeleteModalVisible, setBulkDeleteModalVisible] = useState(false);
+  const [bulkDeleteTargetIds, setBulkDeleteTargetIds] = useState([]);
+  const [tagEditVisible, setTagEditVisible] = useState(false);
+  const [tagEditTarget, setTagEditTarget] = useState(null);
 
   const toggleTag = useCallback((tag) => {
     setSelectedTags(prev => (
@@ -97,133 +138,358 @@ const Events = () => {
     ));
   }, []);
 
+  const handleTagFilterAfterEdit = useCallback(
+    (updated) => {
+      if (!tagEditTarget) return;
+      const oldName = tagEditTarget.name;
+      if (updated == null) {
+        setSelectedTags((prev) => prev.filter((t) => t !== oldName));
+        return;
+      }
+      const newName = updated.name;
+      setSelectedTags((prev) => {
+        if (!prev.includes(oldName)) return prev;
+        return [...prev.filter((t) => t !== oldName), newName];
+      });
+    },
+    [tagEditTarget]
+  );
+
   /* --------------------------------------------------
    * Derived list
    * -------------------------------------------------- */
-  const visibleEvents = useMemo(() => {
-    const today = new Date(new Date().setHours(0, 0, 0, 0));
-    
-    // First filter by upcoming/past with special handling for birthdays
-    const timeFilteredEvents = events.filter(event => {
-      const eventDate = getStart(event);
-      
-      // For birthday events, compare only month and day
-      if (event.type === 'birthday') {
-        // Get month and day for comparison (1-based month)
-        const todayMonth = today.getMonth() + 1;
-        const todayDay = today.getDate();
-        const eventMonth = eventDate.getMonth() + 1;
-        const eventDay = eventDate.getDate();
-        
-        // Calculate month-day combinations for comparison (e.g., "12-25" for December 25)
-        const todayValue = todayMonth * 100 + todayDay;  // e.g., 1225 for December 25
-        const eventValue = eventMonth * 100 + eventDay;  // e.g., 0115 for January 15
-        
-        // Calculate 6 months forward and backward
-        let sixMonthsForward = todayMonth + 6;
-        let sixMonthsBackward = todayMonth - 6;
-        
-        // Adjust for year wrap-around
-        if (sixMonthsForward > 12) sixMonthsForward = sixMonthsForward - 12;
-        if (sixMonthsBackward <= 0) sixMonthsBackward = sixMonthsBackward + 12;
-        
-        if (selectedIndex === 0) {
-          // Upcoming: Show if date is within next 6 months
-          if (sixMonthsForward > todayMonth) {
-            // No year wrap-around case
-            return (eventValue >= todayValue && eventMonth <= sixMonthsForward);
-          } else {
-            // Year wrap-around case (e.g., today is October, show events until March)
-            return (eventValue >= todayValue || eventMonth <= sixMonthsForward);
-          }
-        } else {
-          // Past: Show if date is within last 6 months
-          if (sixMonthsBackward < todayMonth) {
-            // No year wrap-around case
-            return (eventValue < todayValue && eventMonth >= sixMonthsBackward);
-          } else {
-            // Year wrap-around case (e.g., today is March, show events since October)
-            return (eventValue < todayValue || eventMonth >= sixMonthsBackward);
-          }
-        }
-      }
-      
-      // For non-birthday events, use standard today cutoff
-      return selectedIndex === 0 
-        ? eventDate >= today  // Upcoming events
-        : eventDate < today;  // Past events
-    });
+  const eventsByType = useMemo(() => {
+    const buildEventsForType = (typeIndex) => {
+      const today = new Date(new Date().setHours(0, 0, 0, 0));
+      const timeFilteredEvents = events.filter(event => {
+        const eventEndDate = getEnd(event);
+        return typeIndex === 0 ? eventEndDate >= today : eventEndDate < today;
+      });
 
-    // Filter by tags if any are selected
-    const tagFilteredEvents = selectedTags.length === 0 
-      ? timeFilteredEvents 
-      : timeFilteredEvents.filter(event =>
+      // Filter by tags if any are selected
+      const tagFilteredEvents = selectedTags.length === 0
+        ? timeFilteredEvents
+        : timeFilteredEvents.filter(event =>
           selectedTags.every(tagName =>
             event.tags?.some(tag => tag.name === tagName)
           )
         );
 
-    // Sort events based on their dates
-    return tagFilteredEvents.sort((a, b) => {
-      const today = new Date();
-      const currentYear = today.getFullYear();
-      const currentMonth = today.getMonth(); // 0-11
-      
-      // Create comparison dates, handling year boundaries
-      const getComparisonDate = (event) => {
-        const eventDate = getStart(event);
-        const eventMonth = eventDate.getMonth(); // 0-11
-        
-        // Determine if we should use current year or next/previous year
-        let yearToUse = currentYear;
-        
-        if (selectedIndex === 0) { // Upcoming events
-          // If event month is earlier than current month, it must be next year
-          if (eventMonth < currentMonth) {
-            yearToUse = currentYear + 1;
-          }
-        } else { // Past events
-          // If event month is later than current month, it must be previous year
-          if (eventMonth > currentMonth) {
-            yearToUse = currentYear - 1;
-          }
-        }
-        
-        if (event.type === 'birthday') {
-          return new Date(
-            yearToUse,
-            eventMonth,
-            eventDate.getDate()
-          );
-        }
-        
-        // For non-birthday events, use actual date but adjust year if needed
-        if (selectedIndex === 0 && eventMonth < currentMonth) {
-          return new Date(
-            currentYear + 1,
-            eventMonth,
-            eventDate.getDate()
-          );
-        } else if (selectedIndex === 1 && eventMonth > currentMonth) {
-          return new Date(
-            currentYear - 1,
-            eventMonth,
-            eventDate.getDate()
-          );
-        }
-        return eventDate;
-      };
+      // Sort events based on their dates.
+      // Birthday windowing now comes from backend virtual birthday events.
+      return tagFilteredEvents.sort((a, b) => {
+        const dateA = getStart(a);
+        const dateB = getStart(b);
+        return typeIndex === 0
+          ? dateA.getTime() - dateB.getTime()
+          : dateB.getTime() - dateA.getTime();
+      });
+    };
 
-      const dateA = getComparisonDate(a);
-      const dateB = getComparisonDate(b);
+    return [buildEventsForType(0), buildEventsForType(1)];
+  }, [events, selectedTags]);
 
-      // For upcoming events, sort in ascending order (nearest future date first)
-      // For past events, sort in descending order (most recent past date first)
-      return selectedIndex === 0
-        ? dateA.getTime() - dateB.getTime()  // Upcoming: ascending
-        : dateB.getTime() - dateA.getTime(); // Past: descending
+  const getEventId = useCallback((event) => (
+    event?.id != null ? String(event.id) : null
+  ), []);
+  const isSelectableEvent = useCallback((event) => (
+    Boolean(getEventId(event)) && !event?.is_virtual
+  ), [getEventId]);
+
+  const upcomingListItems = useMemo(() => {
+    const upcomingEvents = eventsByType[0] || [];
+    if (upcomingEvents.length === 0) return [];
+
+    const today = getStartOfDay(new Date());
+    const endOfWeek = getEndOfWeek(today);
+    const endOfMonth = getEndOfMonth(today);
+
+    const buckets = {
+      today: [],
+      thisWeek: [],
+      thisMonth: [],
+      later: [],
+    };
+
+    upcomingEvents.forEach((event) => {
+      const eventDate = getStartOfDay(getStart(event));
+      if (eventDate.getTime() === today.getTime()) {
+        buckets.today.push(event);
+      } else if (eventDate <= endOfWeek) {
+        buckets.thisWeek.push(event);
+      } else if (eventDate <= endOfMonth) {
+        buckets.thisMonth.push(event);
+      } else {
+        buckets.later.push(event);
+      }
     });
-  }, [events, selectedTags, selectedIndex]);
+
+    const orderedSections = [
+      { key: 'today', title: 'Today' },
+      { key: 'thisWeek', title: 'This Week' },
+      { key: 'thisMonth', title: 'This Month' },
+      { key: 'later', title: 'Later' },
+    ];
+
+    return orderedSections.flatMap((section) => {
+      const sectionEvents = buckets[section.key];
+      if (!sectionEvents || sectionEvents.length === 0) return [];
+      return [
+        { type: 'header', key: `header-${section.key}`, title: section.title },
+        ...sectionEvents.map((event) => ({ type: 'event', key: `event-${event.id}`, event })),
+      ];
+    });
+  }, [eventsByType]);
+  const pastListItems = useMemo(() => {
+    const pastEvents = eventsByType[1] || [];
+    if (pastEvents.length === 0) return [];
+
+    const today = getStartOfDay(new Date());
+    const lastWeekStart = new Date(today);
+    lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+    const lastMonthStart = new Date(today);
+    lastMonthStart.setDate(lastMonthStart.getDate() - 30);
+
+    const buckets = {
+      lastWeek: [],
+      lastMonth: [],
+      everythingPastThat: [],
+    };
+
+    pastEvents.forEach((event) => {
+      const eventDate = getStartOfDay(getStart(event));
+      if (eventDate >= lastWeekStart) {
+        buckets.lastWeek.push(event);
+      } else if (eventDate >= lastMonthStart) {
+        buckets.lastMonth.push(event);
+      } else {
+        buckets.everythingPastThat.push(event);
+      }
+    });
+
+    const orderedSections = [
+      { key: 'lastWeek', title: 'Last Week' },
+      { key: 'lastMonth', title: 'Last Month' },
+      { key: 'everythingPastThat', title: 'Earlier' },
+    ];
+
+    return orderedSections.flatMap((section) => {
+      const sectionEvents = buckets[section.key];
+      if (!sectionEvents || sectionEvents.length === 0) return [];
+      return [
+        { type: 'header', key: `header-${section.key}`, title: section.title },
+        ...sectionEvents.map((event) => ({ type: 'event', key: `event-${event.id}`, event })),
+      ];
+    });
+  }, [eventsByType]);
+
+  const selectedCount = selectedEventIds.size;
+  const modalTargetIds = useMemo(
+    () => (bulkDeleteTargetIds.length > 0 ? bulkDeleteTargetIds : [...selectedEventIds]),
+    [bulkDeleteTargetIds, selectedEventIds]
+  );
+  const modalTargetCount = modalTargetIds.length;
+  const selectedEventsPreview = useMemo(() => {
+    if (modalTargetIds.length === 0) return [];
+
+    const selectedLookup = new Set(modalTargetIds);
+    const combinedEvents = [...(eventsByType[0] || []), ...(eventsByType[1] || [])];
+    const uniqueSelected = new Map();
+
+    combinedEvents.forEach((event) => {
+      const eventId = getEventId(event);
+      if (!eventId || !selectedLookup.has(eventId) || uniqueSelected.has(eventId)) return;
+      uniqueSelected.set(eventId, event);
+    });
+
+    return [...uniqueSelected.values()].sort((a, b) => getStart(a).getTime() - getStart(b).getTime());
+  }, [eventsByType, getEventId, modalTargetIds]);
+  const allSelectableIds = useMemo(() => {
+    const ids = new Set();
+
+    // Upcoming page contains section header rows + event rows.
+    upcomingListItems.forEach((item) => {
+      if (item?.type === 'header') return;
+      const event = item?.event || item;
+      if (!isSelectableEvent(event)) return;
+      const eventId = getEventId(event);
+      if (eventId) ids.add(eventId);
+    });
+
+    // Past page contains section header rows + event rows.
+    pastListItems.forEach((item) => {
+      if (item?.type === 'header') return;
+      const event = item?.event || item;
+      if (!isSelectableEvent(event)) return;
+      const eventId = getEventId(event);
+      if (eventId) ids.add(eventId);
+    });
+
+    return ids;
+  }, [getEventId, isSelectableEvent, pastListItems, upcomingListItems]);
+
+  useEffect(() => {
+    if (!isSelectionMode) return;
+
+    setSelectedEventIds((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Set([...prev].filter((id) => allSelectableIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [allSelectableIds, isSelectionMode]);
+
+  const handleToggleSelection = useCallback((event) => {
+    const eventId = getEventId(event);
+    if (!eventId || !isSelectableEvent(event)) return;
+
+    setSelectedEventIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(eventId)) {
+        next.delete(eventId);
+      } else {
+        next.add(eventId);
+      }
+      return next;
+    });
+  }, [getEventId, isSelectableEvent]);
+
+  const handleSelectionDisabledPress = useCallback((event) => {
+    if (event?.type === 'birthday' || event?.is_virtual) {
+      Toast.show(
+        'Birthday events are auto-generated from contacts and cannot be deleted here.',
+        {
+          duration: Toast.durations.LONG,
+          position: Toast.positions.BOTTOM,
+          backgroundColor: theme.colors.text,
+        }
+      );
+      return;
+    }
+
+    Toast.show('This event cannot be deleted from bulk selection.', {
+      duration: Toast.durations.SHORT,
+      position: Toast.positions.BOTTOM,
+      backgroundColor: theme.colors.text,
+    });
+  }, []);
+
+  const handleEnterSelectionMode = useCallback(() => {
+    setSelectedEventIds(new Set());
+    setIsSelectionMode(true);
+  }, []);
+
+  const handleExitSelectionMode = useCallback(() => {
+    setBulkDeleteModalVisible(false);
+    setBulkDeleteTargetIds([]);
+    setSelectedEventIds(new Set());
+    setIsSelectionMode(false);
+  }, []);
+
+  const handleBulkDelete = useCallback(() => {
+    const idsToDelete = [...modalTargetIds];
+    if (idsToDelete.length === 0) return;
+
+    runBulkDelete(async () => {
+      const results = await Promise.allSettled(
+        idsToDelete.map((id) => apiFetch(`${ENDPOINTS.EVENTS}${id}/`, { method: 'DELETE' }))
+      );
+
+      const failedIds = [];
+      let deletedCount = 0;
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          deletedCount += 1;
+        } else {
+          failedIds.push(idsToDelete[index]);
+        }
+      });
+
+      if (deletedCount > 0) {
+        await Promise.all([
+          queryClient.invalidateQueries(['events']),
+          queryClient.invalidateQueries(['dashboard']),
+        ]);
+      }
+
+      if (failedIds.length === 0) {
+        Toast.show(
+          deletedCount === 1
+            ? 'Deleted 1 event'
+            : `Deleted ${deletedCount} events`,
+          {
+            duration: Toast.durations.LONG,
+            position: Toast.positions.BOTTOM,
+            backgroundColor: theme.colors.success,
+          }
+        );
+        handleExitSelectionMode();
+        return;
+      }
+
+      if (deletedCount > 0) {
+        Toast.show(
+          `Deleted ${deletedCount} events, ${failedIds.length} failed`,
+          {
+            duration: Toast.durations.LONG,
+            position: Toast.positions.BOTTOM,
+            backgroundColor: theme.colors.warning || '#f59e0b',
+          }
+        );
+      } else {
+        Toast.show('Failed to delete selected events', {
+          duration: Toast.durations.LONG,
+          position: Toast.positions.BOTTOM,
+          backgroundColor: theme.colors.error,
+        });
+      }
+
+      setSelectedEventIds(new Set(failedIds));
+      setBulkDeleteModalVisible(false);
+      setBulkDeleteTargetIds([]);
+      setIsSelectionMode(true);
+    });
+  }, [handleExitSelectionMode, modalTargetIds, queryClient, runBulkDelete]);
+
+  const openBulkDeleteModal = useCallback(() => {
+    const targetIds = [...selectedEventIds];
+    if (targetIds.length === 0) return;
+    setBulkDeleteTargetIds(targetIds);
+    setBulkDeleteModalVisible(true);
+  }, [selectedEventIds]);
+
+  const renderEventItem = useCallback(({ item }) => {
+    if (item?.type === 'header') {
+      return (
+        <View style={styles.sectionDivider}>
+          <View style={styles.sectionDividerLine} />
+          <Text style={styles.sectionDividerText}>{item.title}</Text>
+          <View style={styles.sectionDividerLine} />
+        </View>
+      );
+    }
+    const event = item.event || item;
+    const eventId = getEventId(event);
+    return (
+      <EventCard
+        event={event}
+        isSelectionMode={isSelectionMode}
+        isSelected={Boolean(eventId && selectedEventIds.has(eventId))}
+        isSelectionDisabled={!isSelectableEvent(event)}
+        onToggleSelect={handleToggleSelection}
+        onSelectionDisabledPress={handleSelectionDisabledPress}
+      />
+    );
+  }, [
+    getEventId,
+    handleSelectionDisabledPress,
+    handleToggleSelection,
+    isSelectableEvent,
+    isSelectionMode,
+    selectedEventIds,
+  ]);
+  const eventKeyExtractor = useCallback((item, index) => (
+    item.key || item.id?.toString() || `list-item-${index}`
+  ), []);
 
   return (
     <ScreenWrapper>
@@ -232,91 +498,127 @@ const Events = () => {
         <View style={styles.titleContainer}>
         <Text style={styles.title}>Events</Text>
         <View style={styles.titleActions}>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => {/* TODO: Add notifications handler */}}
-          >
-            <Ionicons 
-              name="notifications-outline" 
-              size={wp(7)} 
-              color={theme.colors.text}
-            />
-            {/* TODO: Add notification count logic */}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => router.push('/events/new')}
-          >
-            <Ionicons 
-              name="add" 
-              size={wp(8)} 
-              color={theme.colors.text} 
-            />
-          </TouchableOpacity>
+          {isSelectionMode ? (
+            <>
+              <TouchableOpacity
+                style={styles.selectionActionButton}
+                onPress={handleExitSelectionMode}
+                disabled={isBulkDeleting}
+              >
+                <Text style={styles.selectionActionText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.selectionDeleteButton,
+                  (selectedCount === 0 || isBulkDeleting) && styles.selectionDeleteButtonDisabled,
+                ]}
+                onPress={openBulkDeleteModal}
+                disabled={selectedCount === 0 || isBulkDeleting}
+              >
+                <Ionicons name="trash-outline" size={wp(5)} color="#fff" />
+                <Text style={styles.selectionDeleteText}>
+                  {isBulkDeleting ? 'Deleting...' : `Delete (${selectedCount})`}
+                </Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={handleEnterSelectionMode}
+            >
+              <Ionicons
+                name="trash-outline"
+                size={wp(7)}
+                color={theme.colors.text}
+              />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
       {/* Event type selector */}
       <View style={styles.segmentContainer}>
-        <SegmentedControl
-          values={eventTypes}
-          selectedIndex={selectedIndex}
-          onChange={(event) => {
-            setSelectedIndex(event.nativeEvent.selectedSegmentIndex);
-          }}
-          style={[styles.segmentedControl, { borderRadius: 20 }]}
-          fontStyle={{ color: theme.colors.text }}
-          activeFontStyle={{ color: '#fff' }}
-          backgroundColor={theme.colors.backgroundSecondary}
-          tintColor={theme.colors.primary}
-        />
+        <View style={styles.headingTabs}>
+          {eventTypes.map((type, index) => {
+            const isActive = index === selectedIndex;
+            return (
+              <Pressable
+                key={type}
+                style={styles.headingTab}
+                onPress={() => snapToIndex(index)}
+              >
+                <Text style={[styles.headingTabText, isActive && styles.headingTabTextActive]}>
+                  {type}
+                </Text>
+                <View style={[styles.headingTabUnderline, isActive && styles.headingTabUnderlineActive]} />
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
 
-      {/* Tags row */}
-      <View style={styles.tagsRow}>
+      {/* Tag filter strip */}
+      <View style={styles.tagStrip}>
         <Pressable style={styles.plusButton} onPress={() => setModalVisible(true)}>
-          <Ionicons name="add" size={wp(6)} color="#fff" />
+          <Ionicons name="add" size={wp(5)} color="#fff" />
         </Pressable>
 
-        {/* Wrap FlatList to allow fade overlay */}
-        <View style={styles.tagsList}>
-          <FlatList
-            data={tags}
-            horizontal
-            keyExtractor={(item) => item.name}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tagsContainer}
-            renderItem={({ item: tag }) => {
-              const isSelected = selectedTags.includes(tag.name);
-              return (
-                <Pressable
-                  onPress={() => toggleTag(tag.name)}
-                  style={[styles.tagButton, {
-                    backgroundColor: isSelected ? tag.color || theme.colors.primary : 'transparent',
-                    borderColor: tag.color || theme.colors.primary,
-                  }]}
-                >
-                  <Text style={[styles.tagText, { color: isSelected ? '#fff' : theme.colors.textLight }]}> {tag.name} </Text>
-                </Pressable>
-              );
-            }}
-          />
+        <View style={styles.tagScroll}>
+          {tags.length === 0 ? (
+            <View style={styles.chipRow}>
+              <View style={styles.ghostTag} pointerEvents="none">
+                <Text style={styles.ghostTagText}>Create tags to organize events</Text>
+              </View>
+            </View>
+          ) : (
+            <FlatList
+              data={tags}
+              horizontal
+              keyExtractor={(item) => String(item.id)}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chipRow}
+              removeClippedSubviews
+              renderItem={({ item: tag }) => {
+                const isSelected = selectedTags.includes(tag.name);
+                return (
+                  <AnimatedTagFilterChip
+                    label={tag.name}
+                    borderColor={tag.color || theme.colors.primary}
+                    backgroundColor={isSelected ? tag.color || theme.colors.primary : 'transparent'}
+                    textColor={isSelected ? '#fff' : theme.colors.textLight}
+                    onPress={() => toggleTag(tag.name)}
+                    onLongPress={() => {
+                      setTagEditTarget(tag);
+                      setTagEditVisible(true);
+                    }}
+                    delayLongPress={300}
+                  />
+                );
+              }}
+            />
+          )}
           {/* right-edge fade */}
-          <LinearGradient
-            colors={["rgba(255, 255, 255, 0)", "rgba(255, 255, 255, 1)"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.tagsFade}
-            pointerEvents="none"
-          />
+          {tags.length > 0 && (
+            <LinearGradient
+              colors={["rgba(255, 255, 255, 0)", "rgba(255, 255, 255, 1)"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.tagFade}
+              pointerEvents="none"
+            />
+          )}
         </View>
 
-        {/* spacing between tags and filter */}
-        <View style={{ width: wp(2) }} />
-        <TouchableOpacity style={styles.filterButton} onPress={() => setFilterModalVisible(true)}>
-          <Ionicons name="filter" size={wp(6)} color={theme.colors.text} />
-        </TouchableOpacity>
-       
+      <TagEditModal
+        visible={tagEditVisible}
+        tag={tagEditTarget}
+        onClose={() => {
+          setTagEditVisible(false);
+          setTagEditTarget(null);
+        }}
+        onAfterChange={handleTagFilterAfterEdit}
+      />
+
       {/* Create Tag Modal */}
       <Modal
         visible={modalVisible}
@@ -350,74 +652,163 @@ const Events = () => {
                 style={styles.modalBtn}
                 onPress={() => {
                   if (!newTag.name.trim()) return;
-                  createTagMutation.mutate(newTag, {
-                    onSuccess: () => {
-                      setModalVisible(false);
-                      setNewTag({ name: '', color: COLOR_OPTIONS[0] });
-                    },
+                  runCreateTag(async () => {
+                    await createTagMutation.mutateAsync(newTag);
+                    setModalVisible(false);
+                    setNewTag({ name: '', color: COLOR_OPTIONS[0] });
                   });
                 }}
+                disabled={isCreatingTag}
               >
-                <Text style={styles.saveText}>Save</Text>
+                <Text style={[styles.saveText, isCreatingTag && { opacity: 0.5 }]}>
+                  {isCreatingTag ? 'Saving…' : 'Save'}
+                </Text>
               </Pressable>
             </View>
           </View>
         </View>
       </Modal>
+      </View>
 
-      {/* Filter Modal */}
+      <View
+        style={styles.listSwipeArea}
+        onLayout={({ nativeEvent }) => {
+          const nextWidth = nativeEvent.layout.width;
+          if (!nextWidth || Math.abs(nextWidth - pagerWidth) < 1) return;
+          setPagerWidth(nextWidth);
+          pagerTranslateX.setValue(-selectedIndex * nextWidth);
+        }}
+      >
+        <LoadingState isLoading={isLoading}>
+          <View style={styles.pagerViewport}>
+            <Animated.View
+              {...panResponder.panHandlers}
+              style={[
+                styles.pagerTrack,
+                {
+                  width: pagerWidth ? pagerWidth * eventTypes.length : '200%',
+                  transform: [{ translateX: pagerTranslateX }],
+                },
+              ]}
+            >
+              {eventTypes.map((_, pageIndex) => {
+                const currentPageEvents = eventsByType[pageIndex] || [];
+                const currentPageData = pageIndex === 0 ? upcomingListItems : pastListItems;
+                return (
+                  <View
+                    key={`events-page-${pageIndex}`}
+                    style={[styles.pagerPage, pagerWidth ? { width: pagerWidth } : null]}
+                  >
+                    {currentPageEvents.length > 0 ? (
+                      <FlatList
+                        data={currentPageData}
+                        keyExtractor={eventKeyExtractor}
+                        renderItem={renderEventItem}
+                        contentContainerStyle={styles.listContent}
+                        removeClippedSubviews
+                        initialNumToRender={8}
+                        maxToRenderPerBatch={8}
+                        windowSize={7}
+                      />
+                    ) : !isLoading && (
+                      <View style={styles.emptyState}>
+                        <Text style={styles.emptyText}>No events yet</Text>
+                        <Text style={styles.emptySubtext}>
+                          Add your first event to start tracking important dates
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </Animated.View>
+          </View>
+        </LoadingState>
+      </View>
+      </View>
+
+      {!isSelectionMode && (
+        <View style={styles.addEventFabContainer} pointerEvents="box-none">
+          <Pressable
+            style={styles.addEventFab}
+            onPress={() => router.push('/events/new')}
+            accessibilityRole="button"
+            accessibilityLabel="Add event"
+          >
+            <Ionicons name="add" size={wp(8)} color="#fff" />
+          </Pressable>
+        </View>
+      )}
+
       <Modal
-        visible={filterModalVisible}
+        visible={bulkDeleteModalVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setFilterModalVisible(false)}
+        onRequestClose={() => {
+          setBulkDeleteModalVisible(false);
+          setBulkDeleteTargetIds([]);
+        }}
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Filter Events</Text>
-            <Text style={{ color: theme.colors.text, marginBottom: wp(3) }}>Filter options coming soon...</Text>
+            <Text style={styles.modalTitle}>Delete Selected Events</Text>
+            <Text style={styles.bulkDeleteMessage}>
+              {isBulkDeleting
+                ? `Deleting ${modalTargetCount} event${modalTargetCount === 1 ? '' : 's'}...`
+                : `Delete ${modalTargetCount} selected event${modalTargetCount === 1 ? '' : 's'}? This action cannot be undone.`}
+            </Text>
+            {selectedEventsPreview.length > 0 && (
+              <View style={styles.bulkDeleteList}>
+                {selectedEventsPreview.slice(0, 5).map((event) => (
+                  <View key={`delete-preview-${event.id}`} style={styles.bulkDeleteListItemRow}>
+                    <Text style={styles.bulkDeleteListItemTitle} numberOfLines={1}>
+                      {event.display_title || event.title}
+                    </Text>
+                    <Text style={styles.bulkDeleteListItemDate} numberOfLines={1}>
+                      {formatMonthDayRange(event)}
+                    </Text>
+                  </View>
+                ))}
+                {selectedEventsPreview.length > 5 && (
+                  <Text style={styles.bulkDeleteListMore}>
+                    +{selectedEventsPreview.length - 5} more
+                  </Text>
+                )}
+              </View>
+            )}
             <View style={styles.modalActions}>
-              <Pressable style={styles.modalBtn} onPress={() => setFilterModalVisible(false)}>
-                <Text style={styles.cancelText}>Close</Text>
+              <Pressable
+                style={styles.modalBtn}
+                onPress={() => {
+                  setBulkDeleteModalVisible(false);
+                  setBulkDeleteTargetIds([]);
+                }}
+                disabled={isBulkDeleting}
+              >
+                <Text style={styles.cancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={styles.modalBtn}
+                onPress={handleBulkDelete}
+                disabled={isBulkDeleting}
+              >
+                <Text style={styles.deleteText}>{isBulkDeleting ? 'Deleting...' : 'Delete'}</Text>
               </Pressable>
             </View>
           </View>
         </View>
       </Modal>
-      </View>
-
-      <LoadingState isLoading={isLoading}>
-        <FlatList
-          data={visibleEvents}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={({ item }) => <EventCard event={item} />}
-          contentContainerStyle={styles.listContent}
-        />
-
-        {events.length === 0 && !isLoading && (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No events yet</Text>
-            <Text style={styles.emptySubtext}>
-              Add your first event to start tracking important dates
-            </Text>
-            <CustomButton
-              title="Add Event"
-              onPress={() => router.push('/events/new')}
-              style={styles.emptyButton}
-            />
-          </View>
-        )}
-      </LoadingState>
-      </View>
     </ScreenWrapper>
   );
 };
 
 const styles = StyleSheet.create({
+  ...tagStripStyles,
   titleContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    minHeight: wp(12),
     marginBottom: wp(4),
     paddingHorizontal: wp(5),
   },
@@ -428,15 +819,45 @@ const styles = StyleSheet.create({
   },
   titleActions: {
     flexDirection: 'row',
-    gap: wp(0),
+    alignItems: 'center',
+    gap: wp(1.5),
   },
   actionButton: {
+    height: wp(10),
     paddingHorizontal: wp(3),
-    paddingVertical: wp(2),
     borderRadius: wp(2),
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: 'transparent',
+  },
+  selectionActionButton: {
+    height: wp(10),
+    paddingHorizontal: wp(2),
+    justifyContent: 'center',
+  },
+  selectionActionText: {
+    color: theme.colors.primary,
+    fontSize: wp(4),
+    fontWeight: '600',
+  },
+  selectionDeleteButton: {
+    height: wp(10),
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: wp(1.5),
+    backgroundColor: theme.colors.error,
+    borderRadius: wp(4),
+    paddingHorizontal: wp(3),
+  },
+  selectionDeleteButtonDisabled: {
+    opacity: 0.5,
+  },
+  selectionDeleteText: {
+    color: '#fff',
+    fontSize: wp(3.5),
+    fontWeight: '600',
   },
   badge: {
     backgroundColor: theme.colors.error,
@@ -456,21 +877,100 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   segmentContainer: {
-    paddingVertical: wp(2),
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    paddingTop: wp(2),
   },
-  segmentedControl: {
-    height: wp(10),
+  headingTabs: {
     marginHorizontal: wp(5),
-    width: wp(90), // 100 - 2*5 for the margins
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    gap: wp(2),
+  },
+  headingTab: {
+    flex: 1,
+    alignItems: 'center',
+    paddingBottom: wp(1.5),
+  },
+  headingTabText: {
+    fontSize: wp(4.2),
+    fontWeight: '600',
+    color: theme.colors.textLight,
+  },
+  headingTabTextActive: {
+    color: theme.colors.primary,
+  },
+  headingTabUnderline: {
+    marginTop: wp(1.5),
+    width: '100%',
+    height: 2,
+    backgroundColor: 'transparent',
+    borderRadius: 999,
+  },
+  headingTabUnderlineActive: {
+    backgroundColor: theme.colors.primary,
   },
   container: {
     flex: 1,
-    paddingVertical: wp(5),
+    paddingTop: wp(5),
   },
   listContent: {
-    paddingBottom: wp(10),
+    paddingBottom: wp(28),
+  },
+  addEventFabContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: wp(3),
+    alignItems: 'center',
+    pointerEvents: 'box-none',
+  },
+  addEventFab: {
+    width: wp(14),
+    height: wp(14),
+    borderRadius: wp(7),
+    backgroundColor: theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.28,
+    shadowRadius: 5,
+  },
+  sectionDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(2),
+    paddingHorizontal: wp(5),
+    paddingTop: wp(4),
+    paddingBottom: wp(2),
+    backgroundColor: theme.colors.background,
+  },
+  sectionDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: theme.colors.border,
+  },
+  sectionDividerText: {
+    fontSize: wp(3.2),
+    fontWeight: '700',
+    color: theme.colors.textLight,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  listSwipeArea: {
+    flex: 1,
+  },
+  pagerViewport: {
+    flex: 1,
+    overflow: 'hidden',
+  },
+  pagerTrack: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  pagerPage: {
+    flex: 1,
   },
   monthSection: {
     marginBottom: wp(6),
@@ -484,107 +984,11 @@ const styles = StyleSheet.create({
   eventList: {
     gap: wp(3),
   },
-  /* Tags */
-  tagsContainer: {
-    paddingHorizontal: wp(5),
-    flexDirection: 'row',
-    gap: wp(2),
-    marginTop: wp(2),
-    marginBottom: wp(2),
-  },
-  tagsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: wp(2),
-    marginBottom: wp(2),
-    paddingRight: wp(3.5),
-  },
-  tagsList: {
-    flexShrink: 1,
-    flexGrow: 1,
-    overflow: 'hidden',
-  },
-  tagsFade: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    bottom: 0,
-    width: wp(12),
-  },
-  filterButton: {
-    paddingHorizontal: wp(2),
-    paddingVertical: wp(2),
-  },
-  tagButton: {
-    paddingHorizontal: wp(3),
-    paddingVertical: wp(1.5),
-    borderRadius: wp(4),
-    backgroundColor: theme.colors.backgroundSecondary,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    minHeight: wp(8),
-    justifyContent: 'center',
-  },
-  tagButtonSelected: {
-    backgroundColor: theme.colors.primary,
-    borderColor: theme.colors.primary,
-  },
-  tagText: {
-    color: theme.colors.textLight,
-    fontSize: wp(3.5),
-  },
-  tagTextSelected: {
-    color: '#fff',
-  },
-  eventCard: {
-    paddingVertical: wp(3),
-    paddingHorizontal: wp(5),
-    backgroundColor: theme.colors.backgroundSecondary,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  eventCardToday: {
-    backgroundColor: theme.colors.primary + '15',
-  },
-  eventCardPressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.98 }],
-  },
-  eventHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: wp(1),
-  },
-  eventTitle: {
-    fontSize: wp(4),
-    fontWeight: '600',
-    color: theme.colors.text,
-    flex: 1,
-  },
-  eventType: {
-    fontSize: wp(5),
-    marginLeft: wp(2),
-  },
-  eventDate: {
-    fontSize: wp(3.5),
-    color: theme.colors.textLight,
-    marginBottom: wp(1),
-  },
-  eventPerson: {
-    fontSize: wp(3.8),
-    color: theme.colors.text,
-    marginBottom: wp(1),
-  },
-  eventNotes: {
-    fontSize: wp(3.5),
-    color: theme.colors.textLight,
-  },
   emptyState: {
-    flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: wp(10),
+    justifyContent: 'flex-start',
+    paddingTop: wp(3),
+    paddingHorizontal: wp(5),
   },
   emptyText: {
     fontSize: wp(4.5),
@@ -600,15 +1004,6 @@ const styles = StyleSheet.create({
   },
   emptyButton: {
     minWidth: wp(40),
-  },
-  plusButton: {
-    backgroundColor: theme.colors.primary,
-    width: wp(8),
-    height: wp(8),
-    borderRadius: wp(4),
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: wp(5),
   },
 
   /* Modal */
@@ -670,6 +1065,47 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontSize: wp(4),
     fontWeight: '600',
+  },
+  deleteText: {
+    color: theme.colors.error,
+    fontSize: wp(4),
+    fontWeight: '700',
+  },
+  bulkDeleteMessage: {
+    color: theme.colors.text,
+    fontSize: wp(3.8),
+    lineHeight: wp(5.5),
+    marginBottom: wp(3),
+  },
+  bulkDeleteList: {
+    backgroundColor: theme.colors.backgroundSecondary,
+    borderRadius: wp(2.5),
+    paddingHorizontal: wp(3),
+    paddingVertical: wp(2.5),
+    marginBottom: wp(3),
+    gap: wp(1),
+  },
+  bulkDeleteListItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(2),
+  },
+  bulkDeleteListItemTitle: {
+    flex: 1,
+    minWidth: 0,
+    color: theme.colors.text,
+    fontSize: wp(3.4),
+  },
+  bulkDeleteListItemDate: {
+    color: theme.colors.textLight,
+    fontSize: wp(3.2),
+    textAlign: 'right',
+  },
+  bulkDeleteListMore: {
+    color: theme.colors.textLight,
+    fontSize: wp(3.3),
+    fontStyle: 'italic',
+    marginTop: wp(0.5),
   },
 });
 

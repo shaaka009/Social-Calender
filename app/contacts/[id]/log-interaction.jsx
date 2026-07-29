@@ -13,6 +13,7 @@ import { theme } from '../../../constants/theme';
 import { ENDPOINTS, apiFetch } from '../../../helpers/api';
 import { wp } from '../../../helpers/common';
 import useConnection from '../../../helpers/useConnection';
+import { useOneShot, useSubmitGuard } from '../../../helpers/useSubmitGuard';
 
 const LogInteractionScreen = () => {
   const { id } = useLocalSearchParams();
@@ -25,7 +26,8 @@ const LogInteractionScreen = () => {
     queryKey: ['user'],
     queryFn: () => apiFetch(ENDPOINTS.USER),
   });
-  const [isSaving, setIsSaving] = useState(false);
+  const { isSubmitting, run } = useSubmitGuard();
+  const goOnce = useOneShot();
   // MonthDayYearPicker handles date selection
   
   // Form state
@@ -45,8 +47,7 @@ const LogInteractionScreen = () => {
     { value: 'other', label: 'Other' },
   ];
 
-  const handleSave = async () => {
-    setIsSaving(true);
+  const handleSave = () => run(async () => {
     try {
       await apiFetch(ENDPOINTS.INTERACTIONS, {
         method: 'POST',
@@ -74,10 +75,9 @@ const LogInteractionScreen = () => {
       queryClient.invalidateQueries(['interactions', id]);
       queryClient.invalidateQueries(['connection', id]);
 
-      // Navigate back
-      setTimeout(() => {
-        router.back();
-      }, 500);
+      // Navigate back (keep the guard active during the toast delay).
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      goOnce(() => router.back());
     } catch (error) {
       Toast.show(error.message || 'Failed to log interaction', {
         duration: Toast.durations.LONG,
@@ -88,10 +88,8 @@ const LogInteractionScreen = () => {
         hideOnPress: true,
         delay: 0,
       });
-    } finally {
-      setIsSaving(false);
     }
-  };
+  });
 
   if (isLoadingContact || isLoadingUser || !contact || !currentUser) {
     return <LoadingState />;
@@ -105,7 +103,12 @@ const LogInteractionScreen = () => {
         <Text style={styles.subtitle}>with {person.first_name} {person.last_name}</Text>
       </View>
 
-      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
         {/* Date Picker */}
         <View style={styles.section}>
           <MonthDayYearPicker
@@ -153,15 +156,15 @@ const LogInteractionScreen = () => {
           <CustomButton
             title="Cancel"
             variant="outline"
-            onPress={() => router.back()}
+            onPress={() => goOnce(() => router.back())}
             style={styles.button}
-            disabled={isSaving}
+            disabled={isSubmitting}
           />
           <CustomButton
-            title={isSaving ? "Saving..." : "Save"}
+            title={isSubmitting ? "Saving..." : "Save"}
             onPress={handleSave}
             style={styles.button}
-            disabled={isSaving}
+            disabled={isSubmitting}
           />
         </View>
       </ScrollView>
@@ -226,7 +229,7 @@ const styles = StyleSheet.create({
   },
   datePickerContainer: {
     backgroundColor: theme.colors.card,
-    borderRadius: theme.roundness,
+    borderRadius: theme.radius.md,
     padding: wp(4),
     marginTop: wp(2),
   },

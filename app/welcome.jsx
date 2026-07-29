@@ -2,35 +2,25 @@ import { Image } from "expo-image";
 import { router } from "expo-router";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import CustomButton from "../components/CustomButton";
-import LoadingState from "../components/LoadingState";
 import ScreenWrapper from "../components/ScreenWrapper";
 import { theme } from "../constants/theme";
 import { wp } from "../helpers/common";
-import useLoading from "../helpers/useLoading";
 
 const Welcome = () => {
-  const { isLoading, withLoading } = useLoading();
-
   const handleNavigation = (page) => {
-    withLoading(async () => {
-      // Simulate some async work
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      router.push(page);
-    });
+    router.push(page);
   };
 
   return (
-    <LoadingState isLoading={isLoading} subtle={true}>
-      <ScreenWrapper bg="white">
+    <ScreenWrapper bg="white">
         <View style={styles.container}>
-          <View style={styles.content}>
-            
+          <View style={styles.inner}>
             <View style={styles.textContainer}>
               <Text style={styles.title}>
                 Welcome to
               </Text>
               <Image
-              source={require("../assets/images/logo.svg")}
+              source={require("../assets/images/logoV2.svg")}
               style={styles.image}
               contentFit="contain"
               />
@@ -41,40 +31,40 @@ const Welcome = () => {
                 {" to get started with managing your calendar."}
               </Text>
             </View>
-          </View>
-          <View style={styles.bottomContainer}>
-            <CustomButton
-              title="Sign Up"
-              onPress={() => handleNavigation("signup")}
-              style={styles.button}
-            />
-            <TouchableOpacity onPress={() => handleNavigation("signin")}>
-              <Text style={styles.linkText}>
-                Already have an account? Sign In
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.actions}>
+              <CustomButton
+                title="Sign Up"
+                onPress={() => handleNavigation("/onboarding/signup")}
+                style={styles.button}
+              />
+              <TouchableOpacity onPress={() => handleNavigation("/(auth)/signin")}>
+                <Text style={styles.linkText}>
+                  Already have an account? Sign In
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </ScreenWrapper>
-    </LoadingState>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "space-between",
+    justifyContent: "center",
     padding: wp(5),
   },
-  content: {
-    flex: 1,
+  inner: {
     alignItems: "center",
-    justifyContent: "center",
+    width: "100%",
   },
-  bottomContainer: {
+  actions: {
     alignItems: "center",
-    paddingVertical: wp(5),
-    gap: wp(2),
+    alignSelf: "stretch",
+    marginTop: wp(30),
+    gap: wp(5),
+    paddingHorizontal: wp(4),
   },
   button: {
     width: "100%",
