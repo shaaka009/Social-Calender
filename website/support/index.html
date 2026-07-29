@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Support — Social Calendar</title>
+    <meta name="description" content="Get help with Social Calendar." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Source+Sans+3:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="site-header">
+        <a class="brand" href="/">Social Calendar</a>
+        <nav class="nav" aria-label="Primary">
+          <a href="/privacy">Privacy</a>
+          <a href="/support">Support</a>
+        </nav>
+      </header>
+
+      <main class="page">
+        <h1>Support</h1>
+        <p class="lede">
+          Questions, account help, or feedback — we’re happy to hear from you.
+        </p>
+
+        <div class="prose">
+          <h2>Contact</h2>
+          <p>
+            Email
+            <a href="mailto:support@join-social.com">support@join-social.com</a>
+            and we’ll get back to you as soon as we can.
+          </p>
+
+          <h2>Common topics</h2>
+          <ul>
+            <li>Account access, email verification, or password reset</li>
+            <li>Deleting your account and data</li>
+            <li>Bugs or feature requests</li>
+          </ul>
+
+          <p>
+            If you’re resetting a password, use the in-app
+            <strong>Forgot password</strong> flow so we can send a secure link to
+            your login email.
+          </p>
+        </div>
+      </main>
+
+      <footer class="site-footer">
+        <nav aria-label="Footer">
+          <a href="/privacy">Privacy</a>
+          <a href="/terms">Terms</a>
+          <a href="/support">Support</a>
+        </nav>
+        <p>© <span id="y"></span> Social Calendar · join-social.com</p>
+      </footer>
+    </div>
+    <script>
+      document.getElementById("y").textContent = new Date().getFullYear();
+    </script>
+  </body>
+</html>

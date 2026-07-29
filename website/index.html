@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Social Calendar — Stay close to the people who matter</title>
+    <meta
+      name="description"
+      content="Social Calendar helps you remember birthdays, plan time together, and keep relationships warm."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Source+Sans+3:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="site-header">
+        <a class="brand" href="/">Social Calendar</a>
+        <nav class="nav" aria-label="Primary">
+          <a href="/privacy">Privacy</a>
+          <a href="/support">Support</a>
+        </nav>
+      </header>
+
+      <main class="hero">
+        <h1 class="hero-brand">Social Calendar</h1>
+        <p class="hero-line">
+          Remember the people who matter — birthdays, plans, and the little check-ins
+          that keep friendships alive.
+        </p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="/support">Get updates</a>
+          <a class="btn btn-ghost" href="/privacy">Privacy</a>
+        </div>
+      </main>
+
+      <footer class="site-footer">
+        <nav aria-label="Footer">
+          <a href="/privacy">Privacy</a>
+          <a href="/terms">Terms</a>
+          <a href="/support">Support</a>
+        </nav>
+        <p>© <span id="y"></span> Social Calendar · join-social.com</p>
+      </footer>
+    </div>
+    <script>
+      document.getElementById("y").textContent = new Date().getFullYear();
+    </script>
+  </body>
+</html>

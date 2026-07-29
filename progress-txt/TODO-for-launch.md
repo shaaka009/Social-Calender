@@ -6,12 +6,22 @@ This file is a **single source of truth** for what's left before shipping an MVP
 
 ## Domains & architecture (decided)
 
-Owned domains: **join-social.com** and **join-social.net**.
+Owned domains: **join-social.com** and **join-social.net** (registered at **Porkbun**).
 
 - **Primary:** `join-social.com`. Redirect `join-social.net` → `join-social.com` (301).
 - **Landing / legal:** `https://join-social.com` — host `/privacy` and `/support` (or `support@join-social.com`).
 - **Backend API:** `https://api.join-social.com` (Render Web Service custom domain).
 - **Deep links + password reset:** `https://join-social.com` — hosts `.well-known/apple-app-site-association` and `.well-known/assetlinks.json`; this is the value for `FRONTEND_BASE_URL`.
+
+### Locked provider choices (2026-07-29)
+
+| Concern | Choice | Why |
+|---------|--------|-----|
+| DNS | **Cloudflare** (nameservers pointed from Porkbun) | Already on Cloudflare for R2; free DNS + easy Pages + email DNS records in one place |
+| Landing / legal / `.well-known` | **Cloudflare Pages** | Free HTTPS, same account, trivial static deploy |
+| Transactional email | **Resend** (`noreply@join-social.com`) | Simple SMTP, free tier, clear domain verify flow |
+| Support inbox (optional) | **Cloudflare Email Routing** → personal Gmail | Free catch-all / `support@` without running a mailbox |
+| Apple Developer / TestFlight | **Last** | Do after domains, email, and landing are live |
 
 Concrete env values to use:
 
@@ -87,10 +97,14 @@ in `settings.py` — local dev still uses the filesystem. Remaining setup:
 
 ### Phase 2 — DNS / domain wiring
 
+**Providers locked:** Porkbun (registrar) → Cloudflare DNS; landing on Cloudflare Pages; email via Resend.
+
+- [x] Add `join-social.com` as a Cloudflare zone; point Porkbun nameservers → Cloudflare (**Active**)
+- [ ] Finish `join-social.net` Cloudflare zone (Active) → 301 redirect to `join-social.com`
 - [ ] Point `api.join-social.com` (CNAME) at the Render service; add it as a custom domain in Render (TLS auto-provisions)
-- [ ] Set up the `join-social.com` landing site (even a single static page works) — needed for App Store URLs and `.well-known` hosting
-- [ ] 301-redirect `join-social.net` → `join-social.com`
-- [ ] Set `EXPO_PUBLIC_API_URL=https://api.join-social.com` in the frontend `.env`
+- [ ] Deploy `website/` to Cloudflare Pages; attach custom domain `join-social.com` (+ `www`)
+- [ ] Update Render env: `DJANGO_ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, `FRONTEND_BASE_URL`
+- [ ] Set `EXPO_PUBLIC_API_URL=https://api.join-social.com` in the frontend `.env` (after API custom domain is green)
 
 ### Phase 3 — Deep links (password-reset emails open the app)
 
