@@ -1,7 +1,6 @@
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
-  KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
@@ -82,104 +81,115 @@ const SignUp = () => {
 
   return (
     <LoadingState isLoading={isLoading} subtle={true}>
-      <ScreenWrapper bg="white">
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+      {/* Disable ScreenWrapper's KeyboardAvoidingView — ScrollView handles insets.
+          Nested avoiders were adding a large blank region under password fields. */}
+      <ScreenWrapper bg="white" keyboardAvoiding={false}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          showsVerticalScrollIndicator={false}
+          automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
         >
-          <ScrollView
-            contentContainerStyle={styles.scrollContent}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive"
-            showsVerticalScrollIndicator={false}
-          >
-            <View style={styles.content}>
-              <Text style={styles.title}>Create Account</Text>
-              <Text style={styles.description}>
-                Enter your details below to create your account
-              </Text>
+          <View style={styles.content}>
+            <Text style={styles.title}>Create Account</Text>
+            <Text style={styles.description}>
+              Enter your details below to create your account
+            </Text>
 
-              <View style={styles.form}>
-                <CustomInput
-                  label="First Name"
-                  placeholder="First Name"
-                  value={firstName}
-                  onChangeText={setFirstName}
-                  autoCapitalize="words"
-                />
+            <View style={styles.form}>
+              <CustomInput
+                label="First Name"
+                placeholder="First Name"
+                value={firstName}
+                onChangeText={setFirstName}
+                autoCapitalize="words"
+                textContentType="givenName"
+                autoComplete="given-name"
+              />
 
-                <CustomInput
-                  label="Last Name"
-                  placeholder="Last Name"
-                  value={lastName}
-                  onChangeText={setLastName}
-                  autoCapitalize="words"
-                />
+              <CustomInput
+                label="Last Name"
+                placeholder="Last Name"
+                value={lastName}
+                onChangeText={setLastName}
+                autoCapitalize="words"
+                textContentType="familyName"
+                autoComplete="family-name"
+              />
 
-                <CustomInput
-                  label="Account Email"
-                  placeholder="Account Email"
-                  value={email}
-                  onChangeText={setEmail}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                />
+              <CustomInput
+                label="Account Email"
+                placeholder="Account Email"
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                textContentType="emailAddress"
+                autoComplete="email"
+              />
 
-                <CustomInput
-                  label="Password"
-                  placeholder="Password"
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry
-                />
+              <CustomInput
+                label="Password"
+                placeholder="Password"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                textContentType="newPassword"
+                autoComplete="new-password"
+                autoCorrect={false}
+                spellCheck={false}
+              />
 
-                <CustomInput
-                  label="Confirm Password"
-                  placeholder="Confirm Password"
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  secureTextEntry
-                />
+              <CustomInput
+                label="Confirm Password"
+                placeholder="Confirm Password"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry
+                textContentType="newPassword"
+                autoComplete="new-password"
+                autoCorrect={false}
+                spellCheck={false}
+              />
 
-                {error ? (
-                  <Text style={styles.errorText} accessibilityLiveRegion="polite">
-                    {error}
-                  </Text>
-                ) : null}
+              {error ? (
+                <Text style={styles.errorText} accessibilityLiveRegion="polite">
+                  {error}
+                </Text>
+              ) : null}
 
-                <CustomButton
-                  title="Create Account"
-                  onPress={handleSignUp}
-                  style={styles.button}
-                  disabled={isLoading}
-                />
-              </View>
+              <CustomButton
+                title="Create Account"
+                onPress={handleSignUp}
+                style={styles.button}
+                disabled={isLoading}
+              />
             </View>
+          </View>
 
-            <TouchableOpacity
-              style={styles.signInRow}
-              onPress={() => router.push("/(auth)/signin")}
-            >
-              <Text style={styles.linkText}>
-                Already have an account? Sign In
-              </Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </KeyboardAvoidingView>
+          <TouchableOpacity
+            style={styles.signInRow}
+            onPress={() => router.push("/(auth)/signin")}
+          >
+            <Text style={styles.linkText}>
+              Already have an account? Sign In
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
       </ScreenWrapper>
     </LoadingState>
   );
 };
 
 const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-  },
   scrollContent: {
     flexGrow: 1,
-    padding: wp(5),
-    paddingBottom: wp(8),
-    justifyContent: "center",
+    paddingHorizontal: wp(5),
+    paddingTop: wp(6),
+    paddingBottom: wp(10),
+    // Top-aligned (not centered): centering + keyboard inset made password
+    // focus jump the form and "lock" the scroll position.
   },
   content: {
     width: "100%",
