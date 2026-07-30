@@ -146,7 +146,13 @@ export default function MonthDayYearPicker({
               itemStyle={styles.pickerItem}
             >
               {MONTHS.map((m, idx) => (
-                <Picker.Item key={idx} label={m} value={idx} />
+                <Picker.Item
+                  key={idx}
+                  label={m}
+                  value={idx}
+                  // iOS renders blank labels without an explicit color.
+                  color={theme.colors.text}
+                />
               ))}
             </Picker>
             <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirmMonth}>
@@ -190,13 +196,13 @@ const styles = StyleSheet.create({
   yearInput: { flex: 1.5, textAlign: 'center' },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'transparent',
+    backgroundColor: 'rgba(0,0,0,0.35)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: wp(4),
   },
   wheelContainer: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: '#FFFFFF',
     borderRadius: wp(3),
     width: '80%',
     maxWidth: 400,
@@ -204,9 +210,13 @@ const styles = StyleSheet.create({
   },
   picker: {
     width: '100%',
+    backgroundColor: '#FFFFFF',
+    color: theme.colors.text,
   },
   pickerItem: {
     fontSize: Math.round(wp(5)), // RNCPicker expects integer fontSize to avoid precision warnings
+    color: theme.colors.text,
+    height: 140,
   },
   confirmBtn: {
     paddingVertical: wp(3),

@@ -126,12 +126,14 @@ const LogInteractionScreen = () => {
               selectedValue={formData.type}
               onValueChange={(value) => setFormData(prev => ({ ...prev, type: value }))}
               style={styles.picker}
+              itemStyle={styles.pickerItem}
             >
               {interactionTypes.map(type => (
                 <Picker.Item 
                   key={type.value} 
                   label={type.label} 
                   value={type.value}
+                  color={theme.colors.text}
                 />
               ))}
             </Picker>
@@ -214,6 +216,10 @@ const styles = StyleSheet.create({
   },
   picker: {
     color: theme.colors.text,
+  },
+  pickerItem: {
+    color: theme.colors.text,
+    fontSize: Math.round(wp(4)),
   },
   notesInput: {
     height: wp(40),
