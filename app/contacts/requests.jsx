@@ -26,18 +26,19 @@ const ContactRequestsScreen = () => {
     queryFn: async () => {
       const contacts = await apiFetch(ENDPOINTS.CONNECTIONS);
       
+      const myPersonId = currentUser?.user?.person_id;
       const filteredContacts = contacts.filter(c => {
         const isPending = c.status === 'pending';
-        const isFromSomeoneElse = c.owner.id !== currentUser?.user?.id;
-        const isToCurrentUser = c.target.id === currentUser?.user?.id;
+        const isFromSomeoneElse = c.owner?.id !== myPersonId;
+        const isToCurrentUser = c.target?.id === myPersonId;
 
         return isPending && isFromSomeoneElse && isToCurrentUser;
       });
       
       return filteredContacts;
     },
-    // Only run this query when we have user data
-    enabled: Boolean(currentUser?.success)
+    // Only run this query when we have the Person id for comparisons
+    enabled: Boolean(currentUser?.user?.person_id)
   });
 
   const handleAccept = useCallback((contactId) => run(async () => {
@@ -45,7 +46,7 @@ const ContactRequestsScreen = () => {
       await apiFetch(`${ENDPOINTS.CONNECTIONS}${contactId}/accept/`, {
         method: 'POST'
       });
-      queryClient.invalidateQueries(['connections']);
+      queryClient.invalidateQueries({ queryKey: ['connections'] });
     } catch (err) {
       Alert.alert('Error', err.message || 'Failed to accept request');
     }
@@ -56,7 +57,7 @@ const ContactRequestsScreen = () => {
       await apiFetch(`${ENDPOINTS.CONNECTIONS}${contactId}/decline/`, {
         method: 'POST'
       });
-      queryClient.invalidateQueries(['connections']);
+      queryClient.invalidateQueries({ queryKey: ['connections'] });
     } catch (err) {
       Alert.alert('Error', err.message || 'Failed to decline request');
     }

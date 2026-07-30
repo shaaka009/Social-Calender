@@ -167,13 +167,36 @@ class ConnectionAPITests(APITestCase):
         self.assertEqual(conn.status, Connection.PENDING)
 
     def test_create_connection_to_manual_person_is_accepted(self):
-        """If target person has no linked app account, row should be *accepted*."""
+        """Creating a new manual contact (first_name) should yield an *accepted* row."""
+        self.client.force_authenticate(self.alice_user)
+        payload = {"first_name": "Charlie", "email": "charlie@manual.com"}
+        response = self.client.post(self.connection_list_url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        conn = Connection.objects.get(owner=self.alice_person, target__first_name="Charlie")
+        self.assertEqual(conn.status, Connection.ACCEPTED)
+        self.assertEqual(conn.target.owner, self.alice_person)
+
+    def test_cannot_connect_to_other_users_manual_contact(self):
+        """Users must not attach to another user's private manual Person row."""
+        bob_manual = Person.objects.create(
+            owner=self.bob_person,
+            first_name="Private",
+            email="private@manual.com",
+        )
+        self.client.force_authenticate(self.alice_user)
+        payload = {"target_person_id": bob_manual.id}
+        response = self.client.post(self.connection_list_url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(
+            Connection.objects.filter(owner=self.alice_person, target=bob_manual).exists()
+        )
+
+    def test_cannot_connect_to_unowned_orphan_person(self):
+        """Orphan / unowned Person rows are not attachable via target_person_id."""
         self.client.force_authenticate(self.alice_user)
         payload = {"target_person_id": self.charlie_person.id}
         response = self.client.post(self.connection_list_url, payload, format="json")
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        conn = Connection.objects.get()
-        self.assertEqual(conn.status, Connection.ACCEPTED)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_unique_owner_target_enforced(self):
         self.client.force_authenticate(self.alice_user)
@@ -255,6 +278,35 @@ class ConnectionAPITests(APITestCase):
         conn.refresh_from_db()
         self.assertEqual(conn.status, Connection.DECLINED)
 
+    def test_cannot_patch_status_to_accepted(self):
+        """Status changes must go through accept/decline — not a raw PATCH."""
+        conn = Connection.objects.create(
+            owner=self.alice_person,
+            target=self.bob_person,
+            status=Connection.PENDING,
+        )
+        self.client.force_authenticate(self.bob_user)
+        detail_url = reverse("connection-detail", args=[conn.id])
+        resp = self.client.patch(detail_url, {"status": Connection.ACCEPTED}, format="json")
+        # Pending targets are not the connection owner — updates are forbidden.
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        conn.refresh_from_db()
+        self.assertEqual(conn.status, Connection.PENDING)
+        self.assertFalse(
+            Connection.objects.filter(
+                owner=self.bob_person,
+                target=self.alice_person,
+                status=Connection.ACCEPTED,
+            ).exists()
+        )
+
+        # Even the owner cannot flip status via PATCH (read-only field).
+        self.client.force_authenticate(self.alice_user)
+        resp = self.client.patch(detail_url, {"status": Connection.ACCEPTED}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        conn.refresh_from_db()
+        self.assertEqual(conn.status, Connection.PENDING)
+
 
 class InteractionAPITests(APITestCase):
     """Tests for logging interactions between people."""
@@ -294,6 +346,22 @@ class InteractionAPITests(APITestCase):
         resp = self.client.post(self.interaction_list_url, payload, format="json")
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("connection", str(resp.data).lower())
+
+    def test_interaction_requires_accepted_not_pending(self):
+        dave_user, dave_person = create_user_with_person("dave@example.com")
+        Connection.objects.create(
+            owner=self.alice_person,
+            target=dave_person,
+            status=Connection.PENDING,
+        )
+        self.client.force_authenticate(self.alice_user)
+        payload = {
+            "target_person_id": dave_person.id,
+            "date": date.today().isoformat(),
+            "type": Interaction.CALL,
+        }
+        resp = self.client.post(self.interaction_list_url, payload, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_interactions_filtered_by_user(self):
         """Test that interactions are properly filtered per user."""
@@ -457,7 +525,7 @@ class DashboardAPITests(APITestCase):
 
 class AuthViewTests(APITestCase):
     def setUp(self):
-        self.user, _ = create_user_with_person("signin@example.com", password="strongpass")
+        self.user, self.person = create_user_with_person("signin@example.com", password="strongpass")
         self.signin_url = reverse("signin")
         self.signout_url = reverse("signout")
         self.get_user_url = reverse("get_user")
@@ -472,7 +540,9 @@ class AuthViewTests(APITestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
         resp_user = self.client.get(self.get_user_url)
         self.assertEqual(resp_user.status_code, status.HTTP_200_OK)
-        self.assertTrue(resp_user.json()["success"])
+        body = resp_user.json()
+        self.assertTrue(body["success"])
+        self.assertEqual(body["user"]["person_id"], self.person.id)
 
         # Signout endpoint is a no-op server-side for JWT; client discards token
         self.assertEqual(self.client.post(self.signout_url).status_code, status.HTTP_200_OK)
@@ -1021,3 +1091,16 @@ class EmailVerificationFlowTests(APITestCase):
         )
         self.assertEqual(signin_resp.status_code, status.HTTP_200_OK)
         self.assertTrue(signin_resp.json().get("success"))
+
+    def test_verify_email_already_active_does_not_return_tokens(self):
+        create_user_with_person("already@example.com", password="Passw0rd!")
+
+        verify_resp = self.client.post(
+            self.verify_url,
+            {"email": "already@example.com", "code": "000000"},
+            format="json",
+        )
+        self.assertEqual(verify_resp.status_code, status.HTTP_400_BAD_REQUEST)
+        body = verify_resp.json()
+        self.assertFalse(body.get("success", False))
+        self.assertNotIn("tokens", body)

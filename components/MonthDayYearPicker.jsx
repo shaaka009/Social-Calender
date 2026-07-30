@@ -35,7 +35,7 @@ export default function MonthDayYearPicker({
   useEffect(() => {
     setMonth(date.getMonth());
     setDayStr(String(date.getDate()));
-    setYearStr(String(date.getFullYear()));
+    setYearStr(date.noYear ? '' : String(date.getFullYear()));
   }, [date]);
 
   const [showMonthWheel, setShowMonthWheel] = useState(false);

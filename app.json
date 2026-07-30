@@ -22,8 +22,7 @@
       "infoPlist": {
         "LSApplicationQueriesSchemes": ["socialcalendar"],
         "NSPhotoLibraryUsageDescription": "Social Calendar needs access to your photo library to set a profile picture.",
-        "NSCameraUsageDescription": "Social Calendar needs access to your camera to take a profile picture.",
-        "NSLocationWhenInUseUsageDescription": "Social Calendar uses your location to display your city on your profile."
+        "NSLocationWhenInUseUsageDescription": "Social Calendar uses location services to place contacts and your profile on the map from typed city names."
       }
     },
     "android": {
@@ -43,7 +42,6 @@
       },
       "edgeToEdgeEnabled": true,
       "permissions": [
-        "CAMERA",
         "READ_EXTERNAL_STORAGE",
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"

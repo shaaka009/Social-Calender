@@ -21,11 +21,18 @@ const OnboardingStep3 = () => {
   const { isLoading, withLoading } = useLoading();
   const goOnce = useOneShot();
   const params = useLocalSearchParams();
+  const profilePicture = Array.isArray(params.profile_picture)
+    ? params.profile_picture[0]
+    : params.profile_picture;
+  const birthday = Array.isArray(params.birthday) ? params.birthday[0] : params.birthday;
+  const phone = Array.isArray(params.phone) ? params.phone[0] : params.phone;
+  const location = Array.isArray(params.location) ? params.location[0] : params.location;
+  const organization = Array.isArray(params.organization) ? params.organization[0] : params.organization;
 
   const saveOnboardingData = async () => {
     try {
       // Check if we have a profile picture to upload
-      const hasProfilePicture = params.profile_picture && params.profile_picture.startsWith("file://");
+      const hasProfilePicture = typeof profilePicture === "string" && profilePicture.startsWith("file://");
       
       let body;
       let headers = {};
@@ -34,15 +41,18 @@ const OnboardingStep3 = () => {
         // Use FormData for file upload
         const formData = new FormData();
         
-        if (params.birthday) formData.append("birthday", params.birthday);
-        if (params.phone) formData.append("phone", params.phone);
-        if (params.location) formData.append("location", params.location);
-        if (params.organization) formData.append("organization", params.organization);
+        if (birthday) formData.append("birthday", birthday);
+        if (phone) formData.append("phone", phone);
+        if (location) formData.append("location", location);
+        if (organization) formData.append("organization", organization);
         
         // Handle extra contacts
         if (params.extra_contacts) {
           try {
-            const extraContacts = JSON.parse(params.extra_contacts);
+            const rawExtra = Array.isArray(params.extra_contacts)
+              ? params.extra_contacts[0]
+              : params.extra_contacts;
+            const extraContacts = JSON.parse(rawExtra);
             if (extraContacts.length > 0) {
               formData.append("extra_contacts", JSON.stringify(extraContacts));
             }
@@ -52,11 +62,11 @@ const OnboardingStep3 = () => {
         }
 
         // Handle profile picture
-        const uriParts = params.profile_picture.split(".");
+        const uriParts = profilePicture.split(".");
         const fileType = uriParts[uriParts.length - 1];
         
         formData.append("profile_picture", {
-          uri: params.profile_picture,
+          uri: profilePicture,
           name: `profile.${fileType}`,
           type: `image/${fileType}`,
         });
@@ -66,15 +76,18 @@ const OnboardingStep3 = () => {
         // Use JSON for text-only updates
         const jsonData = {};
         
-        if (params.birthday) jsonData.birthday = params.birthday;
-        if (params.phone) jsonData.phone = params.phone;
-        if (params.location) jsonData.location = params.location;
-        if (params.organization) jsonData.organization = params.organization;
+        if (birthday) jsonData.birthday = birthday;
+        if (phone) jsonData.phone = phone;
+        if (location) jsonData.location = location;
+        if (organization) jsonData.organization = organization;
         
         // Handle extra contacts
         if (params.extra_contacts) {
           try {
-            const extraContacts = JSON.parse(params.extra_contacts);
+            const rawExtra = Array.isArray(params.extra_contacts)
+              ? params.extra_contacts[0]
+              : params.extra_contacts;
+            const extraContacts = JSON.parse(rawExtra);
             if (extraContacts.length > 0) {
               jsonData.extra_contacts = extraContacts;
             }

@@ -72,8 +72,11 @@ const LogInteractionScreen = () => {
       });
 
       // Invalidate queries to refresh data
-      queryClient.invalidateQueries(['interactions', id]);
-      queryClient.invalidateQueries(['connection', id]);
+      // Contact detail caches interactions by person id, not connection id.
+      queryClient.invalidateQueries({ queryKey: ['interactions', person.id] });
+      queryClient.invalidateQueries({ queryKey: ['connection', id] });
+      queryClient.invalidateQueries({ queryKey: ['connections'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
 
       // Navigate back (keep the guard active during the toast delay).
       await new Promise((resolve) => setTimeout(resolve, 500));

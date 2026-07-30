@@ -31,7 +31,7 @@ const DeleteContactScreen = () => {
       queryClient.removeQueries(['connection', id]);
       
       // Invalidate contacts queries to refresh the list
-      queryClient.invalidateQueries(['connections']);
+      queryClient.invalidateQueries({ queryKey: ['connections'] });
       
       // Show success toast
       Toast.show('Contact deleted successfully', {

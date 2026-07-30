@@ -25,8 +25,11 @@ export default function DateRangePicker({
   const fromIsoDate = useCallback((isoDate) => {
     if (!isoDate) return null;
     const [year, month, day] = isoDate.split('-').map(Number);
-    if (!year || !month || !day) return null;
-    return new Date(year, month - 1, day);
+    if (Number.isNaN(year) || !month || !day) return null;
+    const noYear = year === 0;
+    const date = new Date(noYear ? 2000 : year, month - 1, day);
+    if (noYear) date.noYear = true;
+    return date;
   }, []);
 
   const startIso = toIsoDate(startDate);
@@ -123,6 +126,22 @@ export default function DateRangePicker({
     dayTextColor: theme.colors.text,
     textDisabledColor: '#c5c5c5',
     calendarBackground: theme.colors.background,
+    // Overdraw period fillers so subpixel column gaps (varies by month width) don't
+    // show as white hairlines between adjacent selected days.
+    'stylesheet.day.period': {
+      container: {
+        alignSelf: 'stretch',
+        alignItems: 'center',
+        overflow: 'visible',
+      },
+      fillers: {
+        position: 'absolute',
+        height: 34,
+        flexDirection: 'row',
+        left: -3,
+        right: -3,
+      },
+    },
   }), []);
 
   const handleCalendarLayout = useCallback((event) => {

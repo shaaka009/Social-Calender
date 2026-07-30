@@ -85,7 +85,7 @@ const EventDetailsScreen = () => {
     const optsNoYear = { month: 'short', day: 'numeric' };
 
     // Birthday with no year (encoded as 0000-…)
-    const isNoYear = start.getFullYear() === 0;
+    const isNoYear = Boolean(start?.noYear) || String(ev.start_date || '').startsWith('0000-');
 
     const format = (d) => d.toLocaleDateString(undefined, isNoYear ? optsNoYear : optsFull);
 

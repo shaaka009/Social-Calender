@@ -287,14 +287,16 @@ def verify_email(request):
     except get_user_model().DoesNotExist:
         return JsonResponse({"success": False, "message": "Invalid verification code."}, status=400)
 
+    # Already-active accounts must sign in with a password. Never mint JWTs
+    # here — that would let anyone with a known email bypass authentication
+    # by posting any non-empty verification code.
     if user.is_active:
-        tokens = _tokens_for_user(user)
         return JsonResponse(
             {
-                "success": True,
-                "message": "Email already verified.",
-                "tokens": tokens,
-            }
+                "success": False,
+                "message": "This email is already verified. Please sign in.",
+            },
+            status=400,
         )
 
     try:
@@ -461,6 +463,12 @@ def verify_login_email_change(request):
     user.username = normalized_email
     user.save(update_fields=["email", "username"])
 
+    # Keep Person.email aligned so connection/search UIs don't show the old login email.
+    person = account.person
+    if person.email != normalized_email:
+        person.email = normalized_email
+        person.save(update_fields=["email"])
+
     account.pending_login_email = None
     account.login_email_change_code = ""
     account.login_email_change_code_expires_at = None
@@ -487,10 +495,17 @@ def signout(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_user(request):
+    person_id = None
+    try:
+        person_id = request.user.account.person_id
+    except Account.DoesNotExist:
+        person_id = None
+
     return Response({
         "success": True,
         "user": {
             "id": request.user.id,
+            "person_id": person_id,
             "email": request.user.email,
             "first_name": request.user.first_name,
             "last_name": request.user.last_name,
@@ -740,6 +755,12 @@ class ConnectionViewSet(viewsets.ModelViewSet):
         user_person = get_or_create_person_for_user(self.request.user)
         serializer.save(owner=user_person)
 
+    def perform_update(self, serializer):
+        user_person = get_or_create_person_for_user(self.request.user)
+        if serializer.instance.owner != user_person:
+            raise PermissionDenied("You can only edit connections you own")
+        serializer.save()
+
     @action(detail=True, methods=['post'])
     def accept(self, request, pk=None):
         """Accept a connection request."""
@@ -896,12 +917,14 @@ class TagViewSet(mixins.ListModelMixin,
 
         self._created = created  # flag for custom status
         self.tag_instance = tag
+        serializer.instance = tag
 
     def create(self, request, *args, **kwargs):
         response = super().create(request, *args, **kwargs)
+        if hasattr(self, "tag_instance"):
+            response.data = TagSerializer(self.tag_instance).data
         if hasattr(self, "_created") and not self._created:
             response.status_code = status.HTTP_200_OK
-            response.data = TagSerializer(self.tag_instance).data
         return response
 
 

@@ -202,10 +202,24 @@ class ConnectionSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({'first_name': 'First name is required'})
             return attrs
 
-        # For app user connections, ensure target person exists
+        # For app-user / existing-person connections, ensure the target is
+        # either an app user or a manual contact owned by the requester.
         if 'target_person_id' in attrs:
-            if not Person.objects.filter(id=attrs['target_person_id']).exists():
+            try:
+                target = Person.objects.select_related("account").get(id=attrs['target_person_id'])
+            except Person.DoesNotExist:
                 raise serializers.ValidationError({'target_person_id': 'Person does not exist'})
+
+            request = self.context.get("request")
+            try:
+                requester = request.user.account.person
+            except Exception:
+                raise serializers.ValidationError({'target_person_id': 'Unable to resolve your profile'})
+
+            if not target.is_app_user and getattr(target, "owner_id", None) != requester.id:
+                raise serializers.ValidationError(
+                    {'target_person_id': 'You cannot connect to this contact.'}
+                )
         return attrs
 
     def create(self, validated_data):
@@ -339,7 +353,7 @@ class ConnectionSerializer(serializers.ModelSerializer):
             "extra_contacts",
             "profile_picture",
         )
-        read_only_fields = ("id", "owner", "is_mutual", "created_at")
+        read_only_fields = ("id", "owner", "status", "is_mutual", "created_at")
 
 
 # -------------------------------------------------------------------
@@ -371,10 +385,10 @@ class InteractionSerializer(serializers.ModelSerializer):
         has_connection = Connection.objects.filter(
             owner=actor_person,
             target_id=target_id,
-            status__in=[Connection.ACCEPTED, Connection.PENDING],
+            status=Connection.ACCEPTED,
         ).exists()
         if not has_connection:
-            raise serializers.ValidationError("You need a connection before logging an interaction.")
+            raise serializers.ValidationError("You need an accepted connection before logging an interaction.")
         return attrs
 
     def create(self, validated_data):
@@ -435,9 +449,8 @@ class EventSerializer(serializers.ModelSerializer):
         if owner_person is None:
             return Person.objects.none()
         connection_target_ids = Connection.objects.filter(
-            owner=owner_person
-        ).exclude(
-            status=Connection.DECLINED
+            owner=owner_person,
+            status=Connection.ACCEPTED,
         ).values_list("target_id", flat=True)
         return Person.objects.filter(id__in=people_ids).filter(
             Q(id__in=connection_target_ids) | Q(id=owner_person.id)
@@ -731,8 +744,8 @@ class UserProfileSerializer(serializers.Serializer):
             for attr in ("first_name", "last_name"):
                 if attr in validated_data:
                     setattr(user, attr, validated_data[attr])
-                    # Clear duplicates on Person so it behaves like a wrapper
-                    setattr(person, attr, None)
+                    # Keep Person identity in sync for connection/search displays
+                    setattr(person, attr, validated_data[attr])
             user.save()
             person.save()
         

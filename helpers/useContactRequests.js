@@ -14,17 +14,18 @@ const useContactRequests = () => {
     queryKey: ['connections'],
     queryFn: () => apiFetch(ENDPOINTS.CONNECTIONS),
     staleTime: 30000, // Re-fetch after 30 seconds
-    enabled: Boolean(currentUser?.user?.id), // Only fetch if we have user data
+    enabled: Boolean(currentUser?.user?.person_id), // Only fetch if we have Person id
   });
 
-  // Count incoming pending requests - use useMemo to avoid recalculating
+  // Count incoming pending requests - compare Person ids (not User ids).
   const pendingCount = React.useMemo(() => {
-    if (!currentUser?.user?.id) return 0;
-    return contacts.filter(c => 
+    const myPersonId = currentUser?.user?.person_id;
+    if (!myPersonId) return 0;
+    return contacts.filter(c =>
       c.status === 'pending' &&
-      c.target.id === currentUser.user.id // Request addressed to me
+      c.target?.id === myPersonId
     ).length;
-  }, [contacts, currentUser?.user?.id]);
+  }, [contacts, currentUser?.user?.person_id]);
 
   return {
     pendingCount,

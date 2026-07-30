@@ -82,7 +82,7 @@ class Event(models.Model):
 
     def clean(self):
         from django.core.exceptions import ValidationError
-        if self.end_date and self.end_date < self.start_date:
+        if self.start_date and self.end_date and self.end_date < self.start_date:
             raise ValidationError({"end_date": "End date cannot be before start date."})
 
     def save(self, *args, **kwargs):

@@ -14,7 +14,7 @@ import LoadingState from "../../components/LoadingState";
 import ScreenWrapper from "../../components/ScreenWrapper";
 import { theme } from "../../constants/theme";
 import { ENDPOINTS } from "../../helpers/api";
-import { wp } from "../../helpers/common";
+import { parseJsonResponse, wp } from "../../helpers/common";
 import useLoading from "../../helpers/useLoading";
 import { useOneShot } from "../../helpers/useSubmitGuard";
 
@@ -55,7 +55,7 @@ const SignUp = () => {
           }),
         });
 
-        const data = await response.json();
+        const data = await parseJsonResponse(response);
 
         if (!response.ok) {
           if (data.errors) {

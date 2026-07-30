@@ -9,7 +9,7 @@ import ScreenWrapper from "../../components/ScreenWrapper";
 import { theme } from "../../constants/theme";
 import { ENDPOINTS } from "../../helpers/api";
 import { storeTokens } from "../../helpers/auth";
-import { wp } from "../../helpers/common";
+import { parseJsonResponse, wp } from "../../helpers/common";
 import useLoading from "../../helpers/useLoading";
 import { useOneShot } from "../../helpers/useSubmitGuard";
 
@@ -40,7 +40,7 @@ const VerifyEmail = () => {
           },
           body: JSON.stringify({ email: email.trim().toLowerCase() }),
         });
-        const data = await response.json();
+        const data = await parseJsonResponse(response);
         if (!response.ok) {
           throw new Error(data.message || "Failed to resend verification email");
         }
@@ -76,9 +76,13 @@ const VerifyEmail = () => {
           }),
         });
 
-        const data = await response.json();
+        const data = await parseJsonResponse(response);
         if (!response.ok) {
           throw new Error(data.message || "Unable to verify code");
+        }
+
+        if (!data.tokens?.access || !data.tokens?.refresh) {
+          throw new Error(data.message || "Verification succeeded but no tokens were returned");
         }
 
         await storeTokens(data.tokens);

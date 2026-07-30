@@ -406,8 +406,8 @@ const Events = () => {
 
       if (deletedCount > 0) {
         await Promise.all([
-          queryClient.invalidateQueries(['events']),
-          queryClient.invalidateQueries(['dashboard']),
+          queryClient.invalidateQueries({ queryKey: ['events'] }),
+          queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
         ]);
       }
 

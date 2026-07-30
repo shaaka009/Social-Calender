@@ -3,6 +3,7 @@ import { router, Stack } from 'expo-router';
 import { useEffect } from 'react';
 import { RootSiblingParent } from 'react-native-root-siblings';
 import { setOnSessionExpired } from '../helpers/api';
+import useRequireAuth from '../helpers/useRequireAuth';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -16,6 +17,8 @@ const queryClient = new QueryClient({
 });
 
 export default function Layout() {
+  useRequireAuth();
+
   useEffect(() => {
     // When a session dies mid-use (refresh token rejected), drop cached data
     // and send the user back to the welcome screen instead of leaving them on

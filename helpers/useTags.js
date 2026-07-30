@@ -18,9 +18,9 @@ export const useCreateTag = () => {
         body: JSON.stringify(tag),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries(["tags"]);
-      queryClient.invalidateQueries(["connections"]);
-      queryClient.invalidateQueries(["events"]);
+      queryClient.invalidateQueries({ queryKey: ["tags"] });
+      queryClient.invalidateQueries({ queryKey: ["connections"] });
+      queryClient.invalidateQueries({ queryKey: ["events"] });
     },
   });
 };
@@ -34,9 +34,9 @@ export const useUpdateTag = () => {
         body: JSON.stringify(body),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries(["tags"]);
-      queryClient.invalidateQueries(["connections"]);
-      queryClient.invalidateQueries(["events"]);
+      queryClient.invalidateQueries({ queryKey: ["tags"] });
+      queryClient.invalidateQueries({ queryKey: ["connections"] });
+      queryClient.invalidateQueries({ queryKey: ["events"] });
     },
   });
 };
@@ -49,9 +49,9 @@ export const useDeleteTag = () => {
         method: "DELETE",
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries(["tags"]);
-      queryClient.invalidateQueries(["connections"]);
-      queryClient.invalidateQueries(["events"]);
+      queryClient.invalidateQueries({ queryKey: ["tags"] });
+      queryClient.invalidateQueries({ queryKey: ["connections"] });
+      queryClient.invalidateQueries({ queryKey: ["events"] });
     },
   });
 };

@@ -14,6 +14,8 @@ from pathlib import Path
 from datetime import timedelta
 import os
 
+from django.core.exceptions import ImproperlyConfigured
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -30,6 +32,12 @@ SECRET_KEY = os.environ.get(
 )
 
 DEBUG = os.environ.get("DJANGO_DEBUG", "True").lower() in ("true", "1", "yes")
+
+# Production must never boot with the insecure fallback key.
+if not DEBUG and SECRET_KEY == "django-insecure-dev-only-change-me":
+    raise ImproperlyConfigured(
+        "DJANGO_SECRET_KEY must be set to a real secret when DJANGO_DEBUG is False."
+    )
 
 ALLOWED_HOSTS = [h.strip() for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
 # Render injects the service's own external hostname; always trust it so the
@@ -278,7 +286,9 @@ elif _frontend_origin.startswith("http"):
     CORS_ALLOW_ALL_ORIGINS = False
     CORS_ALLOWED_ORIGINS = [_frontend_origin]
 else:
-    CORS_ALLOW_ALL_ORIGINS = True  # local/dev only
+    # Never open CORS to the world outside DEBUG.
+    CORS_ALLOW_ALL_ORIGINS = bool(DEBUG)
+    CORS_ALLOWED_ORIGINS = []
 
 CORS_ALLOW_CREDENTIALS = True
 
@@ -333,7 +343,7 @@ elif _email_host:
 else:
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
-DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@socialcalendar.com")
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@join-social.com")
 
 # ---------------------------------------------------------------------------
 # Logging

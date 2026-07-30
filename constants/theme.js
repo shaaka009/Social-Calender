@@ -17,6 +17,8 @@ export const theme = {
     warning: '#f59e0b',
     background: '#FFFFFF',
     backgroundSecondary: '#F8F9FA',
+    card: '#FFFFFF',
+    textSecondary: '#7C7C7C',
     danger: '#dc3545',
   },
   fonts: {

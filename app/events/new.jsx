@@ -159,8 +159,8 @@ const AddEventScreen = () => {
       });
 
       // Invalidate queries to refresh data
-      queryClient.invalidateQueries(['events']);
-      queryClient.invalidateQueries(['dashboard']);
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
 
       // Navigate back
       goOnce(() => router.back());

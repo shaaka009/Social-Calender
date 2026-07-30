@@ -19,7 +19,12 @@ function resolveApiBaseUrl() {
   const fromEnv = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '');
   if (fromEnv) return fromEnv;
 
-  if (!__DEV__) return DEFAULT_API_BASE;
+  // Release builds must ship with EXPO_PUBLIC_API_URL — never fall back to localhost.
+  if (!__DEV__) {
+    throw new Error(
+      'EXPO_PUBLIC_API_URL is required in production builds. Set it to your HTTPS API base (e.g. https://api.join-social.com).'
+    );
+  }
 
   const raw = Constants.expoConfig?.hostUri;
   if (!raw) return DEFAULT_API_BASE;

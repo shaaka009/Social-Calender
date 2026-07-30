@@ -148,12 +148,26 @@ const EditContactScreen = () => {
         formData.profile_picture.startsWith('file://') || formData.profile_picture.startsWith('content://')
       );
 
+      // App-user identity fields are read-only; only connection-level fields are editable.
+      let payloadForRequest = payload;
+      if (isAppUser) {
+        const {
+          first_name,
+          last_name,
+          email,
+          phone,
+          birthday,
+          ...editableFields
+        } = payload;
+        payloadForRequest = editableFields;
+      }
+
       let requestBody = null;
       let headers = {};
 
       if (hasLocalImage) {
         const fd = new FormData();
-        Object.entries(payload).forEach(([key, value]) => {
+        Object.entries(payloadForRequest).forEach(([key, value]) => {
           if (value === undefined || value === null) return;
           if (key === 'profile_picture') return;
           if (key === 'tags' && Array.isArray(value)) {
@@ -173,26 +187,16 @@ const EditContactScreen = () => {
         });
         requestBody = fd;
       } else {
-        delete payload.profile_picture;
-        requestBody = JSON.stringify(payload);
+        delete payloadForRequest.profile_picture;
+        requestBody = JSON.stringify(payloadForRequest);
         headers['Content-Type'] = 'application/json';
       }
 
-      if (isAppUser) {
-        // App-user profile fields are read-only, but connection-level fields (e.g. tags) should still be saved.
-        const { first_name, last_name, email, phone, birthday, ...editableFields } = payload;
-        await apiFetch(`${ENDPOINTS.CONNECTIONS}${id}/`, {
-          method: 'PATCH',
-          body: hasLocalImage ? requestBody : JSON.stringify(editableFields),
-          headers,
-        });
-      } else {
-        await apiFetch(`${ENDPOINTS.CONNECTIONS}${id}/`, {
-          method: 'PATCH',
-          body: requestBody,
-          headers,
-        });
-      }
+      await apiFetch(`${ENDPOINTS.CONNECTIONS}${id}/`, {
+        method: 'PATCH',
+        body: requestBody,
+        headers,
+      });
 
       // Show success toast
       Toast.show('Contact updated successfully', {
@@ -206,8 +210,8 @@ const EditContactScreen = () => {
       });
 
       // Invalidate queries to refresh data
-      queryClient.invalidateQueries(['connections']);
-      queryClient.invalidateQueries(['connection', id]);
+      queryClient.invalidateQueries({ queryKey: ['connections'] });
+      queryClient.invalidateQueries({ queryKey: ['connection', id] });
 
       // Navigate back (keep the guard active during the toast delay so a
       // second tap can't fire another PATCH before we leave the screen).

@@ -14,7 +14,7 @@ import ScreenWrapper from "../../components/ScreenWrapper";
 import { theme } from "../../constants/theme";
 import { ENDPOINTS } from "../../helpers/api";
 import { storeTokens } from "../../helpers/auth";
-import { wp } from "../../helpers/common";
+import { parseJsonResponse, wp } from "../../helpers/common";
 import useLoading from "../../helpers/useLoading";
 import { useOneShot } from "../../helpers/useSubmitGuard";
 
@@ -46,7 +46,7 @@ const SignIn = () => {
           }),
         });
 
-        const data = await response.json();
+        const data = await parseJsonResponse(response);
 
         if (!response.ok) {
           if (data.requires_verification) {
@@ -59,6 +59,10 @@ const SignIn = () => {
             return;
           }
           throw new Error(data.message || "Login failed");
+        }
+
+        if (!data.tokens?.access || !data.tokens?.refresh) {
+          throw new Error("Login succeeded but no tokens were returned");
         }
 
         // Store JWT tokens
